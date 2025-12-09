@@ -426,6 +426,7 @@ def _build_agent_turn(
                 reasoning_by_step[step_index] = tuple(collected_for_step)
 
     reasoning_segments = tuple(reasoning_segments)
+    entry._ensure_view_cache()["reasoning_segments"] = reasoning_segments
 
     reasoning_fallback = _render_reasoning_fallback(reasoning_segments)
     reasoning_display = entry.cache_view_value(
@@ -444,12 +445,7 @@ def _build_agent_turn(
         excluded_displays.add(reasoning_display)
     if final_response is not None:
         final_display = final_response.display_text or ""
-        if reasoning_display:
-            if final_display == reasoning_display:
-                final_response = None
-            elif final_display:
-                excluded_displays.add(final_display)
-        elif final_display:
+        if final_display:
             excluded_displays.add(final_display)
 
     if llm_trace.steps:
@@ -556,6 +552,12 @@ def _prepare_agent_display_text(value: str | None) -> str:
     text = _BR_TAG_PATTERN.sub("  \n", text)
     text = _SPACE_RUN_PATTERN.sub(" ", text)
     return text.strip(" \t\f\v")
+
+
+def _normalize_agent_display_text(value: str | None) -> str:
+    """Normalize agent text to a comparable display form."""
+
+    return normalize_for_display(_prepare_agent_display_text(value))
 
 
 def _build_final_response(

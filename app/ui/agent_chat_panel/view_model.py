@@ -471,7 +471,10 @@ def _build_agent_turn(
         entry_id, tool_snapshots, llm_trace
     )
     events = _build_agent_events(
-        streamed_responses, final_response, tool_calls, event_log
+        streamed_responses,
+        final_response,
+        tool_calls,
+        event_log,
     )
 
     resolved_timestamp = _resolve_turn_timestamp(
@@ -499,7 +502,10 @@ def _build_agent_turn(
 
     if updated_events:
         events = _build_agent_events(
-            streamed_responses, final_response, tool_calls, event_log
+            streamed_responses,
+            final_response,
+            tool_calls,
+            event_log,
         )
         resolved_timestamp = _resolve_turn_timestamp(
             final_response.timestamp,
@@ -777,6 +783,16 @@ def _tool_timestamp(snapshot: ToolResultSnapshot) -> TimestampInfo:
         timestamp = _build_timestamp(candidate, source="tool_result")
         if not timestamp.missing:
             return timestamp
+
+    if snapshot.events:
+        for event in sorted(
+            (event for event in snapshot.events if event.occurred_at),
+            key=lambda item: item.occurred_at,
+        ):
+            timestamp = _build_timestamp(event.occurred_at, source="tool_result")
+            if not timestamp.missing:
+                return timestamp
+
     return _build_timestamp(None, source="tool_result")
 
 
@@ -976,17 +992,6 @@ def _build_agent_events(
                     response=response,
                 )
             )
-        if final_response is not None:
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=final_response.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    response=final_response,
-                )
-            )
-            has_final_response = True
         for detail in tool_calls:
             events.append(
                 AgentTimelineEvent(
@@ -999,6 +1004,17 @@ def _build_agent_events(
             )
             if detail.call_identifier:
                 added_tool_ids.add(detail.call_identifier)
+        if final_response is not None:
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=len(events),
+                    sequence=len(events),
+                    response=final_response,
+                )
+            )
+            has_final_response = True
 
     if final_response is not None and not has_final_response:
         events.append(
@@ -1044,17 +1060,13 @@ def _build_agent_events(
                 return summary.index * 2 + 1
         return event.order_index
 
+    def _sort_key(event: AgentTimelineEvent) -> tuple[_dt.datetime, int, int]:
+        occurred_at = event.timestamp.occurred_at or _UTC_MIN
+        sequence = event.sequence if allow_existing_sequence and event.sequence is not None else event.order_index
+        return (occurred_at, _sequence_hint(event), sequence)
+
     if not event_log or events_missing_from_log or not has_logged_tool_events:
-        events = tuple(
-            sorted(
-                events,
-                key=lambda event: (
-                    event.timestamp.occurred_at is None,
-                    event.timestamp.occurred_at or _UTC_MIN,
-                    _sequence_hint(event),
-                ),
-            )
-        )
+        events = tuple(sorted(events, key=_sort_key))
 
     for index, event in enumerate(events):
         event.order_index = index

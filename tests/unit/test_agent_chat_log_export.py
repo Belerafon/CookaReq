@@ -238,6 +238,126 @@ def test_plain_transcript_includes_streamed_responses() -> None:
     assert "Waiting for agent response" not in plain_text
 
 
+def test_plain_transcript_orders_tools_without_timestamps_before_final_response() -> None:
+    conversation = ChatConversation.new()
+    prompt_at = _iso("2025-10-02T11:00:00+00:00")
+    response_at = _iso("2025-10-02T11:05:00+00:00")
+
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="Ready",
+        events=AgentEventLog(),
+        reasoning=(),
+        tool_results=[
+            ToolResultSnapshot(
+                call_id="tool-1",
+                tool_name="read_user_document",
+                status="succeeded",
+                arguments={"path": "ТЗ.md"},
+                result={"content": "fragment"},
+                error=None,
+                events=[],
+                started_at=None,
+                completed_at=None,
+                last_observed_at=None,
+                metrics=ToolMetrics(),
+            )
+        ],
+        llm_trace=LlmTrace(),
+    )
+
+    entry = ChatEntry(
+        prompt="Читай файл",
+        response="Готово",
+        display_response=None,
+        tokens=0,
+        prompt_at=prompt_at,
+        response_at=response_at,
+        raw_result=payload.to_dict(),
+    )
+    conversation.append_entry(entry)
+
+    plain_text = compose_transcript_text(conversation)
+
+    tool_index = plain_text.find("Agent: tool call 1: read_user_document")
+    response_index = plain_text.find("Agent:\n    Готово")
+
+    assert tool_index != -1, plain_text
+    assert response_index != -1, plain_text
+    assert tool_index < response_index, plain_text
+
+
+def test_plain_transcript_prefers_tool_event_timestamps_with_subsecond_ordering() -> None:
+    conversation = ChatConversation.new()
+    prompt_at = _iso("2025-10-02T12:00:00+00:00")
+    response_at = _iso("2025-10-02T12:00:02.750000+00:00")
+
+    tool_snapshot = ToolResultSnapshot(
+        call_id="tool-1",
+        tool_name="read_user_document",
+        status="succeeded",
+        arguments={"path": "ТЗ.md"},
+        result={"content": "fragment"},
+        error=None,
+        events=[
+            ToolTimelineEvent(
+                kind="started",
+                occurred_at=_iso("2025-10-02T12:00:01.125000+00:00"),
+                message="started",
+            ),
+            ToolTimelineEvent(
+                kind="completed",
+                occurred_at=_iso("2025-10-02T12:00:01.625000+00:00"),
+                message="completed",
+            ),
+        ],
+        started_at=None,
+        completed_at=None,
+        last_observed_at=None,
+        metrics=ToolMetrics(duration_seconds=None, cost=None),
+    )
+
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="Ready",
+        events=AgentEventLog(),
+        reasoning=(),
+        tool_results=[tool_snapshot],
+        llm_trace=LlmTrace(
+            steps=[
+                LlmStep(
+                    index=1,
+                    occurred_at=_iso("2025-10-02T12:00:01.000000+00:00"),
+                    request=(),
+                    response={"content": "Working"},
+                )
+            ]
+        ),
+    )
+
+    entry = ChatEntry(
+        prompt="Читай файл",
+        response="Готово",
+        display_response=None,
+        tokens=0,
+        prompt_at=prompt_at,
+        response_at=response_at,
+        raw_result=payload.to_dict(),
+    )
+    conversation.append_entry(entry)
+
+    plain_text = compose_transcript_text(conversation)
+
+    started_label = "[02 Oct 2025 12:00:01] Agent: tool call 1: read_user_document"
+    final_label = "[02 Oct 2025 12:00:02] Agent:"
+
+    assert started_label in plain_text, plain_text
+    assert final_label in plain_text, plain_text
+    assert plain_text.find(started_label) < plain_text.find(final_label)
+
+
 def test_transcript_log_replaces_repeated_system_prompt() -> None:
     conversation = _conversation_with_failed_updates()
 

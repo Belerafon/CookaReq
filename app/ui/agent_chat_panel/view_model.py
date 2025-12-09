@@ -769,7 +769,11 @@ def _build_tool_calls(
 
 
 def _tool_timestamp(snapshot: ToolResultSnapshot) -> TimestampInfo:
-    for candidate in (snapshot.completed_at, snapshot.last_observed_at, snapshot.started_at):
+    for candidate in (
+        snapshot.started_at,
+        snapshot.last_observed_at,
+        snapshot.completed_at,
+    ):
         timestamp = _build_timestamp(candidate, source="tool_result")
         if not timestamp.missing:
             return timestamp
@@ -875,6 +879,7 @@ def _build_agent_events(
     added_tool_ids: set[str] = set()
 
     has_final_response = False
+    has_logged_tool_events = False
     for log_index, event in enumerate(event_log):
         sequence = event.sequence if event.sequence is not None else log_index
         timestamp = _build_timestamp(event.occurred_at, source="agent_event")
@@ -918,6 +923,7 @@ def _build_agent_events(
                 )
                 if tool_call.call_identifier:
                     added_tool_ids.add(tool_call.call_identifier)
+                has_logged_tool_events = True
         elif event.kind == "agent_finished" and final_response is not None:
             has_final_response = True
             if final_response.timestamp.missing:
@@ -957,6 +963,7 @@ def _build_agent_events(
             )
             if tool_call.call_identifier:
                 added_tool_ids.add(tool_call.call_identifier)
+            has_logged_tool_events = True
 
     if not events:
         for response in responses:
@@ -1020,14 +1027,31 @@ def _build_agent_events(
         if identifier:
             added_tool_ids.add(identifier)
 
-    if not event_log:
+    events_missing_from_log = bool(tool_calls) and len(added_tool_ids) < len(tool_calls)
+    allow_existing_sequence = not (events_missing_from_log or not has_logged_tool_events)
+
+    def _sequence_hint(event: AgentTimelineEvent) -> int:
+        if allow_existing_sequence and event.sequence is not None:
+            return event.sequence
+        if event.kind == "response" and event.response is not None:
+            if event.response.is_final:
+                return (len(responses) + len(tool_calls) + 1) * 2
+            if event.response.step_index is not None:
+                return event.response.step_index * 2
+        if event.kind == "tool" and event.tool_call is not None:
+            summary = event.tool_call.summary
+            if summary.index is not None:
+                return summary.index * 2 + 1
+        return event.order_index
+
+    if not event_log or events_missing_from_log or not has_logged_tool_events:
         events = tuple(
             sorted(
                 events,
                 key=lambda event: (
                     event.timestamp.occurred_at is None,
                     event.timestamp.occurred_at or _UTC_MIN,
-                    event.sequence if event.sequence is not None else event.order_index,
+                    _sequence_hint(event),
                 ),
             )
         )

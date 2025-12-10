@@ -95,6 +95,17 @@ def _agent_tint(base: wx.Colour) -> wx.Colour:
     return _blend_colour(base, accent, 0.3)
 
 
+def _reasoning_tint(base: wx.Colour) -> wx.Colour:
+    """Add a dedicated tint for model reasoning bubbles."""
+    if not base.IsOk():
+        base = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOW)
+    if _is_dark_colour(base):
+        accent = wx.Colour(85, 90, 140)
+        return _blend_colour(base, accent, 0.28)
+    accent = wx.Colour(222, 224, 245)
+    return _blend_colour(base, accent, 0.36)
+
+
 @dataclass(frozen=True)
 class MessageBubblePalette:
     """Colour palette applied to message bubbles."""
@@ -139,6 +150,20 @@ def tool_bubble_palette(
     return MessageBubblePalette(background, foreground, meta)
 
 
+def reasoning_bubble_palette(parent_background: wx.Colour) -> MessageBubblePalette:
+    """Compose colours for model reasoning bubbles."""
+    background = _reasoning_tint(parent_background)
+    foreground = _pick_best_contrast(
+        background,
+        wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT),
+        wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT),
+        wx.Colour(40, 40, 40),
+        wx.Colour(220, 220, 230),
+    )
+    meta = _blend_colour(foreground, background, 0.45)
+    return MessageBubblePalette(background, foreground, meta)
+
+
 FooterFactory = Callable[[wx.Window], wx.Sizer | wx.Window | None]
 
 
@@ -160,6 +185,7 @@ class MessageBubble(wx.Panel):
         render_markdown: bool = False,
         footer_factory: FooterFactory | None = None,
         palette: MessageBubblePalette | None = None,
+        message_font: wx.Font | None = None,
         width_hint: int | None = None,
         on_width_change: Callable[[int], None] | None = None,
     ) -> None:
@@ -264,23 +290,23 @@ class MessageBubble(wx.Panel):
             self._content_padding,
         )
 
-        base_font = self.GetFont()
-        message_font: wx.Font | None = None
-        if base_font.IsOk():
-            if is_user_message:
-                try:
-                    user_font = wx.Font(base_font)
-                except Exception:
-                    message_font = base_font
-                else:
+        if message_font is None or not message_font.IsOk():
+            base_font = self.GetFont()
+            if base_font.IsOk():
+                if is_user_message:
                     try:
-                        user_font.MakeLarger()
+                        user_font = wx.Font(base_font)
                     except Exception:
                         message_font = base_font
                     else:
-                        message_font = user_font if user_font.IsOk() else base_font
-            else:
-                message_font = base_font
+                        try:
+                            user_font.MakeLarger()
+                        except Exception:
+                            message_font = base_font
+                        else:
+                            message_font = user_font if user_font.IsOk() else base_font
+                else:
+                    message_font = base_font
 
         self._text_base_style: int | None = None
 

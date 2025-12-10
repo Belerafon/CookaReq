@@ -17,6 +17,7 @@ from ...text import normalize_for_display
 from ...widgets.chat_message import (
     MessageBubble,
     _is_window_usable,
+    reasoning_bubble_palette,
     tool_bubble_palette,
 )
 from ..history_utils import format_value_snippet, history_json_safe
@@ -895,25 +896,41 @@ class MessageSegmentPanel(wx.Panel):
         *,
         label: str | None = None,
         name_suffix: str | None = None,
-    ) -> wx.CollapsiblePane | None:
+    ) -> MessageBubble | None:
         text = _format_reasoning_segments(reasoning)
         if not text:
             return None
-        key_parts = [f"reasoning:{self._entry_id}"]
-        if name_suffix:
-            key_parts.append(str(name_suffix))
-        key = ":".join(key_parts)
-        pane = _build_collapsible_section(
+
+        try:
+            base_font = parent.GetFont()
+        except Exception:
+            base_font = None
+
+        reasoning_font: wx.Font | None = None
+        if base_font is not None and base_font.IsOk():
+            with suppress(Exception):
+                reasoning_font = wx.Font(base_font)
+                reasoning_font.SetFamily(wx.FONTFAMILY_MODERN)
+        if reasoning_font is None or not reasoning_font.IsOk():
+            with suppress(Exception):
+                fallback_size = base_font.GetPointSize() if base_font and base_font.IsOk() else 10
+                info = wx.FontInfo(fallback_size).Family(wx.FONTFAMILY_MODERN)
+                reasoning_font = wx.Font(info)
+
+        bubble = MessageBubble(
             parent,
-            label=label or _("Model reasoning"),
-            content=text,
-            minimum_height=160,
-            collapsed=self._collapsed_state.get(key, True),
-            name=key,
+            role_label=label or _("Model reasoning"),
+            timestamp="",
+            text=text,
+            align="left",
+            allow_selection=True,
+            palette=reasoning_bubble_palette(parent.GetBackgroundColour()),
+            message_font=reasoning_font if reasoning_font and reasoning_font.IsOk() else None,
+            width_hint=self._resolve_hint("reasoning"),
+            on_width_change=lambda width: self._emit_layout_hint("reasoning", width),
         )
-        if pane is not None:
-            self._register_collapsible(key, pane)
-        return pane
+        bubble.SetName(f"reasoning:{self._entry_id}{f':{name_suffix}' if name_suffix else ''}")
+        return bubble
 
     # ------------------------------------------------------------------
     def _create_llm_request_section(

@@ -146,10 +146,24 @@ so you know which modules are involved and which regressions to guard against.
     timeline. When the LLM trace is incomplete the view model generates a
     fallback request snapshot to keep the agent response bubble and tool log in
     sync.
+  * Агент формирует канонический таймлайн `timeline` внутри
+    `AgentRunPayload`: он следует порядку `event_log`, включает LLM-степы,
+    вызовы инструментов и маркер завершения агента. UI получает уже
+    упорядоченный список и больше не должен вычислять порядок по временным
+    меткам или эвристическим подсказкам. Таймлайн используется одинаково для
+    построения карточек (`_build_agent_events`) и экспорта plain-текста
+    (`_entry_conversation_messages`), поэтому последовательность шагов и вызовов
+    инструментов единообразна во всех представлениях. Записи без
+    канонического `timeline` считаются устаревшими и не отображаются в
+    транскрипте, чтобы не возвращаться к эвристической реконструкции.
   * Для отладки порядка событий можно задать переменную окружения
     `COOKAREQ_AGENT_EVENT_LOG_DIR`: при финализации каждого обращения агентский
     `event_log` выгружается в текстовый файл через `write_event_log_debug()`,
     сохраняя последовательность `sequence` и краткие срезы полезной нагрузки.
+    Дополнительно в `diagnostic.timeline_debug` записывается плоский снимок
+    таймлайна (в порядке событий) с сопоставлением `llm_step`/`tool_*` записей
+    и снимков инструментов, чтобы UI больше не восстанавливал порядок
+    эвристиками.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM

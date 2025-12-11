@@ -8,7 +8,14 @@ from collections.abc import Iterable, Mapping, Sequence
 import re
 from typing import Any, Literal, TYPE_CHECKING
 
-from ...agent.run_contract import AgentEvent, AgentRunPayload, LlmTrace, LlmStep, ToolResultSnapshot
+from ...agent.run_contract import (
+    AgentEvent,
+    AgentRunPayload,
+    AgentTimelineEntry,
+    LlmTrace,
+    LlmStep,
+    ToolResultSnapshot,
+)
 from ..text import normalize_for_display
 from ...util.time import utc_now_iso
 from .history_utils import (
@@ -346,6 +353,8 @@ def _build_agent_turn(
             diagnostic_payload = candidate
     payload = agent_payload_from_mapping(raw_result)
     event_log: list[AgentEvent] = []
+    timeline_entries: Sequence[AgentTimelineEntry] = ()
+
     if payload is None:
         tool_snapshots = tool_snapshots_from(entry.tool_results or raw_result)
         reasoning_source = entry.reasoning or (
@@ -361,6 +370,7 @@ def _build_agent_turn(
         final_text = entry.display_response or entry.response or ""
     else:
         event_log = payload.events.events
+        timeline_entries = tuple(payload.timeline)
         tool_snapshots = payload.tool_results
         reasoning_source = payload.reasoning or (
             diagnostic_payload.get("reasoning") if diagnostic_payload else None
@@ -387,6 +397,14 @@ def _build_agent_turn(
         if event.kind == "agent_finished":
             finished_timestamp = _build_timestamp(
                 event.occurred_at, source="agent_finished"
+            )
+            if not finished_timestamp.missing:
+                response_timestamp = finished_timestamp
+
+    for timeline_entry in timeline_entries:
+        if timeline_entry.kind == "agent_finished" and timeline_entry.occurred_at:
+            finished_timestamp = _build_timestamp(
+                timeline_entry.occurred_at, source="timeline"
             )
             if not finished_timestamp.missing:
                 response_timestamp = finished_timestamp
@@ -440,6 +458,13 @@ def _build_agent_turn(
         regenerated=bool(getattr(entry, "regenerated", False)),
     )
 
+    if final_response is not None and final_response.step_index is None:
+        if llm_trace.steps:
+            last_index = llm_trace.steps[-1].index
+            if last_index is None:
+                last_index = len(llm_trace.steps)
+            final_response.step_index = last_index
+
     excluded_displays: set[str] = set()
     if reasoning_display:
         excluded_displays.add(reasoning_display)
@@ -471,6 +496,7 @@ def _build_agent_turn(
         final_response,
         tool_calls,
         event_log,
+        timeline=timeline_entries,
     )
 
     resolved_timestamp = _resolve_turn_timestamp(
@@ -882,8 +908,9 @@ def _build_agent_events(
     final_response: AgentResponse | None,
     tool_calls: tuple[ToolCallDetails, ...],
     event_log: Sequence[AgentEvent],
+    *,
+    timeline: Sequence[AgentTimelineEntry] | None = None,
 ) -> tuple[AgentTimelineEvent, ...]:
-    events: list[AgentTimelineEvent] = []
     responses_by_index: dict[int, AgentResponse] = {}
     for response in responses:
         if response.step_index is not None:
@@ -894,10 +921,140 @@ def _build_agent_events(
         if detail.call_identifier:
             tools_by_id[detail.call_identifier] = detail
 
-    added_tool_ids: set[str] = set()
+    events: list[AgentTimelineEvent] = []
 
+    if final_response is not None and final_response.step_index is not None:
+        responses_by_index.setdefault(final_response.step_index, final_response)
+
+    def _timestamp_with_fallback(
+        current: TimestampInfo, *, occurred_at: str | None, source: str
+    ) -> TimestampInfo:
+        if current.missing and occurred_at:
+            return _build_timestamp(occurred_at, source=source)
+        return current
+
+    if timeline:
+        added_tool_ids: set[str] = set()
+        added_responses: set[int] = set()
+        ordered_timeline = sorted(timeline, key=lambda entry: entry.sequence)
+
+        for order_index, entry in enumerate(ordered_timeline):
+            occurred_at = entry.occurred_at
+            if entry.kind == "llm_step":
+                response = None
+                if entry.step_index is not None:
+                    response = responses_by_index.get(entry.step_index)
+                if response is None and responses:
+                    for candidate in responses:
+                        if candidate.step_index in added_responses:
+                            continue
+                        response = candidate
+                        break
+                if response is None:
+                    continue
+                response.timestamp = _timestamp_with_fallback(
+                    response.timestamp, occurred_at=occurred_at, source="timeline"
+                )
+                events.append(
+                    AgentTimelineEvent(
+                        kind="response",
+                        timestamp=response.timestamp,
+                        order_index=order_index,
+                        sequence=entry.sequence,
+                        response=response,
+                    )
+                )
+                if response.step_index is not None:
+                    added_responses.add(response.step_index)
+            elif entry.kind == "tool_call":
+                tool_call = tools_by_id.get(entry.call_id or "")
+                if tool_call is None:
+                    continue
+                tool_call.timestamp = _timestamp_with_fallback(
+                    tool_call.timestamp, occurred_at=occurred_at, source="timeline"
+                )
+                events.append(
+                    AgentTimelineEvent(
+                        kind="tool",
+                        timestamp=tool_call.timestamp,
+                        order_index=order_index,
+                        sequence=entry.sequence,
+                        tool_call=tool_call,
+                    )
+                )
+                if tool_call.call_identifier:
+                    added_tool_ids.add(tool_call.call_identifier)
+            elif entry.kind == "agent_finished" and final_response is not None:
+                final_response.timestamp = _timestamp_with_fallback(
+                    final_response.timestamp,
+                    occurred_at=occurred_at,
+                    source="timeline",
+                )
+                events.append(
+                    AgentTimelineEvent(
+                        kind="response",
+                        timestamp=final_response.timestamp,
+                        order_index=order_index,
+                        sequence=entry.sequence,
+                        response=final_response,
+                    )
+                )
+
+        remaining_responses = [
+            response
+            for response in responses
+            if response.step_index is None or response.step_index not in added_responses
+        ]
+        for response in remaining_responses:
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=response.timestamp,
+                    order_index=len(events),
+                    sequence=len(events),
+                    response=response,
+                )
+            )
+
+        for detail in tool_calls:
+            identifier = detail.call_identifier
+            if identifier and identifier in added_tool_ids:
+                continue
+            events.append(
+                AgentTimelineEvent(
+                    kind="tool",
+                    timestamp=detail.timestamp,
+                    order_index=len(events),
+                    sequence=len(events),
+                    tool_call=detail,
+                )
+            )
+            if identifier:
+                added_tool_ids.add(identifier)
+
+        if final_response is not None and all(
+            event.response is not final_response for event in events
+        ):
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=len(events),
+                    sequence=len(events),
+                    response=final_response,
+                )
+            )
+
+        for index, event in enumerate(events):
+            event.order_index = index
+            if event.sequence is None:
+                event.sequence = index
+
+        return tuple(events)
+
+    added_tool_ids: set[str] = set()
     has_final_response = False
-    has_logged_tool_events = False
+
     for log_index, event in enumerate(event_log):
         sequence = event.sequence if event.sequence is not None else log_index
         timestamp = _build_timestamp(event.occurred_at, source="agent_event")
@@ -908,6 +1065,8 @@ def _build_agent_events(
             except Exception:
                 index = None
             response = responses_by_index.get(index) if index is not None else None
+            if response is None and responses:
+                response = responses[len(events) % len(responses)]
             if response is not None:
                 if response.timestamp.missing:
                     response.timestamp = timestamp
@@ -920,42 +1079,7 @@ def _build_agent_events(
                         response=response,
                     )
                 )
-        elif event.kind == "tool_completed":
-            payload = event.payload if isinstance(event.payload, Mapping) else {}
-            call_id_value = payload.get("call_id")
-            if call_id_value is None:
-                continue
-            call_id = str(call_id_value)
-            tool_call = tools_by_id.get(call_id)
-            if tool_call is not None:
-                if tool_call.timestamp.missing:
-                    tool_call.timestamp = timestamp
-                events.append(
-                    AgentTimelineEvent(
-                        kind="tool",
-                        timestamp=tool_call.timestamp,
-                        order_index=len(events),
-                        sequence=sequence,
-                        tool_call=tool_call,
-                    )
-                )
-                if tool_call.call_identifier:
-                    added_tool_ids.add(tool_call.call_identifier)
-                has_logged_tool_events = True
-        elif event.kind == "agent_finished" and final_response is not None:
-            has_final_response = True
-            if final_response.timestamp.missing:
-                final_response.timestamp = timestamp
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=final_response.timestamp,
-                    order_index=len(events),
-                    sequence=sequence,
-                    response=final_response,
-                )
-            )
-        elif event.kind in {"tool_result", "tool_completed", "tool_finished"}:
+        elif event.kind in {"tool_completed", "tool_result", "tool_finished"}:
             payload = event.payload if isinstance(event.payload, Mapping) else {}
             call_id_value = (
                 payload.get("call_id")
@@ -981,7 +1105,19 @@ def _build_agent_events(
             )
             if tool_call.call_identifier:
                 added_tool_ids.add(tool_call.call_identifier)
-            has_logged_tool_events = True
+        elif event.kind == "agent_finished" and final_response is not None:
+            has_final_response = True
+            if final_response.timestamp.missing:
+                final_response.timestamp = timestamp
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=len(events),
+                    sequence=sequence,
+                    response=final_response,
+                )
+            )
 
     if not events:
         for response in responses:
@@ -1044,31 +1180,6 @@ def _build_agent_events(
         )
         if identifier:
             added_tool_ids.add(identifier)
-
-    events_missing_from_log = bool(tool_calls) and len(added_tool_ids) < len(tool_calls)
-    allow_existing_sequence = not (events_missing_from_log or not has_logged_tool_events)
-
-    def _sequence_hint(event: AgentTimelineEvent) -> int:
-        if allow_existing_sequence and event.sequence is not None:
-            return event.sequence
-        if event.kind == "response" and event.response is not None:
-            if event.response.is_final:
-                return (len(responses) + len(tool_calls) + 1) * 2
-            if event.response.step_index is not None:
-                return event.response.step_index * 2
-        if event.kind == "tool" and event.tool_call is not None:
-            summary = event.tool_call.summary
-            if summary.index is not None:
-                return summary.index * 2 + 1
-        return event.order_index
-
-    def _sort_key(event: AgentTimelineEvent) -> tuple[_dt.datetime, int, int]:
-        occurred_at = event.timestamp.occurred_at or _UTC_MIN
-        sequence = event.sequence if allow_existing_sequence and event.sequence is not None else event.order_index
-        return (occurred_at, _sequence_hint(event), sequence)
-
-    if not event_log or events_missing_from_log or not has_logged_tool_events:
-        events = tuple(sorted(events, key=_sort_key))
 
     for index, event in enumerate(events):
         event.order_index = index

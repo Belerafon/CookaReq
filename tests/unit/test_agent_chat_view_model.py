@@ -172,7 +172,7 @@ def test_build_conversation_timeline_compiles_turn() -> None:
     assert turn.final_response.text == "Готово"
     assert turn.final_response.timestamp.raw == "2025-09-30T20:50:12+00:00"
     reasoning_texts = [segment.get("text") for segment in turn.reasoning]
-    assert text in reasoning_texts
+    assert "Нужно пройтись по каждому требованию" in reasoning_texts
 
     assert turn.llm_request is not None
     assert turn.llm_request.sequence is not None
@@ -282,6 +282,7 @@ def test_build_conversation_timeline_preserves_reasoning_only_reply() -> None:
     assert turn.final_response is not None
     assert turn.final_response.display_text == "Подбираю инструменты"
     assert turn.streamed_responses == ()
+    text = "Подбираю инструменты"
     reasoning_texts = [segment.get("text") for segment in turn.reasoning]
     assert text in reasoning_texts
     assert not turn.tool_calls

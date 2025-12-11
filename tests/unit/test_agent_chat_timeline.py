@@ -1,4 +1,5 @@
 from app.agent.run_contract import AgentEvent
+from app.agent.run_contract import AgentEvent, AgentTimelineEntry
 from app.ui.agent_chat_panel.tool_summaries import ToolCallSummary
 from app.ui.agent_chat_panel.view_model import (
     AgentResponse,
@@ -45,24 +46,36 @@ def test_build_agent_events_respects_log_sequence() -> None:
     )
     event_log = (
         AgentEvent(
-            kind="llm_step",
-            occurred_at="2025-01-01T12:00:05+00:00",
-            payload={"index": 0},
-        ),
-        AgentEvent(
-            kind="tool_completed",
-            occurred_at="2025-01-01T12:00:02+00:00",
-            payload={"call_id": "call-1"},
-        ),
-        AgentEvent(
             kind="agent_finished",
             occurred_at="2025-01-01T12:00:06+00:00",
             payload={"ok": True, "status": "succeeded", "result": "done"},
         ),
     )
 
-    events = _build_agent_events(responses, final_response, tool_calls, event_log)
+    timeline = (
+        AgentTimelineEntry(
+            kind="tool_call",
+            sequence=1,
+            occurred_at="2025-01-01T12:00:02+00:00",
+            call_id="call-1",
+        ),
+        AgentTimelineEntry(
+            kind="llm_step",
+            sequence=2,
+            occurred_at="2025-01-01T12:00:05+00:00",
+            step_index=0,
+        ),
+        AgentTimelineEntry(
+            kind="agent_finished",
+            sequence=3,
+            occurred_at="2025-01-01T12:00:06+00:00",
+        ),
+    )
 
-    assert [event.kind for event in events] == ["response", "tool", "response"]
+    events = _build_agent_events(
+        responses, final_response, tool_calls, event_log, timeline=timeline
+    )
+
+    assert [event.kind for event in events] == ["tool", "response", "response"]
     assert [event.order_index for event in events] == [0, 1, 2]
-    assert [event.sequence for event in events] == [0, 1, 2]
+    assert [event.sequence for event in events] == [1, 2, 3]

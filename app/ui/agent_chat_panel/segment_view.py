@@ -19,6 +19,7 @@ from .view_model import (
     TranscriptEntry,
     build_conversation_timeline,
     build_entry_segments,
+    agent_turn_event_signature,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
@@ -33,6 +34,39 @@ def _chat_entry_cls():  # pragma: no cover - trivial cache wrapper
     from ..chat_entry import ChatEntry as _ChatEntry
 
     return _ChatEntry
+
+
+def _entry_event_signature(entry: TranscriptEntry | None) -> tuple[Any, ...] | None:
+    turn = entry.agent_turn if entry is not None else None
+    if turn is None:
+        return None
+    if turn.event_signature:
+        return tuple(turn.event_signature)
+    return agent_turn_event_signature(turn.events)
+
+
+def _detect_dirty_entries(
+    cache: _ConversationRenderCache,
+    entry_lookup: Mapping[str, TranscriptEntry],
+    entry_ids: Iterable[str] | None,
+    *,
+    entry_order: Sequence[str] | None = None,
+) -> list[str]:
+    requested: list[str] = []
+    for entry_id in entry_ids or ():
+        if entry_id not in requested:
+            requested.append(entry_id)
+
+    desired_order = list(entry_order) if entry_order is not None else list(entry_lookup)
+    dirty: set[str] = set(requested)
+
+    for entry_id in desired_order:
+        signature = _entry_event_signature(entry_lookup.get(entry_id))
+        cached_signature = cache.entry_signatures.get(entry_id)
+        if signature != cached_signature:
+            dirty.add(entry_id)
+
+    return [entry_id for entry_id in desired_order if entry_id in dirty]
 
 
 class SegmentViewCallbacks:
@@ -61,6 +95,9 @@ class _ConversationRenderCache:
     order: list[str] = field(default_factory=list)
     placeholder: wx.Window | None = None
     entry_snapshots: dict[str, TranscriptEntry] = field(default_factory=dict)
+    entry_signatures: dict[str, tuple[Any, ...] | None] = field(
+        default_factory=dict
+    )
 
     def __contains__(self, entry_id: str) -> bool:
         return entry_id in self.cards_by_entry or entry_id in self.entry_snapshots
@@ -170,6 +207,7 @@ class SegmentListView:
             cache.cards_by_entry.clear()
             cache.order.clear()
             cache.entry_snapshots.clear()
+            cache.entry_signatures.clear()
             placeholder = cache.placeholder
             if self._is_window_alive(placeholder):
                 if placeholder.GetContainingSizer() is self._sizer:
@@ -273,6 +311,12 @@ class SegmentListView:
 
         desired_order = [entry.entry_id for entry in timeline.entries]
         entry_lookup = {entry.entry_id: entry for entry in timeline.entries}
+        dirty_entry_ids = _detect_dirty_entries(
+            cache,
+            entry_lookup,
+            entry_ids,
+            entry_order=desired_order,
+        )
 
         if force:
             reuse_cards = cache.order == desired_order and bool(desired_order)
@@ -304,19 +348,19 @@ class SegmentListView:
                 timeline.conversation_id,
                 desired_order,
                 entry_lookup,
-                entry_ids,
+                dirty_entry_ids,
             )
             if appended is not None:
                 return appended
             return self._render_full_conversation(conversation, timeline, cache)
 
-        if not entry_ids:
+        if not dirty_entry_ids:
             return None, False
 
         last_card: wx.Window | None = None
         changed = False
 
-        for entry_id in entry_ids:
+        for entry_id in dirty_entry_ids:
             timeline_entry = entry_lookup.get(entry_id)
             if timeline_entry is None:
                 return self._render_full_conversation(conversation, timeline, cache)
@@ -335,7 +379,7 @@ class SegmentListView:
                 on_regenerate=regenerate_callback,
                 regenerate_enabled=not self._callbacks.is_running(),
             )
-            cache.entry_snapshots[entry_id] = timeline_entry
+            self._cache_entry_snapshot(cache, entry_id, timeline_entry)
             last_card = card
             changed = True
 
@@ -373,7 +417,7 @@ class SegmentListView:
                     on_regenerate=regenerate_callback,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
-                cache.entry_snapshots[entry_id] = entry
+                self._cache_entry_snapshot(cache, entry_id, entry)
                 ordered_cards.append((entry_id, card))
 
             keep = {key for key, _ in ordered_cards}
@@ -382,15 +426,17 @@ class SegmentListView:
                     continue
                 card = cache.cards_by_entry.pop(stale_key)
                 cache.entry_snapshots.pop(stale_key, None)
+                cache.entry_signatures.pop(stale_key, None)
                 if self._is_window_alive(card):
                     if card.GetContainingSizer() is self._sizer:
                         self._sizer.Detach(card)
                     card.Destroy()
 
             cache.order = [key for key, _ in ordered_cards]
-            cache.entry_snapshots = {
-                entry.entry_id: entry for entry in timeline.entries
-            }
+            cache.entry_snapshots = {}
+            cache.entry_signatures = {}
+            for entry in timeline.entries:
+                self._cache_entry_snapshot(cache, entry.entry_id, entry)
             cards = [card for _, card in ordered_cards]
             self._attach_cards_in_order(cards)
             return (cards[-1] if cards else None, True)
@@ -449,7 +495,7 @@ class SegmentListView:
                     on_regenerate=regenerate_callback,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
-                cache.entry_snapshots[entry_id] = timeline_entry
+                self._cache_entry_snapshot(cache, entry_id, timeline_entry)
                 last_card = card
                 changed = True
 
@@ -479,7 +525,7 @@ class SegmentListView:
                     on_regenerate=regenerate_callback,
                     regenerate_enabled=not self._callbacks.is_running(),
                 )
-                cache.entry_snapshots[entry_id] = timeline_entry
+                self._cache_entry_snapshot(cache, entry_id, timeline_entry)
                 new_cards.append(card)
 
             if not new_cards:
@@ -537,6 +583,14 @@ class SegmentListView:
             self._sizer.Detach(window)
             if self._is_window_alive(window):
                 window.Hide()
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _cache_entry_snapshot(
+        cache: _ConversationRenderCache, entry_id: str, entry: TranscriptEntry
+    ) -> None:
+        cache.entry_snapshots[entry_id] = entry
+        cache.entry_signatures[entry_id] = _entry_event_signature(entry)
 
     # ------------------------------------------------------------------
     def _make_hint_recorder(self, entry: ChatEntry) -> Callable[[str, int], None]:

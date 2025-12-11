@@ -63,6 +63,7 @@ from .execution import (
 from .history import AgentChatHistory
 from .history_view import HistoryView
 from .history_utils import (
+    ensure_canonical_agent_payload,
     agent_payload_from_mapping,
     history_json_safe,
     stringify_payload,
@@ -1713,6 +1714,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             tool_messages = self._build_tool_messages(merged_snapshots)
 
             if payload is not None:
+                payload = ensure_canonical_agent_payload(
+                    payload,
+                    tool_snapshots=merged_snapshots,
+                    llm_trace_preview=handle.llm_trace_preview,
+                )
                 raw_result = payload.to_dict()
                 if tool_payloads:
                     raw_result["tool_results"] = tool_payloads

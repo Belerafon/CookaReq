@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import logging
 from typing import Any
 
 import json
 
 from ...agent.run_contract import (
     AgentRunPayload,
+    AgentTimelineEntry,
+    LlmStep,
+    LlmTrace,
     ToolResultSnapshot,
+    build_agent_timeline,
     sort_tool_result_snapshots,
 )
 from ...util.json import make_json_safe
 from ..history_config import HISTORY_JSON_LIMITS
 from ...util.strings import coerce_text, describe_unprintable
+
+
+logger = logging.getLogger(__name__)
 
 
 def history_json_safe(value: Any) -> Any:
@@ -81,6 +89,102 @@ def agent_payload_from_mapping(payload: Mapping[str, Any] | None) -> AgentRunPay
         return AgentRunPayload.from_dict(payload)
     except Exception:
         return None
+
+
+def _llm_trace_from_preview(
+    preview: Sequence[Mapping[str, Any]] | None,
+) -> LlmTrace:
+    """Build :class:`LlmTrace` from lightweight preview records."""
+
+    steps: list[LlmStep] = []
+    if preview:
+        for record in preview:
+            if not isinstance(record, Mapping):
+                continue
+            index = record.get("step")
+            try:
+                step_index = int(index)
+            except (TypeError, ValueError):
+                continue
+            occurred_at = record.get("occurred_at")
+            if not isinstance(occurred_at, str) or not occurred_at.strip():
+                continue
+            request_payload = record.get("request")
+            if isinstance(request_payload, Sequence) and not isinstance(
+                request_payload, (str, bytes, bytearray)
+            ):
+                request = [
+                    dict(message)
+                    for message in request_payload
+                    if isinstance(message, Mapping)
+                ]
+            else:
+                request = []
+            response_payload = record.get("response")
+            response = dict(response_payload) if isinstance(response_payload, Mapping) else {}
+            steps.append(
+                LlmStep(
+                    index=step_index,
+                    occurred_at=occurred_at,
+                    request=request,
+                    response=response,
+                )
+            )
+    return LlmTrace(steps=steps)
+
+
+def _log_timeline_snapshot(
+    timeline: Sequence[AgentTimelineEntry], *, context: str
+) -> None:
+    if not timeline:
+        logger.debug("%s produced an empty agent timeline", context)
+        return
+    summary = [
+        {
+            "kind": entry.kind,
+            "sequence": entry.sequence,
+            "occurred_at": entry.occurred_at,
+            "step_index": entry.step_index,
+            "call_id": entry.call_id,
+            "status": entry.status,
+        }
+        for entry in timeline
+    ]
+    logger.debug(
+        "%s canonicalised agent timeline (%d events): %s",
+        context,
+        len(summary),
+        summary,
+    )
+
+
+def ensure_canonical_agent_payload(
+    payload: AgentRunPayload,
+    *,
+    tool_snapshots: Sequence[ToolResultSnapshot] | None = None,
+    llm_trace_preview: Sequence[Mapping[str, Any]] | None = None,
+) -> AgentRunPayload:
+    """Attach canonical timeline/tool snapshots before persistence or rendering."""
+
+    if tool_snapshots:
+        payload.tool_results = sort_tool_result_snapshots(tool_snapshots)
+
+    if (not payload.llm_trace.steps) and llm_trace_preview:
+        payload.llm_trace = _llm_trace_from_preview(llm_trace_preview)
+
+    try:
+        payload.timeline = build_agent_timeline(
+            payload.events,
+            tool_results=payload.tool_results,
+            llm_trace=payload.llm_trace,
+        )
+    except Exception:
+        payload.timeline = []
+    else:
+        if logger.isEnabledFor(logging.DEBUG):
+            _log_timeline_snapshot(payload.timeline, context="ensure_canonical_agent_payload")
+
+    return payload
 
 
 def tool_snapshots_from(value: Any) -> list[ToolResultSnapshot]:
@@ -183,6 +287,7 @@ def tool_snapshot_dicts(
 
 
 __all__ = [
+    "ensure_canonical_agent_payload",
     "agent_payload_from_mapping",
     "history_json_safe",
     "stringify_payload",

@@ -49,6 +49,8 @@ class HistorySynchronizer:
         for conversation in tuple(history.conversations):
             history.ensure_conversation_entries(conversation)
         history.prune_empty_conversations(verify_with_store=True)
+        if history.has_dirty_state():
+            history.save()
         draft = ChatConversation.new()
         history.conversations.append(draft)
         history.set_active_id(draft.conversation_id)

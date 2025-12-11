@@ -10,6 +10,7 @@ from typing import Any, Literal, TYPE_CHECKING
 
 from ...agent.run_contract import (
     AgentEvent,
+    AgentEventLog,
     AgentRunPayload,
     AgentTimelineEntry,
     LlmTrace,
@@ -117,6 +118,8 @@ class AgentTurn:
     tool_calls: tuple[ToolCallDetails, ...]
     raw_payload: Any | None
     events: tuple[AgentTimelineEvent, ...]
+    event_signature: tuple[tuple[Any, ...], ...] = ()
+    timeline_is_authoritative: bool = False
 
 
 @dataclass(slots=True)
@@ -528,6 +531,7 @@ def _build_agent_turn(
             final_response,
             tool_calls,
             event_log,
+            timeline=timeline_entries,
         )
         resolved_timestamp = _resolve_turn_timestamp(
             final_response.timestamp,
@@ -568,6 +572,8 @@ def _build_agent_turn(
         tool_calls=tool_calls,
         raw_payload=raw_payload,
         events=events,
+        event_signature=agent_turn_event_signature(events),
+        timeline_is_authoritative=bool(timeline_entries),
     )
 
 
@@ -934,22 +940,15 @@ def _build_agent_events(
         return current
 
     if timeline:
-        added_tool_ids: set[str] = set()
-        added_responses: set[int] = set()
         ordered_timeline = sorted(timeline, key=lambda entry: entry.sequence)
+        seen_responses: set[int] = set()
 
-        for order_index, entry in enumerate(ordered_timeline):
+        for entry_index, entry in enumerate(ordered_timeline):
             occurred_at = entry.occurred_at
             if entry.kind == "llm_step":
-                response = None
-                if entry.step_index is not None:
-                    response = responses_by_index.get(entry.step_index)
-                if response is None and responses:
-                    for candidate in responses:
-                        if candidate.step_index in added_responses:
-                            continue
-                        response = candidate
-                        break
+                if entry.step_index is None:
+                    continue
+                response = responses_by_index.get(entry.step_index)
                 if response is None:
                     continue
                 response.timestamp = _timestamp_with_fallback(
@@ -959,13 +958,12 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="response",
                         timestamp=response.timestamp,
-                        order_index=order_index,
+                        order_index=entry_index,
                         sequence=entry.sequence,
                         response=response,
                     )
                 )
-                if response.step_index is not None:
-                    added_responses.add(response.step_index)
+                seen_responses.add(entry.step_index)
             elif entry.kind == "tool_call":
                 tool_call = tools_by_id.get(entry.call_id or "")
                 if tool_call is None:
@@ -977,13 +975,11 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="tool",
                         timestamp=tool_call.timestamp,
-                        order_index=order_index,
+                        order_index=entry_index,
                         sequence=entry.sequence,
                         tool_call=tool_call,
                     )
                 )
-                if tool_call.call_identifier:
-                    added_tool_ids.add(tool_call.call_identifier)
             elif entry.kind == "agent_finished" and final_response is not None:
                 final_response.timestamp = _timestamp_with_fallback(
                     final_response.timestamp,
@@ -994,199 +990,54 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="response",
                         timestamp=final_response.timestamp,
-                        order_index=order_index,
+                        order_index=entry_index,
                         sequence=entry.sequence,
                         response=final_response,
                     )
                 )
 
-        remaining_responses = [
-            response
-            for response in responses
-            if response.step_index is None or response.step_index not in added_responses
-        ]
-        for response in remaining_responses:
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=response.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    response=response,
-                )
-            )
-
-        for detail in tool_calls:
-            identifier = detail.call_identifier
-            if identifier and identifier in added_tool_ids:
-                continue
-            events.append(
-                AgentTimelineEvent(
-                    kind="tool",
-                    timestamp=detail.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    tool_call=detail,
-                )
-            )
-            if identifier:
-                added_tool_ids.add(identifier)
-
-        if final_response is not None and all(
-            event.response is not final_response for event in events
-        ):
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=final_response.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    response=final_response,
-                )
-            )
-
         for index, event in enumerate(events):
             event.order_index = index
-            if event.sequence is None:
-                event.sequence = index
-
         return tuple(events)
 
-    added_tool_ids: set[str] = set()
-    has_final_response = False
+    return ()
 
-    for log_index, event in enumerate(event_log):
-        sequence = event.sequence if event.sequence is not None else log_index
-        timestamp = _build_timestamp(event.occurred_at, source="agent_event")
-        if event.kind == "llm_step":
-            payload = event.payload or {}
-            try:
-                index = int(payload.get("index"))
-            except Exception:
-                index = None
-            response = responses_by_index.get(index) if index is not None else None
-            if response is None and responses:
-                response = responses[len(events) % len(responses)]
-            if response is not None:
-                if response.timestamp.missing:
-                    response.timestamp = timestamp
-                events.append(
-                    AgentTimelineEvent(
-                        kind="response",
-                        timestamp=response.timestamp,
-                        order_index=len(events),
-                        sequence=sequence,
-                        response=response,
-                    )
-                )
-        elif event.kind in {"tool_completed", "tool_result", "tool_finished"}:
-            payload = event.payload if isinstance(event.payload, Mapping) else {}
-            call_id_value = (
-                payload.get("call_id")
-                or payload.get("tool_call_id")
-                or payload.get("id")
-            )
-            if call_id_value is None:
-                continue
-            call_id = str(call_id_value)
-            tool_call = tools_by_id.get(call_id)
-            if tool_call is None:
-                continue
-            if tool_call.timestamp.missing:
-                tool_call.timestamp = timestamp
-            events.append(
-                AgentTimelineEvent(
-                    kind="tool",
-                    timestamp=tool_call.timestamp,
-                    order_index=len(events),
-                    sequence=sequence,
-                    tool_call=tool_call,
+
+def agent_turn_event_signature(
+    events: Sequence[AgentTimelineEvent],
+) -> tuple[tuple[Any, ...], ...]:
+    """Return a deterministic signature describing *events* order and identity."""
+
+    signature: list[tuple[Any, ...]] = []
+    for event in events:
+        if event.kind == "response":
+            step_index = None
+            is_final: bool | None = None
+            if event.response is not None:
+                step_index = event.response.step_index
+                is_final = event.response.is_final
+            signature.append(
+                (
+                    "response",
+                    event.sequence,
+                    event.order_index,
+                    step_index,
+                    is_final,
                 )
             )
-            if tool_call.call_identifier:
-                added_tool_ids.add(tool_call.call_identifier)
-        elif event.kind == "agent_finished" and final_response is not None:
-            has_final_response = True
-            if final_response.timestamp.missing:
-                final_response.timestamp = timestamp
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=final_response.timestamp,
-                    order_index=len(events),
-                    sequence=sequence,
-                    response=final_response,
+        elif event.kind == "tool":
+            call_identifier = None
+            if event.tool_call is not None:
+                call_identifier = event.tool_call.call_identifier
+            signature.append(
+                (
+                    "tool",
+                    event.sequence,
+                    event.order_index,
+                    call_identifier,
                 )
             )
-
-    if not events:
-        for response in responses:
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=response.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    response=response,
-                )
-            )
-        for detail in tool_calls:
-            events.append(
-                AgentTimelineEvent(
-                    kind="tool",
-                    timestamp=detail.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    tool_call=detail,
-                )
-            )
-            if detail.call_identifier:
-                added_tool_ids.add(detail.call_identifier)
-        if final_response is not None:
-            events.append(
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=final_response.timestamp,
-                    order_index=len(events),
-                    sequence=len(events),
-                    response=final_response,
-                )
-            )
-            has_final_response = True
-
-    if final_response is not None and not has_final_response:
-        events.append(
-            AgentTimelineEvent(
-                kind="response",
-                timestamp=final_response.timestamp,
-                order_index=len(events),
-                sequence=len(events),
-                response=final_response,
-            )
-        )
-
-    for detail in tool_calls:
-        identifier = detail.call_identifier
-        if identifier and identifier in added_tool_ids:
-            continue
-        events.append(
-            AgentTimelineEvent(
-                kind="tool",
-                timestamp=detail.timestamp,
-                order_index=len(events),
-                sequence=len(events),
-                tool_call=detail,
-            )
-        )
-        if identifier:
-            added_tool_ids.add(identifier)
-
-    for index, event in enumerate(events):
-        event.order_index = index
-        if event.sequence is None:
-            event.sequence = index
-
-    return tuple(events)
+    return tuple(signature)
 
 
 def _resolve_turn_timestamp(
@@ -1489,4 +1340,5 @@ __all__ = [
     "build_conversation_timeline",
     "build_transcript_segments",
     "ConversationTimelineCache",
+    "agent_turn_event_signature",
 ]

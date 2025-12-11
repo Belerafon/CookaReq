@@ -20,7 +20,10 @@ from ..llm.tokenizer import (
 )
 from ..util.json import make_json_safe
 from ..util.time import utc_now_iso
-from .agent_chat_panel.history_utils import tool_messages_from_snapshots
+from .agent_chat_panel.history_utils import (
+    agent_payload_from_mapping,
+    tool_messages_from_snapshots,
+)
 from .history_config import HISTORY_JSON_LIMITS
 
 _DEFAULT_TOKEN_MODEL = "cl100k_base"
@@ -84,10 +87,7 @@ def _normalise_tool_results_payload(value: Any) -> list[dict[str, Any]]:
 def _parse_agent_run_payload(raw_result: Any) -> AgentRunPayload | None:
     if not isinstance(raw_result, Mapping):
         return None
-    try:
-        return AgentRunPayload.from_dict(raw_result)
-    except Exception:
-        return None
+    return agent_payload_from_mapping(raw_result)
 
 
 def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
@@ -290,8 +290,9 @@ class ChatEntry:
         if key in _CACHE_INVALIDATING_FIELDS:
             self._reset_view_cache()
 
-    def __post_init__(self) -> None:  # pragma: no cover - trivial
+    def __post_init__(self) -> None:
         """Normalise derived fields and cached token metadata."""
+
         if self.display_response is None:
             self.display_response = self.response
         self.ensure_token_info()

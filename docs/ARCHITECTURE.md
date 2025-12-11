@@ -150,12 +150,17 @@ so you know which modules are involved and which regressions to guard against.
     `AgentRunPayload`: он следует порядку `event_log`, включает LLM-степы,
     вызовы инструментов и маркер завершения агента. UI получает уже
     упорядоченный список и больше не должен вычислять порядок по временным
-    меткам или эвристическим подсказкам. Таймлайн используется одинаково для
-    построения карточек (`_build_agent_events`) и экспорта plain-текста
+    меткам или эвристическим подсказкам. При финализации ответа панель
+    объединяет стриминговые и финальные снапшоты инструментов, поднимает
+    LLM preview в полноценный `LlmTrace` и повторно строит таймлайн через
+    `ensure_canonical_agent_payload`, чтобы сохранённый `raw_result`
+    отражал фактический порядок событий без дальнейших эвристик в UI.
+    Таймлайн используется одинаково для построения карточек
+    (`_build_agent_events`) и экспорта plain-текста
     (`_entry_conversation_messages`), поэтому последовательность шагов и вызовов
-    инструментов единообразна во всех представлениях. Записи без
-    канонического `timeline` считаются устаревшими и не отображаются в
-    транскрипте, чтобы не возвращаться к эвристической реконструкции.
+    инструментов единообразна во всех представлениях. Канонизация `timeline`
+    логирует компактный снимок (kind, sequence, occurred_at) на уровне DEBUG,
+    упрощая поиск рассинхронизаций между рантаймом и UI.
   * Для отладки порядка событий можно задать переменную окружения
     `COOKAREQ_AGENT_EVENT_LOG_DIR`: при финализации каждого обращения агентский
     `event_log` выгружается в текстовый файл через `write_event_log_debug()`,
@@ -163,7 +168,13 @@ so you know which modules are involved and which regressions to guard against.
     Дополнительно в `diagnostic.timeline_debug` записывается плоский снимок
     таймлайна (в порядке событий) с сопоставлением `llm_step`/`tool_*` записей
     и снимков инструментов, чтобы UI больше не восстанавливал порядок
-    эвристиками.
+    эвристиками. История чата больше не выполняет миграции или
+    достраивания устаревших записей: если `timeline` отсутствует, карточка
+    поворота окажется пустой. Контроллеры и тестовые хелперы обязаны
+    подавать уже канонизированный `AgentRunPayload` (согласованный
+    `event_log`, `llm_trace` и `tool_results`), используя
+    `build_agent_timeline` для фиксации порядка перед сохранением или
+    рендерингом.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM
@@ -172,7 +183,10 @@ so you know which modules are involved and which regressions to guard against.
 * The transcript view (`SegmentListView`, `TurnCard`, `MessageSegmentPanel`)
   keeps a timeline cache of normalised payloads and reuses wx widgets between
   rerenders so large conversations (30+ messages) can refresh without tearing
-  down the layout on every frame.
+  down the layout on every frame. Each turn caches a signature of the ordered
+  agent events (`timeline.sequence`, kind, tool call id/step index) so a
+  reordered or deduplicated timeline triggers a rerender even if entry IDs and
+  counts stay the same.
   * `trace_matrix.py` and `derivation_graph.py` visualise relationships.
 * **Controllers** — under `app/ui/controllers/`, they translate wx events into
   service calls (`DocumentsController`, `MCPController`, etc.). Controllers take

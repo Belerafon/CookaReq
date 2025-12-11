@@ -21,6 +21,7 @@ from app.ui.agent_chat_panel.log_export import (
     compose_transcript_log_text,
     compose_transcript_text,
 )
+from app.ui.agent_chat_panel.history_utils import ensure_canonical_agent_payload
 from app.ui.chat_entry import ChatConversation, ChatEntry
 
 
@@ -247,7 +248,22 @@ def test_plain_transcript_orders_tools_without_timestamps_before_final_response(
         ok=True,
         status="succeeded",
         result_text="Ready",
-        events=AgentEventLog(),
+        events=AgentEventLog(
+            events=[
+                AgentEvent(
+                    kind="tool_completed",
+                    occurred_at=response_at,
+                    payload={"call_id": "tool-1"},
+                    sequence=1,
+                ),
+                AgentEvent(
+                    kind="agent_finished",
+                    occurred_at=response_at,
+                    payload={},
+                    sequence=2,
+                )
+            ]
+        ),
         reasoning=(),
         tool_results=[
             ToolResultSnapshot(
@@ -266,6 +282,8 @@ def test_plain_transcript_orders_tools_without_timestamps_before_final_response(
         ],
         llm_trace=LlmTrace(),
     )
+
+    payload = ensure_canonical_agent_payload(payload)
 
     entry = ChatEntry(
         prompt="Читай файл",
@@ -322,7 +340,28 @@ def test_plain_transcript_prefers_tool_event_timestamps_with_subsecond_ordering(
         ok=True,
         status="succeeded",
         result_text="Ready",
-        events=AgentEventLog(),
+        events=AgentEventLog(
+            events=[
+                AgentEvent(
+                    kind="llm_step",
+                    occurred_at=_iso("2025-10-02T12:00:01.000000+00:00"),
+                    payload={"index": 1, "response": {"content": "Working"}},
+                    sequence=1,
+                ),
+                AgentEvent(
+                    kind="tool_completed",
+                    occurred_at=_iso("2025-10-02T12:00:01.625000+00:00"),
+                    payload={"call_id": "tool-1"},
+                    sequence=2,
+                ),
+                AgentEvent(
+                    kind="agent_finished",
+                    occurred_at=response_at,
+                    payload={},
+                    sequence=3,
+                ),
+            ]
+        ),
         reasoning=(),
         tool_results=[tool_snapshot],
         llm_trace=LlmTrace(
@@ -336,6 +375,8 @@ def test_plain_transcript_prefers_tool_event_timestamps_with_subsecond_ordering(
             ]
         ),
     )
+
+    payload = ensure_canonical_agent_payload(payload)
 
     entry = ChatEntry(
         prompt="Читай файл",

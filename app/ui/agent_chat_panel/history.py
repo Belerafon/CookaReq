@@ -181,6 +181,12 @@ class AgentChatHistory:
         self._structure_dirty = True
 
     # ------------------------------------------------------------------
+    def has_dirty_state(self) -> bool:
+        """Return ``True`` when conversations or layout need persistence."""
+
+        return bool(self._dirty_conversations or self._structure_dirty)
+
+    # ------------------------------------------------------------------
     def mark_all_conversations_dirty(self) -> None:
         """Request a full re-sync of every known conversation."""
         for conversation in self._conversations:
@@ -273,6 +279,7 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def ensure_conversation_entries(self, conversation: ChatConversation) -> None:
         """Ensure entries for *conversation* are available in memory."""
+
         if conversation.entries_loaded:
             return
         try:

@@ -19,6 +19,7 @@ from app.agent.run_contract import (
     LlmStep,
     LlmTrace,
     ToolResultSnapshot,
+    build_agent_timeline,
 )
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
@@ -170,12 +171,75 @@ def build_entry_timeline(
     raw_payload: Any | None = None,
     regenerated: bool = False,
 ) -> tuple[ChatConversation, TranscriptEntry]:
+
     tool_payloads = list(tool_results or ())
-    if tool_payloads:
-        if isinstance(raw_payload, Mapping):
-            raw_payload = {**raw_payload, "tool_results": tool_payloads}
-        else:
-            raw_payload = {"tool_results": tool_payloads}
+    payload: AgentRunPayload | None
+
+    if isinstance(raw_payload, AgentRunPayload):
+        payload = raw_payload
+    elif isinstance(raw_payload, Mapping):
+        try:
+            payload = AgentRunPayload.from_dict(raw_payload)
+        except Exception:
+            payload = None
+    else:
+        payload = None
+
+    if payload is None:
+        snapshots = [
+            ToolResultSnapshot.from_dict(snapshot)
+            for snapshot in tool_payloads
+            if isinstance(snapshot, Mapping)
+        ]
+
+        event_log = AgentEventLog(events=[])
+        sequence = 0
+        for index, snapshot in enumerate(snapshots, start=1):
+            if not snapshot.call_id:
+                snapshot.call_id = f"call-{index}"
+            event_log.events.append(
+                AgentEvent(
+                    kind="tool_result",
+                    sequence=sequence,
+                    occurred_at=snapshot.completed_at or snapshot.last_observed_at or response_at,
+                    payload={"call_id": snapshot.call_id},
+                )
+            )
+            sequence += 1
+
+        event_log.events.append(
+            AgentEvent(
+                kind="agent_finished",
+                sequence=sequence,
+                occurred_at=response_at,
+                payload={},
+            )
+        )
+
+        llm_trace = LlmTrace()
+
+        payload = AgentRunPayload(
+            ok=True,
+            status="succeeded",
+            result_text=response,
+            events=event_log,
+            tool_results=snapshots,
+            llm_trace=llm_trace,
+            timeline=[],
+            reasoning=tuple(reasoning_segments or ()),
+        )
+
+    if not payload.timeline:
+        payload.timeline = build_agent_timeline(
+            payload.events,
+            tool_results=payload.tool_results,
+            llm_trace=payload.llm_trace,
+        )
+
+    payload_mapping = payload.to_history_dict()
+    if tool_payloads and "tool_results" not in payload_mapping:
+        payload_mapping["tool_results"] = tool_payloads
+    raw_payload = payload_mapping
 
     entry = ChatEntry(
         prompt=prompt,

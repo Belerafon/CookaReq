@@ -305,6 +305,77 @@ def _seconds_between(start_iso: str, end_iso: str) -> float | None:
 
 
 @dataclass(slots=True)
+class AgentTimelineEntry:
+    """Ordered event in the canonical agent turn timeline.
+
+    The sequence is deterministic and stable; UI layers must not reorder
+    entries heuristically. Only LLM steps, tool calls and the final agent
+    completion marker are included to avoid duplicating diagnostic noise.
+    """
+
+    kind: Literal["llm_step", "tool_call", "agent_finished"]
+    sequence: int
+    occurred_at: str | None = None
+    step_index: int | None = None
+    call_id: str | None = None
+    status: ToolStatus | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "kind": self.kind,
+            "sequence": self.sequence,
+        }
+        if self.occurred_at is not None:
+            payload["occurred_at"] = self.occurred_at
+        if self.step_index is not None:
+            payload["step_index"] = self.step_index
+        if self.call_id is not None:
+            payload["call_id"] = self.call_id
+        if self.status is not None:
+            payload["status"] = self.status
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentTimelineEntry":
+        kind = payload.get("kind")
+        if kind not in {"llm_step", "tool_call", "agent_finished"}:
+            raise ValueError(f"invalid timeline entry kind: {kind!r}")
+        sequence_value = payload.get("sequence")
+        if not isinstance(sequence_value, (int, float)):
+            raise ValueError("timeline entry is missing numeric sequence")
+        occurred_at_value = payload.get("occurred_at")
+        occurred_at = None
+        if isinstance(occurred_at_value, str) and occurred_at_value.strip():
+            occurred_at = occurred_at_value
+        step_index_value = payload.get("step_index")
+        step_index: int | None
+        try:
+            step_index = (
+                int(step_index_value)
+                if step_index_value is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            step_index = None
+        call_id_value = payload.get("call_id")
+        call_id = str(call_id_value) if call_id_value is not None else None
+        status_value = payload.get("status")
+        status: ToolStatus | None
+        if status_value in {"pending", "running", "succeeded", "failed"}:
+            status = status_value
+        else:
+            status = None
+        return cls(
+            kind=kind,
+            sequence=int(sequence_value),
+            occurred_at=occurred_at,
+            step_index=step_index,
+            call_id=call_id,
+            status=status,
+        )
+
+
+@dataclass(slots=True)
 class LlmStep:
     """Canonical representation of a single LLM step."""
 
@@ -495,6 +566,7 @@ class AgentRunPayload:
     events: AgentEventLog = field(default_factory=AgentEventLog)
     tool_results: list[ToolResultSnapshot] = field(default_factory=list)
     llm_trace: LlmTrace = field(default_factory=LlmTrace)
+    timeline: list[AgentTimelineEntry] = field(default_factory=list)
     reasoning: Sequence[Mapping[str, Any]] = field(default_factory=list)
     diagnostic: Mapping[str, Any] | None = None
     error: ToolError | None = None
@@ -519,6 +591,8 @@ class AgentRunPayload:
             payload["tool_results"] = [
                 snapshot.to_dict() for snapshot in ordered_snapshots
             ]
+        if self.timeline:
+            payload["timeline"] = [entry.to_dict() for entry in self.timeline]
         if self.diagnostic is not None:
             diagnostic_payload = dict(self.diagnostic)
             if not include_diagnostic_event_log:
@@ -621,6 +695,22 @@ class AgentRunPayload:
             agent_stop_reason = dict(agent_stop_payload)
         else:
             agent_stop_reason = None
+        timeline_payload = payload.get("timeline")
+        timeline: list[AgentTimelineEntry] = []
+        if isinstance(timeline_payload, Sequence) and not isinstance(
+            timeline_payload, (str, bytes, bytearray)
+        ):
+            for entry in timeline_payload:
+                if not isinstance(entry, Mapping):
+                    continue
+                try:
+                    timeline.append(AgentTimelineEntry.from_dict(entry))
+                except Exception:
+                    continue
+        if not timeline:
+            timeline = build_agent_timeline(
+                events, tool_results=tool_results, llm_trace=llm_trace
+            )
         return cls(
             ok=ok,
             status=status,
@@ -628,6 +718,7 @@ class AgentRunPayload:
             events=events,
             tool_results=tool_results,
             llm_trace=llm_trace,
+            timeline=timeline,
             reasoning=reasoning,
             diagnostic=diagnostic,
             error=error,
@@ -757,10 +848,197 @@ def _tool_results_from_events(events: AgentEventLog) -> list[ToolResultSnapshot]
     return [snapshots[call_id] for call_id in order]
 
 
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_agent_timeline(
+    events: AgentEventLog,
+    *,
+    tool_results: Sequence[ToolResultSnapshot] | None = None,
+    llm_trace: LlmTrace | None = None,
+) -> list[AgentTimelineEntry]:
+    """Return the canonical, already-ordered timeline for an agent turn."""
+
+    trace = llm_trace or _llm_trace_from_events(events)
+    snapshots = (
+        list(tool_results) if tool_results is not None else _tool_results_from_events(events)
+    )
+    snapshots_by_call: dict[str, ToolResultSnapshot] = {
+        snapshot.call_id: snapshot for snapshot in snapshots if snapshot.call_id
+    }
+
+    timeline: list[AgentTimelineEntry] = []
+    seen_step_indexes: set[int] = set()
+    seen_call_ids: set[str] = set()
+    max_sequence = -1
+
+    for log_index, event in enumerate(events.events):
+        sequence = event.sequence if event.sequence is not None else log_index
+        if sequence > max_sequence:
+            max_sequence = sequence
+        occurred_at = event.occurred_at
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+
+        if event.kind == "llm_step":
+            step_index = _int_or_none(payload.get("index"))
+            if step_index is not None and step_index in seen_step_indexes:
+                continue
+            if step_index is not None:
+                seen_step_indexes.add(step_index)
+            timeline.append(
+                AgentTimelineEntry(
+                    kind="llm_step",
+                    sequence=sequence,
+                    occurred_at=occurred_at,
+                    step_index=step_index,
+                )
+            )
+        elif event.kind in {"tool_started", "tool_result", "tool_completed", "tool_finished"}:
+            call_id_value = (
+                payload.get("call_id")
+                or payload.get("tool_call_id")
+                or payload.get("id")
+            )
+            if call_id_value is None:
+                continue
+            call_id = str(call_id_value)
+            if call_id in seen_call_ids:
+                continue
+            seen_call_ids.add(call_id)
+            snapshot = snapshots_by_call.get(call_id)
+            status = snapshot.status if snapshot is not None else None
+            timeline.append(
+                AgentTimelineEntry(
+                    kind="tool_call",
+                    sequence=sequence,
+                    occurred_at=occurred_at,
+                    call_id=call_id,
+                    status=status,
+                )
+            )
+        elif event.kind == "agent_finished":
+            timeline.append(
+                AgentTimelineEntry(
+                    kind="agent_finished",
+                    sequence=sequence,
+                    occurred_at=occurred_at,
+                )
+            )
+
+    next_sequence = max_sequence + 1 if max_sequence >= 0 else len(timeline)
+
+    for step in trace.steps:
+        if step.index in seen_step_indexes:
+            continue
+        timeline.append(
+            AgentTimelineEntry(
+                kind="llm_step",
+                sequence=next_sequence,
+                occurred_at=step.occurred_at,
+                step_index=step.index,
+            )
+        )
+        seen_step_indexes.add(step.index)
+        next_sequence += 1
+
+    for snapshot in snapshots:
+        call_id = snapshot.call_id
+        if call_id in seen_call_ids:
+            continue
+        occurred_at = (
+            snapshot.completed_at
+            or snapshot.last_observed_at
+            or snapshot.started_at
+        )
+        timeline.append(
+            AgentTimelineEntry(
+                kind="tool_call",
+                sequence=next_sequence,
+                occurred_at=occurred_at,
+                call_id=call_id,
+                status=snapshot.status,
+            )
+        )
+        seen_call_ids.add(call_id)
+        next_sequence += 1
+
+    return timeline
+
+
+def build_timeline_debug(
+    events: AgentEventLog,
+    tool_results: Sequence[ToolResultSnapshot] | None = None,
+    llm_trace: LlmTrace | None = None,
+) -> list[dict[str, Any]]:
+    """Return a JSON-safe timeline snapshot for diagnostics.
+
+    The snapshot preserves the original order of the event log and
+    supplements it with normalised LLM steps and tool snapshots so that UI
+    layers do not have to reconstruct the flow heuristically.
+    """
+
+    timeline: list[dict[str, Any]] = []
+
+    for log_index, event in enumerate(events.events):
+        payload = event.payload if isinstance(event.payload, Mapping) else {}
+        step_index = _int_or_none(payload.get("index"))
+        call_id_value = (
+            payload.get("call_id")
+            or payload.get("tool_call_id")
+            or payload.get("id")
+        )
+        entry: dict[str, Any] = {
+            "source": "event_log",
+            "kind": event.kind,
+            "log_index": log_index,
+            "occurred_at": event.occurred_at,
+        }
+        if event.sequence is not None:
+            entry["sequence"] = event.sequence
+        if step_index is not None:
+            entry["step_index"] = step_index
+        if call_id_value is not None:
+            entry["call_id"] = str(call_id_value)
+        timeline.append(entry)
+
+    trace = llm_trace or _llm_trace_from_events(events)
+    for step in trace.steps:
+        timeline.append(
+            {
+                "source": "llm_trace",
+                "kind": "llm_step",
+                "step_index": step.index,
+                "occurred_at": step.occurred_at,
+            }
+        )
+
+    snapshots = list(tool_results) if tool_results is not None else _tool_results_from_events(events)
+    for order_index, snapshot in enumerate(snapshots):
+        entry: dict[str, Any] = {
+            "source": "tool_snapshot",
+            "kind": "tool_result",
+            "call_id": snapshot.call_id,
+            "status": snapshot.status,
+            "order_index": order_index,
+        }
+        if snapshot.started_at:
+            entry["started_at"] = snapshot.started_at
+        if snapshot.completed_at:
+            entry["completed_at"] = snapshot.completed_at
+        timeline.append(entry)
+
+    return timeline
+
+
 __all__ = [
     "AgentEvent",
     "AgentEventLog",
     "AgentRunPayload",
+    "AgentTimelineEntry",
     "LlmStep",
     "LlmTrace",
     "ToolError",
@@ -769,4 +1047,6 @@ __all__ = [
     "ToolTimelineEvent",
     "ToolStatus",
     "sort_tool_result_snapshots",
+    "build_agent_timeline",
+    "build_timeline_debug",
 ]

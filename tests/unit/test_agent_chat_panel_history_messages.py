@@ -1,5 +1,7 @@
 import json
 
+import json
+
 from app.ui.agent_chat_panel.panel import AgentChatPanel
 from app.ui.chat_entry import ChatEntry
 
@@ -36,6 +38,58 @@ def test_entry_conversation_messages_include_tool_calls() -> None:
                 content=json.dumps({"ok": True, "tool_call_id": "call-1"}, ensure_ascii=False),
             ),
         ),
+        raw_result={
+            "ok": True,
+            "status": "succeeded",
+            "result": "All done",
+            "events": {"events": []},
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T12:00:00Z",
+                        "request": [],
+                        "response": {
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "name": "demo_tool",
+                                    "arguments": {"rid": "REQ-1"},
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+            "tool_results": [
+                {
+                    "call_id": "call-1",
+                    "tool_name": "demo_tool",
+                    "status": "succeeded",
+                    "sequence": 1,
+                }
+            ],
+            "timeline": [
+                {
+                    "kind": "llm_step",
+                    "sequence": 1,
+                    "step_index": 1,
+                    "occurred_at": "2025-01-01T12:00:00Z",
+                },
+                {
+                    "kind": "tool_call",
+                    "sequence": 2,
+                    "call_id": "call-1",
+                    "occurred_at": "2025-01-01T12:00:01Z",
+                },
+                {
+                    "kind": "agent_finished",
+                    "sequence": 3,
+                    "occurred_at": "2025-01-01T12:00:02Z",
+                },
+            ],
+        },
     )
 
     messages = AgentChatPanel._entry_conversation_messages(entry)
@@ -55,14 +109,39 @@ def test_entry_conversation_messages_include_tool_calls() -> None:
     assert messages[2]["content"] == "All done"
 
 
-def test_entry_conversation_messages_without_diagnostic_falls_back() -> None:
+def test_entry_conversation_messages_require_canonical_timeline() -> None:
     entry = ChatEntry(
         prompt="Check",
         response="Result text",
         tokens=0,
-        tool_messages=(
-            _make_tool_message("orphan", content=json.dumps({"ok": True}, ensure_ascii=False)),
-        ),
+        raw_result={
+            "ok": True,
+            "status": "succeeded",
+            "result": "Result text",
+            "events": {"events": []},
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T12:00:00Z",
+                        "request": [],
+                        "response": {"content": "Result text", "tool_calls": []},
+                    }
+                ]
+            },
+            "tool_results": [
+                {
+                    "call_id": "orphan",
+                    "tool_name": "demo_tool",
+                    "status": "succeeded",
+                }
+            ],
+            "timeline": [
+                {"kind": "llm_step", "sequence": 1, "step_index": 1},
+                {"kind": "tool_call", "sequence": 2, "call_id": "orphan"},
+                {"kind": "agent_finished", "sequence": 3},
+            ],
+        },
     )
 
     messages = AgentChatPanel._entry_conversation_messages(entry)
@@ -79,15 +158,25 @@ def test_entry_conversation_messages_preserve_final_response_only_once() -> None
         prompt="Summarize",
         response="Summary text",
         tokens=0,
-        diagnostic={
-            "llm_steps": [
-                {
-                    "step": 1,
-                    "response": {
-                        "content": "Summary text",
-                    },
-                }
-            ]
+        raw_result={
+            "ok": True,
+            "status": "succeeded",
+            "result": "Summary text",
+            "events": {"events": []},
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T12:00:00Z",
+                        "request": [],
+                        "response": {"content": "Summary text"},
+                    }
+                ]
+            },
+            "timeline": [
+                {"kind": "llm_step", "sequence": 1, "step_index": 1},
+                {"kind": "agent_finished", "sequence": 2},
+            ],
         },
     )
 

@@ -41,8 +41,10 @@ from .run_contract import (
     AgentEvent,
     AgentEventLog,
     AgentRunPayload,
+    build_agent_timeline,
     ToolError,
     ToolResultSnapshot,
+    build_timeline_debug,
     _llm_trace_from_events,
     _reasoning_from_events,
 )
@@ -427,6 +429,7 @@ class _AgentRunRecorder:
             ]
         else:
             filtered_snapshots = snapshots
+        llm_trace = _llm_trace_from_events(self._events)
         stop_reason = (
             dict(self._agent_stop_reason)
             if isinstance(self._agent_stop_reason, Mapping)
@@ -439,6 +442,39 @@ class _AgentRunRecorder:
             if diagnostic is None:
                 diagnostic = {}
             diagnostic["stop_reason"] = stop_reason
+        timeline_debug = build_timeline_debug(
+            self._events,
+            tool_results=filtered_snapshots,
+            llm_trace=llm_trace,
+        )
+        canonical_timeline = build_agent_timeline(
+            self._events,
+            tool_results=filtered_snapshots,
+            llm_trace=llm_trace,
+        )
+        if diagnostic is None:
+            diagnostic = {}
+        llm_requests: list[dict[str, Any]] = []
+        llm_steps: list[dict[str, Any]] = []
+        for position, step in enumerate(llm_trace.steps, start=1):
+            step_index = step.index if step.index is not None else position
+            llm_requests.append(
+                {"step": step_index, "messages": [dict(msg) for msg in step.request]}
+            )
+            llm_steps.append(
+                {
+                    "step": step_index,
+                    "occurred_at": step.occurred_at,
+                    "request": [dict(msg) for msg in step.request],
+                    "response": dict(step.response),
+                }
+            )
+        if llm_requests:
+            diagnostic["llm_requests"] = llm_requests
+        if llm_steps:
+            diagnostic["llm_steps"] = llm_steps
+        if timeline_debug:
+            diagnostic["timeline_debug"] = timeline_debug
         return AgentRunPayload(
             ok=self._ok,
             status="succeeded" if self._status == "succeeded" else "failed",
@@ -446,7 +482,8 @@ class _AgentRunRecorder:
             events=self._events,
             reasoning=_reasoning_from_events(self._events),
             tool_results=filtered_snapshots,
-            llm_trace=_llm_trace_from_events(self._events),
+            llm_trace=llm_trace,
+            timeline=canonical_timeline,
             diagnostic=diagnostic,
             error=self._error,
             tool_schemas=dict(self._tool_schemas) if self._tool_schemas else None,
@@ -616,6 +653,35 @@ class LocalAgent:
         log_event("AGENT_RESULT", self._summarise_payload(payload))
         result_payload = payload.to_dict()
         if not payload.ok:
+            tool_meta = None
+            if payload.tool_results:
+                first_tool = payload.tool_results[0]
+                tool_meta = {
+                    "tool_name": first_tool.tool_name,
+                    "tool_call_id": first_tool.call_id,
+                    "call_id": first_tool.call_id,
+                    "tool_arguments": first_tool.arguments or {},
+                }
+            if tool_meta is None:
+                for event in payload.events.events:
+                    if event.kind in {"tool_started", "tool_completed"}:
+                        call_id = event.payload.get("call_id") or event.payload.get(
+                            "tool_call_id"
+                        )
+                        tool_name = event.payload.get("tool_name") or event.payload.get(
+                            "name"
+                        )
+                        if not tool_name:
+                            continue
+                        tool_meta = {
+                            "tool_name": tool_name,
+                            "tool_call_id": call_id,
+                            "call_id": call_id,
+                            "tool_arguments": event.payload.get("tool_arguments", {}),
+                        }
+                        break
+            if tool_meta:
+                result_payload.update(tool_meta)
             result_payload.pop("tool_results", None)
         return result_payload
 

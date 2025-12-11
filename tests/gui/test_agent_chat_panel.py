@@ -11,7 +11,15 @@ from app.confirm import ConfirmDecision, reset_requirement_update_preference, se
 from app.llm.spec import SYSTEM_PROMPT
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.token_usage import format_token_quantity
-from app.agent.run_contract import AgentEvent, AgentEventLog, AgentRunPayload, LlmStep, LlmTrace, ToolResultSnapshot
+from app.agent.run_contract import (
+    AgentEvent,
+    AgentEventLog,
+    AgentRunPayload,
+    AgentTimelineEntry,
+    LlmStep,
+    LlmTrace,
+    ToolResultSnapshot,
+)
 from app.ui.agent_chat_panel import AgentProjectSettings, RequirementConfirmPreference
 from app.ui.agent_chat_panel.panel import AttachmentValidationError, MAX_ATTACHMENT_BYTES
 from app.ui.agent_chat_panel.components.segments import (
@@ -3471,6 +3479,167 @@ def test_agent_bubbles_follow_event_log_sequence(wx_app):
             if evt.kind in {"tool", "response"}
         ]
         assert timeline_order == ["response", "tool", "response"]
+        bubble_order = [
+            "tool" if "Tool" in bubble_header_text(bubble) else "response"
+            for bubble in panel_bubbles
+            if "Tool" in bubble_header_text(bubble)
+            or "Agent" in bubble_header_text(bubble)
+        ]
+
+        assert bubble_order[: len(timeline_order)] == timeline_order
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
+def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        tool_results: list[ToolResultSnapshot] = []
+        timeline_entries: list[AgentTimelineEntry] = []
+        llm_steps: list[LlmStep] = []
+        events: list[AgentEvent] = []
+
+        for index in range(5):
+            llm_timestamp = f"2025-01-01T12:00:{index:02d}+00:00"
+            tool_timestamp = f"2025-01-01T12:00:{index + 1:02d}+00:00"
+            seq = index * 2
+            response_text = f"Step {index + 1} response"
+            llm_steps.append(
+                LlmStep(
+                    index=index,
+                    occurred_at=llm_timestamp,
+                    request=(),
+                    response={"content": response_text},
+                )
+            )
+            events.append(
+                AgentEvent(
+                    kind="llm_step",
+                    occurred_at=llm_timestamp,
+                    payload={
+                        "index": index,
+                        "request": (),
+                        "response": {"content": response_text},
+                    },
+                )
+            )
+            call_id = f"call-{index + 1}"
+            events.append(
+                AgentEvent(
+                    kind="tool_completed",
+                    occurred_at=tool_timestamp,
+                    payload={"call_id": call_id, "status": "succeeded"},
+                )
+            )
+            tool_results.append(
+                ToolResultSnapshot(
+                    call_id=call_id,
+                    tool_name=f"tool-{index + 1}",
+                    status="succeeded",
+                    sequence=seq + 1,
+                    started_at=llm_timestamp,
+                    completed_at=tool_timestamp,
+                )
+            )
+            timeline_entries.append(
+                AgentTimelineEntry(
+                    kind="llm_step",
+                    sequence=seq,
+                    occurred_at=llm_timestamp,
+                    step_index=index,
+                )
+            )
+            timeline_entries.append(
+                AgentTimelineEntry(
+                    kind="tool_call",
+                    sequence=seq + 1,
+                    occurred_at=tool_timestamp,
+                    call_id=call_id,
+                    status="succeeded",
+                )
+            )
+
+        final_timestamp = "2025-01-01T12:01:00+00:00"
+        final_text = "Final long answer"
+        events.append(
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at=final_timestamp,
+                payload={"ok": True, "status": "succeeded", "result": final_text},
+            )
+        )
+        timeline_entries.append(
+            AgentTimelineEntry(
+                kind="agent_finished",
+                sequence=len(timeline_entries),
+                occurred_at=final_timestamp,
+            )
+        )
+
+        payload = AgentRunPayload(
+            ok=True,
+            status="succeeded",
+            result_text=final_text,
+            events=AgentEventLog(events=events),
+            tool_results=tool_results,
+            llm_trace=LlmTrace(steps=llm_steps),
+            timeline=timeline_entries,
+            reasoning=(),
+        ).to_dict()
+
+        conversation, entry_timeline = build_entry_timeline(
+            prompt="Verify long timeline order",
+            response=final_text,
+            response_at=final_timestamp,
+            prompt_at="2025-01-01T12:00:00+00:00",
+            raw_payload=payload,
+        )
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=entry_timeline,
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_bubble = next(
+            (
+                bubble
+                for bubble in collect_message_bubbles(panel)
+                if "Agent" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble should be present"
+
+        agent_panel = next(
+            (
+                child
+                for child in panel.GetChildren()
+                if isinstance(child, MessageSegmentPanel)
+                and agent_bubble in collect_message_bubbles(child)
+            ),
+            None,
+        )
+        assert agent_panel is not None, "agent segment missing"
+
+        panel_bubbles = collect_message_bubbles(agent_panel)
+        timeline_order = [
+            "tool" if evt.kind == "tool" else "response"
+            for evt in entry_timeline.agent_turn.events
+            if evt.kind in {"tool", "response"}
+        ]
         bubble_order = [
             "tool" if "Tool" in bubble_header_text(bubble) else "response"
             for bubble in panel_bubbles

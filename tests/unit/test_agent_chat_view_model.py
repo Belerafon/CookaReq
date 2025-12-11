@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.agent.run_contract import (
+    AgentEvent,
+    AgentEventLog,
     AgentRunPayload,
+    AgentTimelineEntry,
     LlmStep,
     LlmTrace,
     ToolError,
@@ -600,3 +603,114 @@ def test_missing_timestamps_reported_as_missing() -> None:
     assert turn.timestamp.missing is True
     assert turn.timestamp.source == "response_at"
     assert turn.tool_calls == ()
+
+
+def test_timeline_keeps_event_order_when_final_timestamp_missing() -> None:
+    trace = LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2025-10-03T10:00:01+00:00",
+                request=({"role": "user", "content": "step 1"},),
+                response={"content": "thinking"},
+            ),
+            LlmStep(
+                index=2,
+                occurred_at="2025-10-03T10:00:02+00:00",
+                request=({"role": "user", "content": "step 2"},),
+                response={"content": "done"},
+            ),
+        ]
+    )
+    snapshots = [
+        _tool_snapshot(
+            call_id="call-a",
+            tool_name="alpha",
+            status="succeeded",
+            started_at="2025-10-03T10:00:01+00:00",
+            completed_at="2025-10-03T10:00:03+00:00",
+        ),
+        _tool_snapshot(
+            call_id="call-b",
+            tool_name="beta",
+            status="succeeded",
+            started_at="2025-10-03T10:00:03+00:00",
+            completed_at="2025-10-03T10:00:04+00:00",
+        ),
+    ]
+    timeline_entries = [
+        AgentTimelineEntry(
+            kind="llm_step",
+            sequence=1,
+            occurred_at="2025-10-03T10:00:01+00:00",
+            step_index=1,
+        ),
+        AgentTimelineEntry(
+            kind="tool_call",
+            sequence=2,
+            occurred_at="2025-10-03T10:00:02+00:00",
+            call_id="call-a",
+        ),
+        AgentTimelineEntry(
+            kind="llm_step",
+            sequence=3,
+            occurred_at="2025-10-03T10:00:03+00:00",
+            step_index=2,
+        ),
+        AgentTimelineEntry(
+            kind="tool_call",
+            sequence=4,
+            occurred_at="2025-10-03T10:00:04+00:00",
+            call_id="call-b",
+        ),
+        AgentTimelineEntry(
+            kind="agent_finished",
+            sequence=5,
+            occurred_at="2025-10-03T10:00:05+00:00",
+        ),
+    ]
+
+    payload = AgentRunPayload(
+        ok=True,
+        status="succeeded",
+        result_text="done",
+        events=AgentEventLog(),
+        tool_results=snapshots,
+        llm_trace=trace,
+        timeline=timeline_entries,
+    )
+
+    entry = ChatEntry(
+        prompt="Do things",
+        response="done",
+        tokens=1,
+        prompt_at="2025-10-03T10:00:00+00:00",
+        response_at=None,
+        raw_result=payload.to_dict(),
+    )
+    conversation = _conversation_with_entry(entry)
+
+    timeline = build_conversation_timeline(conversation)
+    turn = timeline.entries[0].agent_turn
+    assert turn is not None
+    assert turn.timeline_is_authoritative is True
+
+    assert [event.sequence for event in turn.events] == [1, 2, 3, 4, 5]
+    assert [event.kind for event in turn.events] == [
+        "response",
+        "tool",
+        "response",
+        "tool",
+        "response",
+    ]
+    assert [
+        event.tool_call.call_identifier
+        for event in turn.events
+        if event.kind == "tool" and event.tool_call is not None
+    ] == ["call-a", "call-b"]
+
+    final_event = turn.events[-1]
+    assert final_event.response is turn.final_response
+    assert final_event.timestamp.raw == "2025-10-03T10:00:05+00:00"
+
+

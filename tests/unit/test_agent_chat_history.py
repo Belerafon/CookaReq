@@ -1,5 +1,8 @@
 from app.llm.tokenizer import TokenCountResult
+from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.history import AgentChatHistory
+from app.ui.agent_chat_panel.history_sync import HistorySynchronizer
+from app.ui.agent_chat_panel.view_model import ConversationTimelineCache
 from app.ui.chat_entry import ChatConversation, ChatEntry
 
 
@@ -196,3 +199,17 @@ def test_prune_empty_conversations_skips_materialisation(monkeypatch, tmp_path):
     assert len(remaining) == 1
     assert remaining[0].conversation_id == stored.conversation_id
     assert remaining[0].entries_loaded is False
+
+
+class _StubSession:
+    def __init__(self, history: AgentChatHistory) -> None:
+        self.history = history
+        self.notifications: list[AgentChatHistory] = []
+
+    def notify_history_changed(self) -> None:
+        self.notifications.append(self.history)
+
+    def set_history_path(self, path, *, persist_existing: bool) -> bool:  # type: ignore[override]
+        return self.history.set_path(path, persist_existing=persist_existing)
+
+

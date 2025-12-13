@@ -494,9 +494,11 @@ def _resolve_agent_timeline(
     event_log: AgentEventLog,
     tool_snapshots: Sequence[ToolResultSnapshot],
     llm_trace: LlmTrace,
+    *,
+    integrity: TimelineIntegrity | None = None,
 ) -> tuple[tuple[AgentTimelineEntry, ...], Literal["payload", "missing"], str]:
     cache = entry._ensure_view_cache()
-    integrity = _timeline_integrity(entry, payload)
+    integrity = integrity or _timeline_integrity(entry, payload)
     fingerprint = _agent_timeline_fingerprint(
         payload, tool_snapshots, llm_trace, integrity
     )
@@ -563,8 +565,14 @@ def _build_agent_turn(
         final_text,
     ) = _collect_agent_sources(entry)
 
+    integrity = _timeline_integrity(entry, payload)
     timeline_entries, timeline_source, timeline_status = _resolve_agent_timeline(
-        entry, payload, event_log, tool_snapshots, llm_trace
+        entry,
+        payload,
+        event_log,
+        tool_snapshots,
+        llm_trace,
+        integrity=integrity,
     )
 
     for event in event_log.events:
@@ -674,7 +682,7 @@ def _build_agent_turn(
     )
 
     timeline_fingerprint = _agent_timeline_fingerprint(
-        payload, event_log, tool_snapshots, llm_trace
+        payload, tool_snapshots, llm_trace, integrity
     )
     entry._ensure_view_cache()["agent_timeline_fingerprint"] = timeline_fingerprint
 

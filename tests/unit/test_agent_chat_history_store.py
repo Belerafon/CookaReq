@@ -1,9 +1,12 @@
+import json
 import logging
 import sqlite3
 from pathlib import Path
 
 import pytest
 
+from app.agent.run_contract import AgentTimelineEntry
+from app.agent.timeline_utils import timeline_checksum
 from app.llm.tokenizer import TokenCountResult
 from app.ui.agent_chat_panel.history_store import HistoryStore
 from app.ui.chat_entry import ChatConversation, ChatEntry
@@ -307,3 +310,84 @@ def test_load_entries_prunes_corrupted_payload(
     assert str(sample_conversation.conversation_id) in message
     assert "payload_length" in message
     assert "payload_preview" in message
+
+
+def test_load_entries_migrates_timeline_metadata(tmp_path: Path) -> None:
+    history_path = tmp_path / "agent_chats.sqlite"
+    store = HistoryStore(history_path)
+
+    conversation = ChatConversation.new()
+    conversation.title = "Legacy"
+    entry = ChatEntry(
+        prompt="Legacy?",
+        response="Legacy!",
+        tokens=1,
+        display_response="Legacy!",
+        raw_result=None,
+        token_info=TokenCountResult.exact(1, model="cl100k_base"),
+        prompt_at="2024-01-01T00:00:00Z",
+        response_at="2024-01-01T00:01:00Z",
+    )
+    conversation.replace_entries([entry])
+    conversation.updated_at = entry.response_at or conversation.updated_at
+    store.save([conversation], conversation.conversation_id)
+
+    timeline = [
+        AgentTimelineEntry(
+            kind="llm_step",
+            occurred_at="2024-01-01T00:00:01Z",
+            sequence=1,
+            step_index=1,
+        ),
+        AgentTimelineEntry(
+            kind="agent_finished",
+            occurred_at="2024-01-01T00:00:02Z",
+            sequence=2,
+            status="succeeded",
+        ),
+    ]
+    legacy_payload = conversation.entries[0].to_dict()
+    legacy_payload.pop("timeline_status", None)
+    legacy_payload.pop("timeline_checksum", None)
+    legacy_payload["raw_result"] = {
+        "ok": True,
+        "status": "succeeded",
+        "result": legacy_payload["response"],
+        "events": {"events": []},
+        "llm_trace": {"steps": []},
+        "tool_results": [],
+        "timeline": [entry.to_dict() for entry in timeline],
+        "diagnostic": {"event_log": [{"kind": "llm_step", "sequence": 1}]},
+    }
+    legacy_payload["diagnostic"] = {"event_log": [{"kind": "llm_step", "sequence": 1}]}
+
+    with sqlite3.connect(str(history_path)) as conn:
+        conn.execute(
+            "UPDATE entries SET payload = ? WHERE conversation_id = ? AND position = ?",
+            (
+                json.dumps(legacy_payload, ensure_ascii=False),
+                conversation.conversation_id,
+                0,
+            ),
+        )
+
+    migrated_entries = store.load_entries(conversation.conversation_id)
+    assert migrated_entries
+    migrated = migrated_entries[0]
+    expected_checksum = timeline_checksum(timeline)
+
+    assert migrated.timeline_status == "valid"
+    assert migrated.timeline_checksum == expected_checksum
+    assert migrated.diagnostic is None or "event_log" not in migrated.diagnostic
+
+    raw_result = migrated.raw_result if isinstance(migrated.raw_result, dict) else {}
+    assert "event_log" not in (raw_result.get("diagnostic") or {})
+
+    rows_after = _fetch_entry_rows(history_path, conversation.conversation_id)
+    stored_payload = json.loads(rows_after[0]["payload"])
+    assert stored_payload["timeline_status"] == "valid"
+    assert stored_payload.get("timeline_checksum") == expected_checksum
+    assert "event_log" not in (stored_payload.get("diagnostic") or {})
+    assert "event_log" not in (
+        (stored_payload.get("raw_result") or {}).get("diagnostic") or {}
+    )

@@ -48,6 +48,7 @@ from .run_contract import (
     _llm_trace_from_events,
     _reasoning_from_events,
 )
+from .timeline_utils import timeline_checksum
 
 
 @runtime_checkable
@@ -475,6 +476,9 @@ class _AgentRunRecorder:
             diagnostic["llm_steps"] = llm_steps
         if timeline_debug:
             diagnostic["timeline_debug"] = timeline_debug
+        checksum: str | None = None
+        if canonical_timeline:
+            checksum = timeline_checksum(canonical_timeline)
         return AgentRunPayload(
             ok=self._ok,
             status="succeeded" if self._status == "succeeded" else "failed",
@@ -484,6 +488,7 @@ class _AgentRunRecorder:
             tool_results=filtered_snapshots,
             llm_trace=llm_trace,
             timeline=canonical_timeline,
+            timeline_checksum=checksum,
             diagnostic=diagnostic,
             error=self._error,
             tool_schemas=dict(self._tool_schemas) if self._tool_schemas else None,

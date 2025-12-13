@@ -105,6 +105,75 @@ class HistoryStore:
                     """,
                     (conversation_id,),
                 ).fetchall()
+
+                entries: list[ChatEntry] = []
+                pending_updates: list[tuple[str, int]] = []
+                from ..chat_entry import ChatEntry
+                for row in rows:
+                    if isinstance(row, sqlite3.Row):
+                        position = row["position"]
+                        payload_raw = row["payload"]
+                    else:
+                        position, payload_raw = row
+                    if not isinstance(position, int):
+                        try:
+                            position = int(position)
+                        except (TypeError, ValueError):
+                            position = None
+
+                    if not isinstance(payload_raw, str):
+                        self._handle_corrupted_entry(
+                            conversation_id,
+                            position,
+                            payload_raw,
+                            detail="Stored payload is not a string.",
+                        )
+                        continue
+                    try:
+                        payload = json.loads(payload_raw)
+                    except json.JSONDecodeError as exc:  # pragma: no cover - defensive logging
+                        self._handle_corrupted_entry(
+                            conversation_id,
+                            position,
+                            payload_raw,
+                            exc=exc,
+                        )
+                        continue
+                    if not isinstance(payload, dict):
+                        continue
+                    try:
+                        entry = ChatEntry.from_dict(payload)
+                    except Exception as exc:  # pragma: no cover - defensive logging
+                        self._handle_corrupted_entry(
+                            conversation_id,
+                            position,
+                            payload,
+                            detail="Stored payload could not be deserialized.",
+                            exc=exc,
+                        )
+                        continue
+                    entries.append(entry)
+
+                    if isinstance(position, int):
+                        migrated_payload = entry.to_dict()
+                        if payload != migrated_payload:
+                            pending_updates.append(
+                                (json.dumps(migrated_payload, ensure_ascii=False), position)
+                            )
+
+                if pending_updates:
+                    conn.executemany(
+                        """
+                        UPDATE entries
+                        SET payload = ?
+                        WHERE conversation_id = ? AND position = ?
+                        """,
+                        (
+                            (payload, conversation_id, position)
+                            for payload, position in pending_updates
+                        ),
+                    )
+                return entries
         except sqlite3.Error:  # pragma: no cover - defensive logging
             logger.exception(
                 "Failed to load chat entries for %s from %s",
@@ -112,52 +181,6 @@ class HistoryStore:
                 self._path,
             )
             return []
-
-        entries: list[ChatEntry] = []
-        from ..chat_entry import ChatEntry
-        for row in rows:
-            if isinstance(row, sqlite3.Row):
-                position = row["position"]
-                payload_raw = row["payload"]
-            else:
-                position, payload_raw = row
-            if not isinstance(position, int):
-                try:
-                    position = int(position)
-                except (TypeError, ValueError):
-                    position = None
-
-            if not isinstance(payload_raw, str):
-                self._handle_corrupted_entry(
-                    conversation_id,
-                    position,
-                    payload_raw,
-                    detail="Stored payload is not a string.",
-                )
-                continue
-            try:
-                payload = json.loads(payload_raw)
-            except json.JSONDecodeError as exc:  # pragma: no cover - defensive logging
-                self._handle_corrupted_entry(
-                    conversation_id,
-                    position,
-                    payload_raw,
-                    exc=exc,
-                )
-                continue
-            if not isinstance(payload, dict):
-                continue
-            try:
-                entries.append(ChatEntry.from_dict(payload))
-            except Exception as exc:  # pragma: no cover - defensive logging
-                self._handle_corrupted_entry(
-                    conversation_id,
-                    position,
-                    payload,
-                    detail="Stored payload could not be deserialized.",
-                    exc=exc,
-                )
-        return entries
 
     # ------------------------------------------------------------------
     def conversations_with_entries(

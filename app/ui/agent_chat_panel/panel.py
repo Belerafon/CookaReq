@@ -2578,9 +2578,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         reasoning_clone = self._normalise_reasoning_segments(reasoning_segments)
         entry.reasoning = reasoning_clone or None
         tool_snapshots = tool_snapshots_from(raw_result)
-        existing_diagnostic = (
-            entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
-        )
         entry.diagnostic = self._build_entry_diagnostic(
             prompt=prompt_text,
             prompt_at=prompt_at,
@@ -2592,7 +2589,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             history_snapshot=history_snapshot,
             context_snapshot=context_clone,
             custom_system_prompt=self._custom_system_prompt(),
-            previous_diagnostic=existing_diagnostic,
         )
         self._append_event_log(
             entry,
@@ -3164,56 +3160,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         return planned or None
 
     @classmethod
-    def _merge_llm_step_sequences(
-        cls,
-        primary: list[dict[str, Any]],
-        fallback: Sequence[Mapping[str, Any]] | None,
-    ) -> None:
-        if not fallback:
-            return
-        fallback_steps = cls._sanitize_llm_step_sequence(fallback)
-        if not fallback_steps:
-            return
-
-        def _step_key(step: Mapping[str, Any]) -> str:
-            raw = step.get("step")
-            return str(raw) if raw is not None else "0"
-
-        fallback_lookup: dict[str, Mapping[str, Any]] = {
-            _step_key(step): step for step in fallback_steps
-        }
-        seen: set[str] = set()
-        for step in primary:
-            key = _step_key(step)
-            seen.add(key)
-            response = step.get("response")
-            if not isinstance(response, Mapping) or response.get("tool_calls"):
-                continue
-            fallback_step = fallback_lookup.get(key)
-            if not isinstance(fallback_step, Mapping):
-                continue
-            fallback_response = fallback_step.get("response")
-            if not isinstance(fallback_response, Mapping):
-                continue
-            tool_calls = fallback_response.get("tool_calls")
-            if not tool_calls:
-                continue
-            safe_calls = history_json_safe(tool_calls)
-            if safe_calls:
-                merged_response = dict(response)
-                merged_response["tool_calls"] = safe_calls
-                step["response"] = merged_response
-
-        for key, fallback_step in fallback_lookup.items():
-            if key in seen:
-                continue
-            safe_step = history_json_safe(fallback_step)
-            if isinstance(safe_step, Mapping):
-                primary.append(dict(safe_step))
-
-        primary.sort(key=lambda step: step.get("step") or 0)
-
-    @classmethod
     def _build_entry_diagnostic(
         cls,
         *,
@@ -3227,7 +3173,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         history_snapshot: Sequence[Mapping[str, Any]] | None,
         context_snapshot: Sequence[Mapping[str, Any]] | None,
         custom_system_prompt: str | None = None,
-        previous_diagnostic: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt_text = normalize_for_display(prompt)
         display_text = normalize_for_display(display_response)
@@ -3260,12 +3205,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if snapshot is not None:
                 tool_snapshots.append(snapshot)
         tool_payloads = tool_snapshot_dicts(tool_snapshots)
-
-        previous_steps = cls._sanitize_llm_step_sequence(
-            previous_diagnostic.get("llm_steps")
-            if isinstance(previous_diagnostic, Mapping)
-            else None
-        )
 
         llm_request_sequence: list[dict[str, Any]] = []
         llm_request_messages: list[dict[str, Any]] = []
@@ -3347,9 +3286,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 elif "error" in raw_result_mapping:
                     error_payload = history_json_safe(raw_result_mapping.get("error"))
 
-        if not current_steps:
-            current_steps = previous_steps
-
         if not llm_request_sequence:
             llm_request_messages = [
                 {"role": "system", "content": normalize_for_display(SYSTEM_PROMPT)},
@@ -3418,17 +3354,6 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             "reasoning": reasoning_payload,
             "diagnostic": diagnostic_sections,
         }
-
-        if isinstance(previous_diagnostic, Mapping):
-            existing_log = previous_diagnostic.get("event_log")
-            if isinstance(existing_log, list):
-                sanitized_log = [
-                    history_json_safe(record)
-                    for record in existing_log
-                    if isinstance(record, Mapping)
-                ]
-                if sanitized_log:
-                    diagnostic_payload["event_log"] = sanitized_log
 
         return history_json_safe(diagnostic_payload)
 

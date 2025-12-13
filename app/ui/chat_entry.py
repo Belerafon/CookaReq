@@ -13,6 +13,7 @@ from ..agent.run_contract import (
     ToolResultSnapshot,
     sort_tool_result_snapshots,
 )
+from ..agent.timeline_utils import assess_timeline_integrity
 from ..llm.tokenizer import (
     TokenCountResult,
     combine_token_counts,
@@ -95,6 +96,20 @@ def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
         return None
     cleaned = {k: v for k, v in value.items() if k != "event_log"}
     return cleaned or None
+
+
+def _normalise_timeline_status(value: Any) -> str:
+    if isinstance(value, str):
+        normalised = value.strip().lower()
+        if normalised in {"valid", "damaged", "missing"}:
+            return normalised
+    return "unknown"
+
+
+def _normalise_timeline_checksum(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
 
 
 def _derive_tool_messages(raw_result: Any) -> tuple[dict[str, Any], ...]:
@@ -278,6 +293,8 @@ class ChatEntry:
     reasoning: tuple[dict[str, Any], ...] | None = None
     diagnostic: dict[str, Any] | None = None
     regenerated: bool = False
+    timeline_status: str = "unknown"
+    timeline_checksum: str | None = None
     layout_hints: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
     token_cache: dict[str, dict[str, EntryTokenCacheRecord]] = field(
         default_factory=dict,
@@ -295,18 +312,29 @@ class ChatEntry:
 
         if self.display_response is None:
             self.display_response = self.response
+        self.timeline_status = _normalise_timeline_status(self.timeline_status)
+        self.timeline_checksum = _normalise_timeline_checksum(self.timeline_checksum)
         self.ensure_token_info()
         payload = _parse_agent_run_payload(self.raw_result)
+        self._update_timeline_metadata(payload)
         if payload is not None:
+            if payload.timeline_checksum is None:
+                payload.timeline_checksum = self.timeline_checksum
             self.raw_result = payload.to_history_dict()
             if not self.reasoning and payload.reasoning:
                 self.reasoning = tuple(dict(segment) for segment in payload.reasoning)
             diagnostic = _strip_diagnostic_event_log(self.diagnostic)
             self.diagnostic = diagnostic
         if isinstance(self.raw_result, Mapping):
-            tool_results_raw = self.raw_result.get("tool_results")
-            normalised_results = _normalise_tool_results_payload(tool_results_raw)
             updated = dict(self.raw_result)
+            diagnostic_raw = updated.get("diagnostic")
+            cleaned_diagnostic = _strip_diagnostic_event_log(diagnostic_raw)
+            if cleaned_diagnostic is None:
+                updated.pop("diagnostic", None)
+            else:
+                updated["diagnostic"] = cleaned_diagnostic
+            tool_results_raw = updated.get("tool_results")
+            normalised_results = _normalise_tool_results_payload(tool_results_raw)
             if normalised_results:
                 updated["tool_results"] = normalised_results
             else:
@@ -405,6 +433,31 @@ class ChatEntry:
             self.reasoning = tuple(normalised_segments) if normalised_segments else None
         else:
             self.reasoning = None
+
+    def _update_timeline_metadata(self, payload: AgentRunPayload | None) -> None:
+        prior_status = _normalise_timeline_status(self.timeline_status)
+        prior_checksum = _normalise_timeline_checksum(self.timeline_checksum)
+
+        if payload is None:
+            self.timeline_status = (
+                prior_status if prior_status in {"missing", "damaged"} else "missing"
+            )
+            self.timeline_checksum = prior_checksum
+            self._sanitize_token_cache()
+            self._reset_view_cache()
+            return
+
+        declared_checksum = payload.timeline_checksum or prior_checksum
+        integrity = assess_timeline_integrity(
+            payload.timeline, declared_checksum=declared_checksum
+        )
+        status = integrity.status
+        if prior_status in {"missing", "damaged"} and status == "valid":
+            status = prior_status
+        checksum = integrity.checksum or declared_checksum
+
+        self.timeline_status = status
+        self.timeline_checksum = checksum
         self._sanitize_token_cache()
         self._reset_view_cache()
 
@@ -635,6 +688,9 @@ class ChatEntry:
         response_at_raw = payload.get("response_at")
         response_at = str(response_at_raw) if isinstance(response_at_raw, str) else None
 
+        timeline_status = _normalise_timeline_status(payload.get("timeline_status"))
+        timeline_checksum = _normalise_timeline_checksum(payload.get("timeline_checksum"))
+
         context_raw = payload.get("context_messages")
         context_messages: tuple[dict[str, Any], ...] | None = None
         if isinstance(context_raw, Sequence) and not isinstance(
@@ -710,6 +766,8 @@ class ChatEntry:
             reasoning=reasoning,
             diagnostic=diagnostic,
             regenerated=regenerated,
+            timeline_status=timeline_status,
+            timeline_checksum=timeline_checksum,
             token_cache=token_cache,
         )
 
@@ -736,6 +794,8 @@ class ChatEntry:
             else None,
             "diagnostic": dict(diagnostic) if diagnostic is not None else None,
             "regenerated": self.regenerated,
+            "timeline_status": self.timeline_status,
+            "timeline_checksum": self.timeline_checksum,
         }
         cache_payload: dict[str, dict[str, Any]] = {}
         for model_key, parts in self.token_cache.items():

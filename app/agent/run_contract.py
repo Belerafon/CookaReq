@@ -7,6 +7,7 @@ import json
 from typing import Any, Literal, Mapping, Sequence
 
 from ..util.time import utc_now_iso
+from .timeline_utils import timeline_checksum
 
 
 ToolStatus = Literal["pending", "running", "succeeded", "failed"]
@@ -567,6 +568,7 @@ class AgentRunPayload:
     tool_results: list[ToolResultSnapshot] = field(default_factory=list)
     llm_trace: LlmTrace = field(default_factory=LlmTrace)
     timeline: list[AgentTimelineEntry] = field(default_factory=list)
+    timeline_checksum: str | None = None
     reasoning: Sequence[Mapping[str, Any]] = field(default_factory=list)
     diagnostic: Mapping[str, Any] | None = None
     error: ToolError | None = None
@@ -593,6 +595,8 @@ class AgentRunPayload:
             ]
         if self.timeline:
             payload["timeline"] = [entry.to_dict() for entry in self.timeline]
+        if self.timeline_checksum:
+            payload["timeline_checksum"] = self.timeline_checksum
         if self.diagnostic is not None:
             diagnostic_payload = dict(self.diagnostic)
             if not include_diagnostic_event_log:
@@ -695,6 +699,10 @@ class AgentRunPayload:
             agent_stop_reason = dict(agent_stop_payload)
         else:
             agent_stop_reason = None
+        checksum = payload.get("timeline_checksum")
+        timeline_checksum_value: str | None = (
+            checksum if isinstance(checksum, str) else None
+        )
         timeline_payload = payload.get("timeline")
         timeline: list[AgentTimelineEntry] = []
         if isinstance(timeline_payload, Sequence) and not isinstance(
@@ -711,6 +719,12 @@ class AgentRunPayload:
             timeline = build_agent_timeline(
                 events, tool_results=tool_results, llm_trace=llm_trace
             )
+            timeline_checksum_value = None
+        elif timeline_checksum_value is None:
+            try:
+                timeline_checksum_value = timeline_checksum(timeline)
+            except Exception:
+                timeline_checksum_value = None
         return cls(
             ok=ok,
             status=status,
@@ -719,6 +733,7 @@ class AgentRunPayload:
             tool_results=tool_results,
             llm_trace=llm_trace,
             timeline=timeline,
+            timeline_checksum=timeline_checksum_value,
             reasoning=reasoning,
             diagnostic=diagnostic,
             error=error,

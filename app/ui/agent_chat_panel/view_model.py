@@ -13,6 +13,7 @@ from ...agent.run_contract import (
     AgentEventLog,
     AgentRunPayload,
     AgentTimelineEntry,
+    build_agent_timeline,
     LlmTrace,
     LlmStep,
     ToolResultSnapshot,
@@ -120,6 +121,8 @@ class AgentTurn:
     events: tuple[AgentTimelineEvent, ...]
     event_signature: tuple[tuple[Any, ...], ...] = ()
     timeline_is_authoritative: bool = False
+    timeline_source: Literal["payload", "event_log", "missing"] = "missing"
+    timeline_fingerprint: tuple[Any, ...] | None = None
 
 
 @dataclass(slots=True)
@@ -195,6 +198,7 @@ class TranscriptSegments:
 class _CachedTimeline:
     timeline: ConversationTimeline
     entry_map: dict[str, TranscriptEntry]
+    entry_fingerprints: dict[str, tuple[Any, ...] | None]
 
 
 # ---------------------------------------------------------------------------
@@ -339,30 +343,99 @@ def _build_llm_trace_from_diagnostic(
     return LlmTrace(steps=steps)
 
 
-def _build_agent_turn(
-    entry_id: str,
-    entry_index: int,
+def _agent_timeline_fingerprint(
+    payload: AgentRunPayload | None,
+    event_log: AgentEventLog,
+    tool_snapshots: Sequence[ToolResultSnapshot],
+    llm_trace: LlmTrace,
+) -> tuple[Any, ...]:
+    timeline_fingerprint: tuple[Any, ...] = ()
+    if payload is not None and payload.timeline:
+        timeline_fingerprint = tuple(
+            (
+                entry.kind,
+                entry.sequence,
+                getattr(entry, "call_id", None),
+                getattr(entry, "step_index", None),
+            )
+            for entry in payload.timeline
+        )
+
+    event_fingerprint = tuple(
+        (
+            event.kind,
+            event.occurred_at,
+            event.payload.get("call_id")
+            if isinstance(event.payload, Mapping)
+            else None,
+        )
+        for event in event_log.events
+    )
+
+    tool_fingerprint = tuple(
+        (
+            snapshot.call_id,
+            snapshot.sequence,
+            snapshot.status,
+            snapshot.started_at,
+            snapshot.completed_at,
+        )
+        for snapshot in tool_snapshots
+    )
+
+    llm_fingerprint = tuple(
+        (step.index, step.occurred_at, bool(step.request), bool(step.response))
+        for step in llm_trace.steps
+    )
+
+    return (
+        timeline_fingerprint,
+        event_fingerprint,
+        tool_fingerprint,
+        llm_fingerprint,
+    )
+
+
+def _collect_agent_sources(
     entry: ChatEntry,
-) -> AgentTurn | None:
+) -> tuple[
+    AgentRunPayload | None,
+    AgentEventLog,
+    tuple[ToolResultSnapshot, ...],
+    LlmTrace,
+    Any,
+    TimestampInfo,
+    TimestampInfo,
+    Mapping[str, Any] | None,
+    str,
+]:
     response_timestamp = _build_timestamp(entry.response_at, source="response_at")
     prompt_timestamp = _build_timestamp(entry.prompt_at, source="prompt_at")
 
     raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else None
-    diagnostic = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
-    diagnostic_payload = diagnostic
+    diagnostic_payload = entry.diagnostic if isinstance(entry.diagnostic, Mapping) else None
     if diagnostic_payload is None and isinstance(raw_result, Mapping):
         candidate = raw_result.get("diagnostic")
         if isinstance(candidate, Mapping):
             diagnostic_payload = candidate
+
     payload = agent_payload_from_mapping(raw_result)
-    event_log: list[AgentEvent] = []
-    timeline_entries: Sequence[AgentTimelineEntry] = ()
+    event_log = AgentEventLog()
+    tool_snapshots: tuple[ToolResultSnapshot, ...]
+    reasoning_source: Any
 
     if payload is None:
         tool_snapshots = tool_snapshots_from(entry.tool_results or raw_result)
         reasoning_source = entry.reasoning or (
             diagnostic_payload.get("reasoning") if diagnostic_payload else None
         )
+        if diagnostic_payload and isinstance(diagnostic_payload, Mapping):
+            diagnostic_event_log = diagnostic_payload.get("event_log")
+            if isinstance(diagnostic_event_log, Sequence):
+                try:
+                    event_log = AgentEventLog.from_dict({"events": diagnostic_event_log})
+                except Exception:
+                    event_log = AgentEventLog()
         llm_trace = _build_llm_trace_from_diagnostic(
             diagnostic_payload,
             prompt_timestamp=prompt_timestamp,
@@ -372,8 +445,14 @@ def _build_agent_turn(
             llm_trace = LlmTrace()
         final_text = entry.display_response or entry.response or ""
     else:
-        event_log = payload.events.events
-        timeline_entries = tuple(payload.timeline)
+        event_log = payload.events
+        if not event_log.events and diagnostic_payload:
+            diagnostic_event_log = diagnostic_payload.get("event_log")
+            if isinstance(diagnostic_event_log, Sequence):
+                try:
+                    event_log = AgentEventLog.from_dict({"events": diagnostic_event_log})
+                except Exception:
+                    event_log = payload.events
         tool_snapshots = payload.tool_results
         reasoning_source = payload.reasoning or (
             diagnostic_payload.get("reasoning") if diagnostic_payload else None
@@ -387,16 +466,185 @@ def _build_agent_turn(
             )
             if fallback_trace is not None:
                 llm_trace = fallback_trace
-        # Добавляем поддержку message_preview из LLM для отображения основного сообщения
         final_text = (
             entry.display_response
             or payload.result_text
             or entry.response
-            or getattr(payload, 'message_preview', '')
+            or getattr(payload, "message_preview", "")
             or ""
         )
 
-    for event in event_log:
+    return (
+        payload,
+        event_log,
+        tool_snapshots,
+        llm_trace,
+        reasoning_source,
+        prompt_timestamp,
+        response_timestamp,
+        diagnostic_payload,
+        final_text,
+    )
+
+
+def _resolve_agent_timeline(
+    entry: ChatEntry,
+    payload: AgentRunPayload | None,
+    event_log: AgentEventLog,
+    tool_snapshots: Sequence[ToolResultSnapshot],
+    llm_trace: LlmTrace,
+) -> tuple[tuple[AgentTimelineEntry, ...], Literal["payload", "event_log", "missing"]]:
+    cache = entry._ensure_view_cache()
+    fingerprint = _agent_timeline_fingerprint(
+        payload, event_log, tool_snapshots, llm_trace
+    )
+
+    cached_entries = cache.get("agent_timeline_entries")
+    cached_fingerprint = cache.get("agent_timeline_entries_fingerprint")
+    if cached_entries is not None and cached_fingerprint == fingerprint:
+        return cached_entries
+
+    def _timeline_is_complete(
+        entries: Sequence[AgentTimelineEntry],
+        source_events: AgentEventLog,
+    ) -> bool:
+        if not entries:
+            return False
+
+        sequences = [entry.sequence for entry in entries]
+        if any(sequence is None for sequence in sequences):
+            return False
+
+        # Считаем канонический таймлайн непрерывным без пропусков и дубликатов.
+        sorted_sequences = sorted(sequences)
+        expected_sequence = sorted_sequences[0]
+        for sequence in sorted_sequences:
+            if sequence != expected_sequence:
+                return False
+            expected_sequence += 1
+
+        relevant_events = [
+            event
+            for event in source_events.events
+            if event.kind
+            in {"llm_step", "tool_started", "tool_result", "tool_completed", "tool_finished", "agent_finished"}
+        ]
+
+        llm_step_count = sum(1 for event in relevant_events if event.kind == "llm_step")
+        tool_call_ids: set[str] = set()
+        for event in relevant_events:
+            if event.kind in {"tool_started", "tool_result", "tool_completed", "tool_finished"}:
+                payload = event.payload
+                call_id = None
+                if isinstance(payload, Mapping):
+                    call_id = payload.get("call_id")
+                if isinstance(call_id, str) and call_id:
+                    tool_call_ids.add(call_id)
+
+        expected_events = llm_step_count + len(tool_call_ids)
+
+        has_completion = any(entry.kind == "agent_finished" for entry in entries)
+        completion_expected = any(
+            event.kind == "agent_finished" for event in relevant_events
+        )
+        if completion_expected and not has_completion:
+            return False
+        if completion_expected:
+            expected_events += 1
+
+        if entries and expected_events and len(entries) < expected_events:
+            return False
+
+        has_events = has_completion or any(
+            entry.kind in {"llm_step", "tool_call"} for entry in entries
+        )
+        return has_events
+
+    def _build() -> tuple[tuple[AgentTimelineEntry, ...], Literal["payload", "event_log", "missing"]]:
+        source: Literal["payload", "event_log", "missing"] = "missing"
+        timeline_entries: tuple[AgentTimelineEntry, ...] = ()
+
+        if payload is not None and payload.timeline:
+            timeline_entries = tuple(payload.timeline)
+            source = "payload"
+
+        if event_log.events:
+            needs_rebuild = (not timeline_entries) or (
+                not _timeline_is_complete(timeline_entries, event_log)
+            )
+            if needs_rebuild:
+                try:
+                    rebuilt = tuple(
+                        build_agent_timeline(
+                            event_log,
+                            tool_results=tool_snapshots,
+                            llm_trace=llm_trace,
+                        )
+                        )
+                except Exception:
+                    rebuilt = ()
+                if rebuilt:
+                    _persist_canonical_timeline(entry, payload, rebuilt)
+                    timeline_entries = rebuilt
+                    source = "event_log"
+                    cache["agent_timeline_entries_fingerprint"] = fingerprint
+                    cache["agent_timeline_entries"] = (timeline_entries, source)
+                    return timeline_entries, source
+
+        cache["agent_timeline_entries_fingerprint"] = fingerprint
+        cache["agent_timeline_entries"] = (timeline_entries, source)
+        return timeline_entries, source
+
+    return _build()
+
+
+def _agent_timeline_fingerprint_for_entry(entry: ChatEntry) -> tuple[Any, ...]:
+    cache = entry._ensure_view_cache()
+    cached = cache.get("agent_timeline_fingerprint")
+    if cached is not None:
+        return cached
+
+    (
+        payload,
+        event_log,
+        tool_snapshots,
+        llm_trace,
+        _reasoning_source,
+        _prompt_timestamp,
+        _response_timestamp,
+        _diagnostic_payload,
+        _final_text,
+    ) = _collect_agent_sources(entry)
+
+    fingerprint = _agent_timeline_fingerprint(
+        payload, event_log, tool_snapshots, llm_trace
+    )
+    cache["agent_timeline_fingerprint"] = fingerprint
+    return fingerprint
+
+
+def _build_agent_turn(
+    entry_id: str,
+    entry_index: int,
+    entry: ChatEntry,
+) -> AgentTurn | None:
+    (
+        payload,
+        event_log,
+        tool_snapshots,
+        llm_trace,
+        reasoning_source,
+        prompt_timestamp,
+        response_timestamp,
+        diagnostic_payload,
+        final_text,
+    ) = _collect_agent_sources(entry)
+
+    timeline_entries, timeline_source = _resolve_agent_timeline(
+        entry, payload, event_log, tool_snapshots, llm_trace
+    )
+
+    for event in event_log.events:
         if event.kind == "agent_finished":
             finished_timestamp = _build_timestamp(
                 event.occurred_at, source="agent_finished"
@@ -498,14 +746,20 @@ def _build_agent_turn(
         streamed_responses,
         final_response,
         tool_calls,
-        event_log,
         timeline=timeline_entries,
     )
 
+    timeline_fingerprint = _agent_timeline_fingerprint(
+        payload, event_log, tool_snapshots, llm_trace
+    )
+    entry._ensure_view_cache()["agent_timeline_fingerprint"] = timeline_fingerprint
+
     resolved_timestamp = _resolve_turn_timestamp(
         response_timestamp,
-        events,
         prompt_timestamp,
+        timeline_timestamp=_timeline_timestamp(timeline_entries),
+        event_log_timestamp=_event_log_timestamp(event_log),
+        llm_trace_timestamp=_llm_trace_timestamp(llm_trace),
     )
 
     updated_events = False
@@ -530,13 +784,14 @@ def _build_agent_turn(
             streamed_responses,
             final_response,
             tool_calls,
-            event_log,
             timeline=timeline_entries,
         )
         resolved_timestamp = _resolve_turn_timestamp(
             final_response.timestamp,
-            events,
             prompt_timestamp,
+            timeline_timestamp=_timeline_timestamp(timeline_entries),
+            event_log_timestamp=_event_log_timestamp(event_log),
+            llm_trace_timestamp=_llm_trace_timestamp(llm_trace),
         )
 
     occurred_at = resolved_timestamp.occurred_at
@@ -574,6 +829,8 @@ def _build_agent_turn(
         events=events,
         event_signature=agent_turn_event_signature(events),
         timeline_is_authoritative=bool(timeline_entries),
+        timeline_source=timeline_source,
+        timeline_fingerprint=timeline_fingerprint,
     )
 
 
@@ -590,6 +847,34 @@ def _normalize_agent_display_text(value: str | None) -> str:
     """Normalize agent text to a comparable display form."""
 
     return normalize_for_display(_prepare_agent_display_text(value))
+
+
+def _persist_canonical_timeline(
+    entry: ChatEntry,
+    payload: AgentRunPayload | None,
+    timeline_entries: Sequence[AgentTimelineEntry],
+) -> None:
+    if not timeline_entries:
+        return
+
+    if payload is not None:
+        payload.timeline = list(timeline_entries)
+
+    raw_result = getattr(entry, "raw_result", None)
+    updated_raw: dict[str, Any]
+    if isinstance(raw_result, Mapping):
+        updated_raw = dict(raw_result)
+    else:
+        updated_raw = {}
+
+    updated_raw["timeline"] = [
+        timeline_entry.to_dict() for timeline_entry in timeline_entries
+    ]
+
+    if payload is not None and "events" not in updated_raw:
+        updated_raw["events"] = payload.events.to_dict()
+
+    entry.raw_result = updated_raw
 
 
 def _build_final_response(
@@ -913,7 +1198,6 @@ def _build_agent_events(
     responses: tuple[AgentResponse, ...],
     final_response: AgentResponse | None,
     tool_calls: tuple[ToolCallDetails, ...],
-    event_log: Sequence[AgentEvent],
     *,
     timeline: Sequence[AgentTimelineEntry] | None = None,
 ) -> tuple[AgentTimelineEvent, ...]:
@@ -943,7 +1227,7 @@ def _build_agent_events(
         ordered_timeline = sorted(timeline, key=lambda entry: entry.sequence)
         seen_responses: set[int] = set()
 
-        for entry_index, entry in enumerate(ordered_timeline):
+        for _, entry in enumerate(ordered_timeline):
             occurred_at = entry.occurred_at
             if entry.kind == "llm_step":
                 if entry.step_index is None:
@@ -958,7 +1242,7 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="response",
                         timestamp=response.timestamp,
-                        order_index=entry_index,
+                        order_index=entry.sequence,
                         sequence=entry.sequence,
                         response=response,
                     )
@@ -975,7 +1259,7 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="tool",
                         timestamp=tool_call.timestamp,
-                        order_index=entry_index,
+                        order_index=entry.sequence,
                         sequence=entry.sequence,
                         tool_call=tool_call,
                     )
@@ -990,14 +1274,11 @@ def _build_agent_events(
                     AgentTimelineEvent(
                         kind="response",
                         timestamp=final_response.timestamp,
-                        order_index=entry_index,
+                        order_index=entry.sequence,
                         sequence=entry.sequence,
                         response=final_response,
                     )
                 )
-
-        for index, event in enumerate(events):
-            event.order_index = index
         return tuple(events)
 
     return ()
@@ -1040,38 +1321,51 @@ def agent_turn_event_signature(
     return tuple(signature)
 
 
+def _timeline_timestamp(
+    timeline_entries: Sequence[AgentTimelineEntry],
+) -> TimestampInfo:
+    for entry in sorted(
+        (item for item in timeline_entries if item.occurred_at),
+        key=lambda item: item.sequence if item.sequence is not None else -1,
+        reverse=True,
+    ):
+        return _build_timestamp(entry.occurred_at, source="timeline")
+    return _build_timestamp(None, source="timeline")
+
+
+def _event_log_timestamp(event_log: AgentEventLog) -> TimestampInfo:
+    for event in reversed(event_log.events):
+        if event.occurred_at:
+            return _build_timestamp(event.occurred_at, source="event_log")
+    return _build_timestamp(None, source="event_log")
+
+
+def _llm_trace_timestamp(trace: LlmTrace) -> TimestampInfo:
+    if trace.steps:
+        for step in reversed(trace.steps):
+            timestamp = _build_timestamp(step.occurred_at, source="llm_trace")
+            if not timestamp.missing:
+                return timestamp
+    return _build_timestamp(None, source="llm_trace")
+
+
 def _resolve_turn_timestamp(
     primary: TimestampInfo,
-    events: Sequence[AgentTimelineEvent],
     prompt_timestamp: TimestampInfo,
+    *,
+    timeline_timestamp: TimestampInfo,
+    event_log_timestamp: TimestampInfo,
+    llm_trace_timestamp: TimestampInfo,
 ) -> TimestampInfo:
-    latest_event: TimestampInfo | None = None
-
-    def _is_after(left: TimestampInfo, right: TimestampInfo | None) -> bool:
-        if right is None:
-            return True
-        left_value = left.occurred_at or _UTC_MIN
-        right_value = right.occurred_at or _UTC_MIN
-        return left_value > right_value
-
-    for event in events:
-        event_ts = event.timestamp
-        if event_ts.missing:
-            continue
-        if latest_event is None or _is_after(event_ts, latest_event):
-            latest_event = event_ts
-
-    if not primary.missing:
-        if latest_event is not None and _is_after(latest_event, primary):
-            return latest_event
-        return primary
-
-    if latest_event is not None:
-        return latest_event
-
-    if not prompt_timestamp.missing:
-        return prompt_timestamp
-
+    for candidate in (
+        timeline_timestamp,
+        event_log_timestamp,
+        primary,
+        llm_trace_timestamp,
+        prompt_timestamp,
+    ):
+        if not candidate.missing:
+            return candidate
     return primary
 
 
@@ -1181,6 +1475,19 @@ def build_transcript_segments(conversation: ChatConversation) -> TranscriptSegme
     )
 
 
+def _capture_entry_fingerprints(
+    entries: Sequence[TranscriptEntry],
+) -> dict[str, tuple[Any, ...] | None]:
+    fingerprints: dict[str, tuple[Any, ...] | None] = {}
+    for entry in entries:
+        agent_turn = entry.agent_turn
+        fingerprint = (
+            agent_turn.timeline_fingerprint if agent_turn is not None else None
+        )
+        fingerprints[entry.entry_id] = fingerprint
+    return fingerprints
+
+
 class ConversationTimelineCache:
     """Incrementally rebuild :class:`ConversationTimeline` instances."""
 
@@ -1222,6 +1529,10 @@ class ConversationTimelineCache:
             or len(conversation.entries) < len(cached.timeline.entries)
         )
 
+        entry_fingerprints: dict[str, tuple[Any, ...] | None] = (
+            dict(cached.entry_fingerprints) if cached is not None else {}
+        )
+
         if requires_full_refresh:
             entries: list[TranscriptEntry] = []
             for entry_index, entry in enumerate(conversation.entries):
@@ -1235,6 +1546,7 @@ class ConversationTimelineCache:
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map={entry.entry_id: entry for entry in timeline.entries},
+                entry_fingerprints=_capture_entry_fingerprints(timeline.entries),
             )
             self._full_invalidations.discard(conversation_id)
             return timeline
@@ -1252,11 +1564,24 @@ class ConversationTimelineCache:
                 )
                 entries.append(rebuilt)
                 entry_map[rebuilt.entry_id] = rebuilt
+                entry_fingerprints[rebuilt.entry_id] = (
+                    rebuilt.agent_turn.timeline_fingerprint
+                    if rebuilt.agent_turn is not None
+                    else None
+                )
             updated = True
 
         if not dirty_entries and not updated:
-            self._full_invalidations.discard(conversation_id)
-            return cached.timeline
+            for entry_index, entry in enumerate(conversation.entries):
+                entry_id = f"{conversation_id}:{entry_index}"
+                cached_fingerprint = entry_fingerprints.get(entry_id)
+                current_fingerprint = _agent_timeline_fingerprint_for_entry(entry)
+                if cached_fingerprint != current_fingerprint:
+                    dirty_entries.add(entry_id)
+
+            if not dirty_entries:
+                self._full_invalidations.discard(conversation_id)
+                return cached.timeline
 
         for entry_id in dirty_entries:
             index = _resolve_entry_index(conversation_id, entry_id)
@@ -1267,6 +1592,11 @@ class ConversationTimelineCache:
             )
             entries[index] = rebuilt
             entry_map[entry_id] = rebuilt
+            entry_fingerprints[entry_id] = (
+                rebuilt.agent_turn.timeline_fingerprint
+                if rebuilt.agent_turn is not None
+                else None
+            )
             updated = True
 
         if updated:
@@ -1277,6 +1607,7 @@ class ConversationTimelineCache:
             self._cache[conversation_id] = _CachedTimeline(
                 timeline=timeline,
                 entry_map=entry_map,
+                entry_fingerprints=entry_fingerprints,
             )
             self._full_invalidations.discard(conversation_id)
             return timeline

@@ -17,6 +17,7 @@ from ...agent.run_contract import (
     build_agent_timeline,
     sort_tool_result_snapshots,
 )
+from ...agent.timeline_utils import timeline_checksum
 from ...util.json import make_json_safe
 from ..history_config import HISTORY_JSON_LIMITS
 from ...util.strings import coerce_text, describe_unprintable
@@ -178,8 +179,12 @@ def ensure_canonical_agent_payload(
             tool_results=payload.tool_results,
             llm_trace=payload.llm_trace,
         )
+        payload.timeline_checksum = (
+            timeline_checksum(payload.timeline) if payload.timeline else None
+        )
     except Exception:
         payload.timeline = []
+        payload.timeline_checksum = None
     else:
         if logger.isEnabledFor(logging.DEBUG):
             _log_timeline_snapshot(payload.timeline, context="ensure_canonical_agent_payload")

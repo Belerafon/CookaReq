@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 from pathlib import Path
 import threading
@@ -3551,6 +3552,16 @@ def test_agent_bubbles_follow_event_log_sequence(wx_app):
         ]
 
         assert bubble_order[: len(timeline_order)] == timeline_order
+
+        step_labels: list[int] = []
+        for bubble in panel_bubbles:
+            header = bubble_header_text(bubble)
+            match = re.search(r"Step\s+(\d+)", header)
+            if match:
+                step_labels.append(int(match.group(1)))
+
+        assert len(step_labels) >= len(llm_steps), "step bubbles should match llm steps"
+        assert step_labels[: len(llm_steps)] == sorted(step_labels[: len(llm_steps)])
     finally:
         if panel is not None:
             panel.Destroy()
@@ -3563,22 +3574,27 @@ def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
     frame = wx.Frame(None)
     panel = None
     try:
+        min_steps = 10
         tool_results: list[ToolResultSnapshot] = []
         timeline_entries: list[AgentTimelineEntry] = []
         llm_steps: list[LlmStep] = []
         events: list[AgentEvent] = []
 
-        for index in range(5):
-            llm_timestamp = f"2025-01-01T12:00:{index:02d}+00:00"
-            tool_timestamp = f"2025-01-01T12:00:{index + 1:02d}+00:00"
-            seq = index * 2
-            response_text = f"Step {index + 1} response"
+        for step_index in range(1, min_steps + 1):
+            llm_timestamp = f"2025-01-01T12:00:{step_index:02d}+00:00"
+            tool_timestamp = f"2025-01-01T12:00:{step_index + 1:02d}+00:00"
+            seq = (step_index - 1) * 2
+            response_text = f"Step {step_index} response"
+            reasoning_text = f"Reasoning for step {step_index}"
             llm_steps.append(
                 LlmStep(
-                    index=index,
+                    index=step_index,
                     occurred_at=llm_timestamp,
                     request=(),
-                    response={"content": response_text},
+                    response={
+                        "content": response_text,
+                        "reasoning": [{"type": "analysis", "text": reasoning_text}],
+                    },
                 )
             )
             events.append(
@@ -3586,13 +3602,16 @@ def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
                     kind="llm_step",
                     occurred_at=llm_timestamp,
                     payload={
-                        "index": index,
+                        "index": step_index,
                         "request": (),
-                        "response": {"content": response_text},
+                        "response": {
+                            "content": response_text,
+                            "reasoning": [{"type": "analysis", "text": reasoning_text}],
+                        },
                     },
                 )
             )
-            call_id = f"call-{index + 1}"
+            call_id = f"call-{step_index}"
             events.append(
                 AgentEvent(
                     kind="tool_completed",
@@ -3603,7 +3622,7 @@ def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
             tool_results.append(
                 ToolResultSnapshot(
                     call_id=call_id,
-                    tool_name=f"tool-{index + 1}",
+                    tool_name=f"tool-{step_index}",
                     status="succeeded",
                     sequence=seq + 1,
                     started_at=llm_timestamp,
@@ -3615,7 +3634,7 @@ def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
                     kind="llm_step",
                     sequence=seq,
                     occurred_at=llm_timestamp,
-                    step_index=index,
+                    step_index=step_index,
                 )
             )
             timeline_entries.append(
@@ -3712,6 +3731,235 @@ def test_agent_bubbles_follow_long_timeline_sequence(wx_app):
         ]
 
         assert bubble_order[: len(timeline_order)] == timeline_order
+
+        reasoning_steps: dict[int, list[int]] = {}
+        agent_steps: dict[int, list[int]] = {}
+        tool_steps: dict[int, list[int]] = {}
+
+        current_step: int | None = None
+        for idx, bubble in enumerate(panel_bubbles):
+            header = bubble_header_text(bubble)
+            match = re.search(r"step\s*(\d+)", header, re.IGNORECASE)
+            if match is None:
+                if "Tool" in header and current_step is not None:
+                    tool_steps.setdefault(current_step, []).append(idx)
+                continue
+            step_idx = int(match.group(1))
+            current_step = step_idx
+            if "Model reasoning" in header:
+                reasoning_steps.setdefault(step_idx, []).append(idx)
+            elif "Tool" in header:
+                tool_steps.setdefault(step_idx, []).append(idx)
+            elif "Agent" in header:
+                agent_steps.setdefault(step_idx, []).append(idx)
+
+        expected_steps = set(range(1, min_steps + 1))
+        assert expected_steps <= reasoning_steps.keys()
+        assert expected_steps <= agent_steps.keys()
+        assert expected_steps <= tool_steps.keys()
+
+        for step_idx in sorted(expected_steps):
+            reasoning_indices = reasoning_steps[step_idx]
+            agent_indices = agent_steps[step_idx]
+            tool_indices = tool_steps[step_idx]
+            assert any(
+                f"Reasoning for step {step_idx}" in bubble_body_text(panel_bubbles[i])
+                for i in reasoning_indices
+            )
+            assert any(
+                f"Step {step_idx} response" in bubble_body_text(panel_bubbles[i])
+                for i in agent_indices
+            )
+            assert any(
+                f"tool-{step_idx}" in bubble_header_text(panel_bubbles[i])
+                or f"tool-{step_idx}" in bubble_body_text(panel_bubbles[i])
+                for i in tool_indices
+            )
+            assert min(reasoning_indices) < min(agent_indices) < min(tool_indices)
+    finally:
+        if panel is not None:
+            panel.Destroy()
+        frame.Destroy()
+
+
+def test_agent_bubbles_recover_missing_timeline_order(wx_app):
+    wx = pytest.importorskip("wx")
+
+    frame = wx.Frame(None)
+    panel = None
+    try:
+        payload = {
+            "ok": True,
+            "status": "succeeded",
+            "result_text": "Final synthesis",
+            "events": {
+                "events": [
+                    {
+                        "kind": "llm_step",
+                        "sequence": 0,
+                        "occurred_at": "2025-01-01T12:00:01+00:00",
+                        "payload": {
+                            "index": 1,
+                            "response": {"content": "Interim answer one"},
+                        },
+                    },
+                    {
+                        "kind": "tool_completed",
+                        "sequence": 1,
+                        "occurred_at": "2025-01-01T12:00:02+00:00",
+                        "payload": {"call_id": "call-1", "status": "succeeded"},
+                    },
+                    {
+                        "kind": "llm_step",
+                        "sequence": 2,
+                        "occurred_at": "2025-01-01T12:00:03+00:00",
+                        "payload": {
+                            "index": 2,
+                            "response": {"content": "Interim answer two"},
+                        },
+                    },
+                    {
+                        "kind": "tool_completed",
+                        "sequence": 3,
+                        "occurred_at": "2025-01-01T12:00:04+00:00",
+                        "payload": {"call_id": "call-2", "status": "succeeded"},
+                    },
+                    {
+                        "kind": "agent_finished",
+                        "sequence": 4,
+                        "occurred_at": "2025-01-01T12:00:05+00:00",
+                        "payload": {},
+                    },
+                ]
+            },
+            "tool_results": [
+                {
+                    "call_id": "call-1",
+                    "tool_name": "reader",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T12:00:01+00:00",
+                    "completed_at": "2025-01-01T12:00:02+00:00",
+                },
+                {
+                    "call_id": "call-2",
+                    "tool_name": "analyzer",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T12:00:03+00:00",
+                    "completed_at": "2025-01-01T12:00:04+00:00",
+                },
+            ],
+            "llm_trace": {
+                "steps": [
+                    {
+                        "index": 1,
+                        "occurred_at": "2025-01-01T12:00:01+00:00",
+                        "response": {
+                            "content": "Interim answer one",
+                            "reasoning": [{"type": "analysis", "text": "Step 1 reasoning"}],
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "name": "reader",
+                                    "arguments": {},
+                                }
+                            ],
+                        },
+                    },
+                    {
+                        "index": 2,
+                        "occurred_at": "2025-01-01T12:00:03+00:00",
+                        "response": {
+                            "content": "Interim answer two",
+                            "reasoning": [{"type": "analysis", "text": "Step 2 reasoning"}],
+                            "tool_calls": [
+                                {
+                                    "id": "call-2",
+                                    "name": "analyzer",
+                                    "arguments": {},
+                                }
+                            ],
+                        },
+                    },
+                ]
+            },
+        }
+
+        entry = ChatEntry(
+            prompt="Read requirement",
+            response="Final synthesis",
+            tokens=0,
+            display_response="Final synthesis",
+            prompt_at="2025-01-01T12:00:00+00:00",
+            response_at="2025-01-01T12:00:10+00:00",
+            raw_result=payload,
+        )
+        conversation = ChatConversation(
+            conversation_id="missing-timeline",
+            title=None,
+            created_at=entry.prompt_at,
+            updated_at=entry.response_at,
+        )
+        conversation.replace_entries([entry])
+        timeline = build_conversation_timeline(conversation)
+        panel = render_turn_card(
+            frame,
+            conversation=conversation,
+            entry=timeline.entries[0],
+            layout_hints={},
+            on_layout_hint=None,
+            on_regenerate=None,
+            regenerate_enabled=True,
+        )
+        if frame.GetSizer() is None:
+            frame.SetSizer(wx.BoxSizer(wx.VERTICAL))
+        frame.GetSizer().Add(panel, 1, wx.EXPAND)
+        wx.GetApp().Yield()
+
+        agent_bubble = next(
+            (
+                bubble
+                for bubble in collect_message_bubbles(panel)
+                if "Agent" in bubble_header_text(bubble)
+            ),
+            None,
+        )
+        assert agent_bubble is not None, "agent bubble should be present"
+
+        agent_panel = next(
+            (
+                child
+                for child in panel.GetChildren()
+                if isinstance(child, MessageSegmentPanel)
+                and agent_bubble in collect_message_bubbles(child)
+            ),
+            None,
+        )
+        assert agent_panel is not None, "agent segment missing"
+
+        panel_bubbles = collect_message_bubbles(agent_panel)
+        bubble_order = [
+            "tool" if "Tool" in bubble_header_text(bubble) else "response"
+            for bubble in panel_bubbles
+            if "Tool" in bubble_header_text(bubble)
+            or "Agent" in bubble_header_text(bubble)
+        ]
+
+        assert bubble_order[:5] == [
+            "response",
+            "tool",
+            "response",
+            "tool",
+            "response",
+        ]
+
+        transcript = compose_transcript_text(conversation, timeline=timeline)
+        first_response = transcript.index("Interim answer one")
+        first_tool = transcript.index("Agent: tool call 1: reader — completed")
+        second_response = transcript.index("Interim answer two")
+        second_tool = transcript.index("Agent: tool call 2: analyzer — completed")
+        final_response = transcript.index("Final synthesis")
+
+        assert first_response < first_tool < second_response < second_tool < final_response
     finally:
         if panel is not None:
             panel.Destroy()

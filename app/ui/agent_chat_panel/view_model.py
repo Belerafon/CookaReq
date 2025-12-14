@@ -22,6 +22,7 @@ from ...agent.timeline_utils import (
     assess_timeline_integrity,
     timeline_checksum,
 )
+from ...agent.run_contract import build_agent_timeline
 from ..text import normalize_for_display
 from ...util.time import utc_now_iso
 from .history_utils import (
@@ -511,6 +512,7 @@ def _resolve_agent_timeline(
 
     source: Literal["payload", "missing"] = "missing"
     timeline_entries: tuple[AgentTimelineEntry, ...] = ()
+    timeline_status = integrity.status
 
     if payload is not None and payload.timeline and integrity.status == "valid":
         timeline_entries = tuple(payload.timeline)
@@ -518,9 +520,26 @@ def _resolve_agent_timeline(
     elif payload is not None and payload.timeline:
         source = "payload"
 
+    if not timeline_entries:
+        reconstructed = build_agent_timeline(
+            event_log,
+            tool_results=tool_snapshots,
+            llm_trace=llm_trace,
+        )
+        if reconstructed:
+            timeline_entries = tuple(reconstructed)
+            timeline_integrity = assess_timeline_integrity(
+                timeline_entries,
+                declared_checksum=payload.timeline_checksum
+                if payload is not None
+                else entry.timeline_checksum,
+            )
+            timeline_status = timeline_integrity.status
+            source = "payload"
+
     cache["agent_timeline_entries_fingerprint"] = fingerprint
-    cache["agent_timeline_entries"] = (timeline_entries, source, integrity.status)
-    return timeline_entries, source, integrity.status
+    cache["agent_timeline_entries"] = (timeline_entries, source, timeline_status)
+    return timeline_entries, source, timeline_status
 
 
 def _agent_timeline_fingerprint_for_entry(entry: ChatEntry) -> tuple[Any, ...]:

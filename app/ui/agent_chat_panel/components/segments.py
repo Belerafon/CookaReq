@@ -632,11 +632,29 @@ class MessageSegmentPanel(wx.Panel):
 
         rendered: list[wx.Window] = []
         timestamp_info = turn.timestamp if turn is not None else None
+        responses_by_step: dict[int, AgentResponse] = {}
+        if turn is not None:
+            for response in turn.streamed_responses:
+                if response.step_index is not None:
+                    responses_by_step.setdefault(response.step_index, response)
+            if turn.final_response is not None:
+                if turn.final_response.step_index is not None:
+                    responses_by_step.setdefault(
+                        turn.final_response.step_index, turn.final_response
+                    )
         if turn is not None:
             shown_reasoning_steps: set[int] = set()
             if turn.reasoning and not turn.reasoning_by_step:
                 reasoning_section = self._create_reasoning_section(
-                    container, payload, turn.reasoning
+                    container,
+                    payload,
+                    turn.reasoning,
+                    step_index=(
+                        turn.final_response.step_index
+                        if turn.final_response is not None
+                        else None
+                    ),
+                    timestamp=timestamp_info,
                 )
                 if reasoning_section is not None:
                     rendered.append(reasoning_section)
@@ -654,6 +672,8 @@ class MessageSegmentPanel(wx.Panel):
                                     index=step_index
                                 ),
                                 name_suffix=f"step-{step_index}",
+                                step_index=step_index,
+                                timestamp=event.response.timestamp,
                             )
                             if reasoning_section is not None:
                                 rendered.append(reasoning_section)
@@ -684,6 +704,12 @@ class MessageSegmentPanel(wx.Panel):
                             index=step_index
                         ),
                         name_suffix=f"step-{step_index}",
+                        step_index=step_index,
+                        timestamp=(
+                            responses_by_step.get(step_index).timestamp
+                            if step_index in responses_by_step
+                            else timestamp_info
+                        ),
                     )
                     if reasoning_section is not None:
                         rendered.append(reasoning_section)
@@ -758,7 +784,9 @@ class MessageSegmentPanel(wx.Panel):
         if not text.strip():
             return None
 
-        timestamp_label = self._format_timestamp(details.timestamp) or None
+        timestamp_label = self._compose_metadata(
+            details.step_index, details.timestamp
+        )
         bubble = MessageBubble(
             parent,
             role_label="Tool",
@@ -858,21 +886,9 @@ class MessageSegmentPanel(wx.Panel):
         if not text and not response.is_final:
             return None
 
-        labels: list[str] = []
-        if response.step_index is not None and not response.is_final:
-            labels.append(_("Step {index}").format(index=response.step_index))
-
-        own_timestamp = self._format_timestamp(response.timestamp)
-        if own_timestamp:
-            labels.append(own_timestamp)
-        else:
-            fallback = self._format_timestamp(turn_timestamp)
-            if fallback:
-                labels.append(fallback)
-            elif turn_timestamp is not None and turn_timestamp.missing:
-                labels.append(_("Timestamp unavailable"))
-
-        timestamp_label = " • ".join(label for label in labels if label)
+        timestamp_label = self._compose_metadata(
+            response.step_index, response.timestamp, turn_timestamp
+        )
 
         bubble = MessageBubble(
             parent,
@@ -896,6 +912,8 @@ class MessageSegmentPanel(wx.Panel):
         *,
         label: str | None = None,
         name_suffix: str | None = None,
+        step_index: int | None = None,
+        timestamp: TimestampInfo | None = None,
     ) -> MessageBubble | None:
         text = _format_reasoning_segments(reasoning)
         if not text:
@@ -920,7 +938,7 @@ class MessageSegmentPanel(wx.Panel):
         bubble = MessageBubble(
             parent,
             role_label=label or _("Model reasoning"),
-            timestamp="",
+            timestamp=self._compose_metadata(step_index, timestamp),
             text=text,
             align="left",
             allow_selection=True,
@@ -1171,6 +1189,21 @@ class MessageSegmentPanel(wx.Panel):
         if timestamp.missing:
             return _("Timestamp unavailable")
         return ""
+
+    # ------------------------------------------------------------------
+    @classmethod
+    def _compose_metadata(
+        cls, step_index: int | None, *timestamps: TimestampInfo | None
+    ) -> str:
+        labels: list[str] = []
+        if step_index is not None:
+            labels.append(_("Step {index}").format(index=step_index))
+        for timestamp in timestamps:
+            label = cls._format_timestamp(timestamp)
+            if label:
+                labels.append(label)
+                break
+        return " • ".join(labels)
 
     # ------------------------------------------------------------------
     def _on_regenerate_clicked(self, _event: wx.CommandEvent) -> None:

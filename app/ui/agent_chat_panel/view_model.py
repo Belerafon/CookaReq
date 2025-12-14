@@ -104,6 +104,7 @@ class ToolCallDetails:
     call_identifier: str | None
     raw_data: Any | None
     timestamp: TimestampInfo
+    step_index: int | None = None
     llm_request: dict[str, Any] | None = None
 
 
@@ -951,6 +952,14 @@ def _build_tool_calls(
             raw_data = raw_data_safe
 
         request_payload = _tool_request_payload(tool_requests.get(snapshot.call_id))
+        step_index_value: int | None = None
+        if request_payload is not None:
+            step_index_value = request_payload.get("step_index")
+            if not isinstance(step_index_value, int):
+                try:
+                    step_index_value = int(step_index_value)
+                except (TypeError, ValueError):
+                    step_index_value = None
         raw_map: dict[str, Any] | None = None
         if isinstance(raw_data, Mapping):
             raw_map = dict(raw_data)
@@ -1018,6 +1027,7 @@ def _build_tool_calls(
                 call_identifier=identifier,
                 raw_data=raw_data,
                 timestamp=timestamp,
+                step_index=step_index_value,
                 llm_request=request_payload,
             )
         )
@@ -1185,6 +1195,8 @@ def _build_agent_events(
                 tool_call = tools_by_id.get(entry.call_id or "")
                 if tool_call is None:
                     continue
+                if entry.step_index is not None:
+                    tool_call.step_index = entry.step_index
                 tool_call.timestamp = _timestamp_with_fallback(
                     tool_call.timestamp, occurred_at=occurred_at, source="timeline"
                 )

@@ -737,6 +737,7 @@ def _build_agent_turn(
             final_response,
             tool_calls,
             timeline=timeline_entries,
+            timeline_status=timeline_status,
         )
         resolved_timestamp = _resolve_turn_timestamp(
             final_response.timestamp,
@@ -754,6 +755,26 @@ def _build_agent_turn(
             default_messages.extend(dict(message) for message in entry.context_messages)
         default_messages.append({"role": "user", "content": entry.prompt})
         llm_request = LlmRequestSnapshot(messages=tuple(default_messages), sequence=None)
+
+    ordered_events: list[AgentTimelineEvent] = []
+    for index, event in enumerate(
+        sorted(
+            events,
+            key=lambda ev: (
+                ev.timestamp.occurred_at.isoformat()
+                if ev.timestamp.occurred_at is not None
+                else "",
+                ev.timestamp.raw or "",
+                0 if ev.kind == "response" else 1,
+                ev.sequence,
+            ),
+        )
+    ):
+        event.order_index = index
+        event.sequence = index
+        ordered_events.append(event)
+
+    events = tuple(ordered_events)
 
     has_content = bool(
         final_response
@@ -1252,7 +1273,7 @@ def _build_agent_events(
             return ("", info.raw)
         return ("", "")
 
-    ordered_events: list[AgentTimelineEvent] = []
+    combined_events: list[tuple[tuple[Any, ...], AgentTimelineEvent]] = []
     seen_steps: set[int] = set()
 
     response_candidates: list[AgentResponse] = list(responses)
@@ -1265,7 +1286,7 @@ def _build_agent_events(
             resp.step_index is None,
             resp.step_index if resp.step_index is not None else 0,
             _sort_key_for_timestamp(resp.timestamp),
-        )
+        ),
     )
     final_responses = [resp for resp in response_candidates if resp.is_final]
     final_responses.sort(
@@ -1273,10 +1294,13 @@ def _build_agent_events(
             resp.step_index is None,
             resp.step_index if resp.step_index is not None else 0,
             _sort_key_for_timestamp(resp.timestamp),
-        )
+        ),
     )
 
-    sequence = 0
+    def _event_key(timestamp: TimestampInfo, kind_order: int, seq_hint: int) -> tuple[Any, ...]:
+        ts_key = _sort_key_for_timestamp(timestamp)
+        return (ts_key[0], ts_key[1], kind_order, seq_hint)
+
     for response in primary_responses + final_responses:
         if (
             not response.is_final
@@ -1286,16 +1310,22 @@ def _build_agent_events(
             continue
         if response.step_index is not None:
             seen_steps.add(response.step_index)
-        ordered_events.append(
-            AgentTimelineEvent(
-                kind="response",
-                timestamp=response.timestamp,
-                order_index=sequence,
-                sequence=sequence,
-                response=response,
+        combined_events.append(
+            (
+                _event_key(
+                    response.timestamp,
+                    0,
+                    response.step_index if response.step_index is not None else -1,
+                ),
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=response.timestamp,
+                    order_index=0,
+                    sequence=0,
+                    response=response,
+                ),
             )
         )
-        sequence += 1
 
     ordered_tools = sorted(
         tool_calls,
@@ -1305,16 +1335,30 @@ def _build_agent_events(
         ),
     )
     for tool_call in ordered_tools:
-        ordered_events.append(
-            AgentTimelineEvent(
-                kind="tool",
-                timestamp=tool_call.timestamp,
-                order_index=sequence,
-                sequence=sequence,
-                tool_call=tool_call,
+        combined_events.append(
+            (
+                _event_key(
+                    tool_call.timestamp,
+                    1,
+                    tool_call.summary.index if tool_call.summary.index is not None else -1,
+                ),
+                AgentTimelineEvent(
+                    kind="tool",
+                    timestamp=tool_call.timestamp,
+                    order_index=0,
+                    sequence=0,
+                    tool_call=tool_call,
+                ),
             )
         )
-        sequence += 1
+
+    combined_events.sort(key=lambda item: item[0])
+
+    ordered_events: list[AgentTimelineEvent] = []
+    for order_index, (_, event) in enumerate(combined_events):
+        event.order_index = order_index
+        event.sequence = order_index
+        ordered_events.append(event)
 
     return tuple(ordered_events)
 

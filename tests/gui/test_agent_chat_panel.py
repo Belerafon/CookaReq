@@ -4096,6 +4096,94 @@ def test_tool_calls_not_stacked_when_event_log_lacks_tool_events(wx_app):
         frame.Destroy()
 
 
+def test_transcript_orders_steps_and_tools_when_timeline_missing(wx_app):
+    wx = pytest.importorskip("wx")
+
+    steps: list[dict[str, Any]] = []
+    tool_results: list[dict[str, Any]] = []
+    for index in range(1, 11):
+        occurred_at = f"2025-01-01T10:00:{index:02d}+00:00"
+        steps.append(
+            {
+                "index": index,
+                "occurred_at": occurred_at,
+                "request": [{"role": "user", "content": f"request {index}"}],
+                "response": {
+                    "content": f"response {index}",
+                    "reasoning": [
+                        {"type": "analysis", "text": f"thought {index}"}
+                    ],
+                    "tool_calls": [
+                        {
+                            "id": f"call-{index}",
+                            "name": "demo_tool",
+                            "arguments": {"step": index},
+                        }
+                    ],
+                },
+            }
+        )
+        tool_results.append(
+            {
+                "call_id": f"call-{index}",
+                "tool_name": "demo_tool",
+                "status": "succeeded",
+                "started_at": occurred_at,
+                "completed_at": occurred_at,
+            }
+        )
+
+    payload = {
+        "ok": True,
+        "status": "succeeded",
+        "result": "final answer",
+        "llm_trace": {"steps": steps},
+        "tool_results": tool_results,
+        "events": [],
+        "timeline": [],
+    }
+
+    conversation, entry_timeline = build_entry_timeline(
+        prompt="multi-step run",
+        response="final answer",
+        prompt_at="2025-01-01T09:59:00+00:00",
+        response_at="2025-01-01T10:02:00+00:00",
+        raw_payload=payload,
+    )
+    conversation.entries[0].timeline_status = "missing"
+    conversation.entries[0]._reset_view_cache()
+
+    timeline = build_conversation_timeline(conversation)
+    transcript = compose_transcript_text(conversation, timeline=timeline)
+
+    positions: list[int] = []
+    for index in range(1, 11):
+        response_label = i18n.gettext("Agent (step {index}):").format(index=index)
+        tool_fragment = f"Agent (step {index}): tool call {index}: demo_tool"
+
+        assert response_label in transcript
+        assert tool_fragment in transcript
+
+        positions.append(transcript.index(response_label))
+        positions.append(transcript.index(tool_fragment))
+
+    assert positions == sorted(positions)
+
+    event_step_sequence: list[int] = []
+    for event in timeline.entries[0].agent_turn.events:
+        if event.kind == "response" and event.response is not None:
+            if event.response.step_index is not None:
+                event_step_sequence.append(event.response.step_index)
+        elif event.kind == "tool" and event.tool_call is not None:
+            if event.tool_call.step_index is not None:
+                event_step_sequence.append(event.tool_call.step_index)
+
+    expected_sequence: list[int] = []
+    for index in range(1, 11):
+        expected_sequence.extend([index, index])
+    assert event_step_sequence[: len(expected_sequence)] == expected_sequence
+
+
 def test_tool_summary_includes_llm_exchange(wx_app):
     wx = pytest.importorskip("wx")
 

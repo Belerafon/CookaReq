@@ -369,13 +369,23 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
                 )
             elif event.kind == "tool" and event.tool_call is not None:
                 summary = event.tool_call.summary
-                label = _(
-                    "Agent: tool call {index}: {tool} — {status}"
-                ).format(
-                    index=summary.index,
-                    tool=summary.tool_name,
-                    status=summary.status,
-                )
+                if event.tool_call.step_index is not None:
+                    label = _(
+                        "Agent (step {step}): tool call {index}: {tool} — {status}"
+                    ).format(
+                        step=event.tool_call.step_index,
+                        index=summary.index,
+                        tool=summary.tool_name,
+                        status=summary.status,
+                    )
+                else:
+                    label = _(
+                        "Agent: tool call {index}: {tool} — {status}"
+                    ).format(
+                        index=summary.index,
+                        tool=summary.tool_name,
+                        status=summary.status,
+                    )
                 bullet_lines = [
                     "• " + normalize_for_display(line)
                     for line in getattr(summary, "bullet_lines", ())
@@ -407,13 +417,23 @@ def _collect_agent_plain_events(entry: TranscriptEntry) -> list[_PlainEvent]:
 
         for detail in turn.tool_calls:
             summary = detail.summary
-            label = _(
-                "Agent: tool call {index}: {tool} — {status}"
-            ).format(
-                index=summary.index,
-                tool=summary.tool_name,
-                status=summary.status,
-            )
+            if detail.step_index is not None:
+                label = _(
+                    "Agent (step {step}): tool call {index}: {tool} — {status}"
+                ).format(
+                    step=detail.step_index,
+                    index=summary.index,
+                    tool=summary.tool_name,
+                    status=summary.status,
+                )
+            else:
+                label = _(
+                    "Agent: tool call {index}: {tool} — {status}"
+                ).format(
+                    index=summary.index,
+                    tool=summary.tool_name,
+                    status=summary.status,
+                )
             bullet_lines = [
                 "• " + normalize_for_display(line)
                 for line in getattr(summary, "bullet_lines", ())

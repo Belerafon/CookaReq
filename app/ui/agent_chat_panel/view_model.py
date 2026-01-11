@@ -757,21 +757,25 @@ def _build_agent_turn(
         llm_request = LlmRequestSnapshot(messages=tuple(default_messages), sequence=None)
 
     ordered_events: list[AgentTimelineEvent] = []
-    for index, event in enumerate(
-        sorted(
-            events,
-            key=lambda ev: (
-                ev.timestamp.occurred_at.isoformat()
-                if ev.timestamp.occurred_at is not None
-                else "",
-                ev.timestamp.raw or "",
-                0 if ev.kind == "response" else 1,
-                ev.sequence,
-            ),
+    preserve_timeline_order = bool(timeline_entries)
+
+    def _event_sort_key(ev: AgentTimelineEvent) -> tuple[Any, ...]:
+        if preserve_timeline_order and ev.sequence is not None:
+            return (0, ev.sequence)
+        return (
+            1,
+            0 if ev.kind == "response" else 1,
+            ev.timestamp.occurred_at.isoformat()
+            if ev.timestamp.occurred_at is not None
+            else "",
+            ev.timestamp.raw or "",
+            ev.sequence,
         )
-    ):
+
+    for index, event in enumerate(sorted(events, key=_event_sort_key)):
         event.order_index = index
-        event.sequence = index
+        if not preserve_timeline_order or event.sequence is None:
+            event.sequence = index
         ordered_events.append(event)
 
     events = tuple(ordered_events)
@@ -1299,7 +1303,7 @@ def _build_agent_events(
 
     def _event_key(timestamp: TimestampInfo, kind_order: int, seq_hint: int) -> tuple[Any, ...]:
         ts_key = _sort_key_for_timestamp(timestamp)
-        return (ts_key[0], ts_key[1], kind_order, seq_hint)
+        return (kind_order, ts_key[0], ts_key[1], seq_hint)
 
     for response in primary_responses + final_responses:
         if (

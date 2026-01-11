@@ -605,8 +605,9 @@ class MainFrameAgentMixin:
         if conditions:
             lines.append(f"Conditions: {conditions}")
         rationale = requirement.rationale.strip()
-        if rationale:
-            lines.append(f"Rationale: {rationale}")
+        lines.append(
+            f"Rationale: {rationale}" if rationale else "Rationale: (empty)"
+        )
         assumptions = requirement.assumptions.strip()
         if assumptions:
             lines.append(f"Assumptions: {assumptions}")

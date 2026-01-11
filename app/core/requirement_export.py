@@ -38,6 +38,10 @@ __all__ = [
 ]
 
 
+SECTION_PLACEHOLDER = "(not provided)"
+REQUIRED_SECTION_LABELS = {"Rationale"}
+
+
 @dataclass(slots=True)
 class RequirementExportLink:
     """Representation of a requirement relationship for export."""
@@ -176,19 +180,20 @@ def render_requirements_markdown(export: RequirementExport, *, title: str | None
             parts.append(f"- **Revision:** {req.revision}")
             parts.append("")
 
-            sections: list[tuple[str, str | None]] = [
-                ("Statement", req.statement),
-                ("Acceptance", req.acceptance or ""),
-                ("Conditions", req.conditions),
-                ("Rationale", req.rationale),
-                ("Assumptions", req.assumptions),
-                ("Notes", req.notes),
+            sections: list[tuple[str, str | None, bool]] = [
+                ("Statement", req.statement, False),
+                ("Acceptance", req.acceptance or "", False),
+                ("Conditions", req.conditions, False),
+                ("Rationale", req.rationale, True),
+                ("Assumptions", req.assumptions, False),
+                ("Notes", req.notes, False),
             ]
-            for label, value in sections:
-                if not value:
+            for label, value, required in sections:
+                if not value and not required:
                     continue
+                content = value if value else SECTION_PLACEHOLDER
                 parts.append(f"**{label}**")
-                parts.extend(_format_markdown_block(value))
+                parts.extend(_format_markdown_block(content))
                 parts.append("")
 
             if view.links:
@@ -285,10 +290,12 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
                 ("Assumptions", req.assumptions),
                 ("Notes", req.notes),
             ):
-                if not value:
+                required = label in REQUIRED_SECTION_LABELS
+                if not value and not required:
                     continue
+                content = value if value else SECTION_PLACEHOLDER
                 parts.append(f"<h4>{_escape_html(label)}</h4>")
-                parts.append(_html_paragraphs(value) or "<p></p>")
+                parts.append(_html_paragraphs(content) or "<p></p>")
 
             if view.links:
                 parts.append("<h4>Related requirements</h4><ul class='links'>")
@@ -440,10 +447,12 @@ def render_requirements_pdf(export: RequirementExport, *, title: str | None = No
                 ("Assumptions", req.assumptions),
                 ("Notes", req.notes),
             ):
-                if not value:
+                required = label in REQUIRED_SECTION_LABELS
+                if not value and not required:
                     continue
+                content = value if value else SECTION_PLACEHOLDER
                 story.append(Paragraph(xml_escape(label), styles["SectionHeading"]))
-                story.append(Paragraph(_pdf_text(value), styles["BodyText"]))
+                story.append(Paragraph(_pdf_text(content), styles["BodyText"]))
 
             if view.links:
                 items = []

@@ -16,11 +16,18 @@ from ...services.requirements import (
     ValidationError,
 )
 from ...core.requirement_import import SequentialIDAllocator, build_requirements
+from ...core.requirement_tabular_export import (
+    render_tabular_delimited,
+    render_tabular_html,
+    render_tabular_txt,
+)
 from ...i18n import _
 from ...log import logger
 from ..controllers import DocumentsController
+from ..export_dialog import ExportFormat, RequirementExportDialog
 from ..import_dialog import RequirementImportDialog
 from ..labels_dialog import LabelsDialog
+from ..requirement_exporter import build_tabular_export
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
@@ -632,6 +639,74 @@ class MainFrameDocumentsMixin:
                 _("Some requirements failed"),
                 wx.ICON_WARNING,
             )
+
+    def on_export_requirements(self: MainFrame, _event: wx.Event) -> None:
+        """Export requirements to a text or HTML file."""
+        if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        doc = self.docs_controller.documents.get(self.current_doc_prefix)
+        if doc is None:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
+
+        requirements = self.model.get_visible()
+        if not requirements:
+            wx.MessageBox(_("No requirements to export."), _("Export"))
+            return
+
+        summary_parts = [doc.prefix]
+        if doc.title.strip():
+            summary_parts.append(doc.title.strip())
+        document_label = " — ".join(summary_parts)
+        default_path = self.current_dir / f"{doc.prefix}_requirements.txt"
+        dlg = RequirementExportDialog(
+            self,
+            available_fields=self.available_fields,
+            selected_fields=self.selected_fields,
+            document_label=document_label,
+            default_path=default_path,
+        )
+        try:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            plan = dlg.get_plan()
+        finally:
+            dlg.Destroy()
+        if plan is None:
+            return
+
+        derived_map = getattr(self.panel, "derived_map", {}) or {}
+        header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"
+        value_style = "raw" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "display"
+        headers, rows = build_tabular_export(
+            requirements,
+            plan.columns,
+            derived_map=derived_map,
+            header_style=header_style,
+            value_style=value_style,
+        )
+        if plan.format == ExportFormat.HTML:
+            title = _("Requirements export — {label}").format(label=document_label)
+            content = render_tabular_html(headers, rows, title=title)
+        elif plan.format == ExportFormat.CSV:
+            content = render_tabular_delimited(headers, rows, delimiter=",")
+        elif plan.format == ExportFormat.TSV:
+            content = render_tabular_delimited(headers, rows, delimiter="\t")
+        else:
+            content = render_tabular_txt(headers, rows)
+
+        try:
+            plan.path.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            logger.exception("Failed to export requirements to %s", plan.path)
+            wx.MessageBox(str(exc), _("Export failed"), wx.ICON_ERROR)
+            return
+
+        wx.MessageBox(
+            _("Exported {count} requirement(s).").format(count=len(requirements)),
+            _("Export completed"),
+        )
 
     def on_manage_labels(self: MainFrame, _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""

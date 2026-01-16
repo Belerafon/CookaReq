@@ -2,7 +2,33 @@
   "attributes": {},
   "labels": {
     "allowFreeform": false,
-    "defs": []
+    "defs": [
+      {
+        "key": "system",
+        "title": "System",
+        "color": "#b2b7c8"
+      },
+      {
+        "key": "software",
+        "title": "Software",
+        "color": "#6f715c"
+      },
+      {
+        "key": "hardware",
+        "title": "Hardware",
+        "color": "#689193"
+      },
+      {
+        "key": "integration",
+        "title": "Integration",
+        "color": "#ca9ebb"
+      },
+      {
+        "key": "test",
+        "title": "Test",
+        "color": "#a498bd"
+      }
+    ]
   },
   "parent": null,
   "title": "Demo Scenario Requirements"

@@ -659,6 +659,7 @@ class MainFrameDocumentsMixin:
         if doc.title.strip():
             summary_parts.append(doc.title.strip())
         document_label = " — ".join(summary_parts)
+        saved_state = self.config.get_export_dialog_state(self.current_dir)
         default_path = self.current_dir / f"{doc.prefix}_requirements.txt"
         dlg = RequirementExportDialog(
             self,
@@ -666,15 +667,18 @@ class MainFrameDocumentsMixin:
             selected_fields=self.selected_fields,
             document_label=document_label,
             default_path=default_path,
+            saved_state=saved_state,
         )
         try:
             if dlg.ShowModal() != wx.ID_OK:
                 return
             plan = dlg.get_plan()
+            dialog_state = dlg.get_state()
         finally:
             dlg.Destroy()
         if plan is None:
             return
+        self.config.set_export_dialog_state(self.current_dir, dialog_state)
 
         derived_map = getattr(self.panel, "derived_map", {}) or {}
         header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"

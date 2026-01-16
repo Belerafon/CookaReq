@@ -62,6 +62,16 @@ class FieldBinding:
     attribute: str
 
 
+@dataclass(frozen=True)
+class ExportDialogState:
+    """Persisted export dialog state for a requirements directory."""
+
+    path: str | None
+    format: str | None
+    columns: list[str]
+    order: list[str]
+
+
 FIELD_BINDINGS: dict[str, FieldBinding] = {
     "list_columns": FieldBinding("ui", "columns"),
     "recent_dirs": FieldBinding("ui", "recent_dirs"),
@@ -438,6 +448,57 @@ class ConfigManager:
         except OSError:
             resolved = candidate
         return str(resolved)
+
+    # ------------------------------------------------------------------
+    # export dialog state
+    def get_export_dialog_state(self, path: Path | str) -> ExportDialogState | None:
+        """Return saved export dialog state for directory *path* if available."""
+        raw = self._raw.get("export_dialog_state")
+        if not isinstance(raw, dict):
+            return None
+        key = self._normalise_directory_key(path)
+        payload = raw.get(key)
+        if not isinstance(payload, dict):
+            return None
+        path_value = payload.get("path")
+        fmt_value = payload.get("format")
+        if not isinstance(path_value, str):
+            path_value = None
+        if not isinstance(fmt_value, str):
+            fmt_value = None
+        columns = payload.get("columns")
+        if not isinstance(columns, list):
+            columns_list: list[str] = []
+        else:
+            columns_list = [str(item) for item in columns if item]
+        order = payload.get("order")
+        if not isinstance(order, list):
+            order_list: list[str] = []
+        else:
+            order_list = [str(item) for item in order if item]
+        return ExportDialogState(
+            path=path_value,
+            format=fmt_value,
+            columns=columns_list,
+            order=order_list,
+        )
+
+    def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
+        """Persist export dialog state for directory *path* and flush."""
+        raw = self._raw.get("export_dialog_state")
+        if isinstance(raw, dict):
+            export_state = dict(raw)
+        else:
+            export_state = {}
+        key = self._normalise_directory_key(path)
+        export_state[key] = {
+            "path": state.path,
+            "format": state.format,
+            "columns": list(state.columns),
+            "order": list(state.order),
+        }
+        self._raw["export_dialog_state"] = export_state
+        self.flush()
 
     # ------------------------------------------------------------------
     # document persistence

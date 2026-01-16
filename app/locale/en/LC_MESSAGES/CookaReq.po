@@ -2505,3 +2505,69 @@ msgstr "{action} {count} requirement(s) to {prefix}."
 
 msgid "{rid}: {error}"
 msgstr "{rid}: {error}"
+
+msgid "&Export Requirements…"
+msgstr "&Export Requirements…"
+
+msgid "Choose at least one column to export."
+msgstr "Choose at least one column to export."
+
+msgid "Clear"
+msgstr "Clear"
+
+msgid "Export"
+msgstr "Export"
+
+msgid "Export blocked"
+msgstr "Export blocked"
+
+msgid "Export completed"
+msgstr "Export completed"
+
+msgid "Export failed"
+msgstr "Export failed"
+
+msgid "Export format"
+msgstr "Export format"
+
+msgid "Export Requirements"
+msgstr "Export Requirements"
+
+msgid "Exported {count} requirement(s)."
+msgstr "Exported {count} requirement(s)."
+
+msgid "HTML (.html)"
+msgstr "HTML (.html)"
+
+msgid "Move Down"
+msgstr "Move Down"
+
+msgid "Move Up"
+msgstr "Move Up"
+
+msgid "No requirements to export."
+msgstr "No requirements to export."
+
+msgid "Plain text (.txt)"
+msgstr "Plain text (.txt)"
+
+msgid "Requirements export — {label}"
+msgstr "Requirements export — {label}"
+
+msgid "Select All"
+msgstr "Select All"
+
+msgid "Select export file"
+msgstr "Select export file"
+
+msgid "Select export file first."
+msgstr "Select export file first."
+
+msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgstr "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+
+msgid "CSV (.csv)"
+msgstr "CSV (.csv)"
+
+msgid "TSV (.tsv)"
+msgstr "TSV (.tsv)"

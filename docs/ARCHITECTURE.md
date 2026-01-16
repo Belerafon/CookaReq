@@ -39,9 +39,11 @@ so you know which modules are involved and which regressions to guard against.
 * **Traceability** — `app/core/trace_matrix.py` builds matrices that map
   requirements to external artefacts. The GUI reuses cached document data to
   avoid expensive reloads.
-* **Import/export** — `requirement_import.py` and `requirement_export.py`
-  convert between external formats and the `Requirement` dataclass while
-  delegating all persistence to the document store.
+* **Import/export** — `requirement_import.py`, `requirement_export.py`, and
+  `requirement_tabular_export.py` convert between external formats and the
+  `Requirement` dataclass while delegating all persistence to the document
+  store. The tabular helper renders the selectable-column TXT/HTML/CSV/TSV
+  exports used by the GUI export dialog.
 
 ## Application services and configuration context
 
@@ -197,7 +199,9 @@ so you know which modules are involved and which regressions to guard against.
   in `app/confirm.py`, `app/ui/error_dialog.py`, `app/ui/settings_dialog.py` and
   related modules. `LabelsDialog` coordinates label edits by capturing rename
   propagation choices and deletion clean-up flags before the controller forwards
-  the plan to `RequirementsService.update_document_labels()`.
+  the plan to `RequirementsService.update_document_labels()`. The export dialog
+  (`app/ui/export_dialog.py`) lets users choose columns and format before
+  rendering tabular output.
 
 ## Cross-cutting infrastructure
 
@@ -358,4 +362,3 @@ so you know which modules are involved and which regressions to guard against.
    work is involved.
 5. After implementing changes, update documentation (`docs/ARCHITECTURE.md`,
    `tests/README.md` when needed) and inspect logs for new warnings.
-

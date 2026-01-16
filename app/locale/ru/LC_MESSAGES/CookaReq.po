@@ -2526,3 +2526,69 @@ msgstr "{action} {count} требование(я) в {prefix}."
 
 msgid "{rid}: {error}"
 msgstr "{rid}: {error}"
+
+msgid "&Export Requirements…"
+msgstr "&Экспорт требований…"
+
+msgid "Choose at least one column to export."
+msgstr "Выберите хотя бы один столбец для экспорта."
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Export"
+msgstr "Экспорт"
+
+msgid "Export blocked"
+msgstr "Экспорт заблокирован"
+
+msgid "Export completed"
+msgstr "Экспорт завершён"
+
+msgid "Export failed"
+msgstr "Экспорт не выполнен"
+
+msgid "Export format"
+msgstr "Формат экспорта"
+
+msgid "Export Requirements"
+msgstr "Экспорт требований"
+
+msgid "Exported {count} requirement(s)."
+msgstr "Экспортировано требований: {count}."
+
+msgid "HTML (.html)"
+msgstr "HTML (.html)"
+
+msgid "Move Down"
+msgstr "Вниз"
+
+msgid "Move Up"
+msgstr "Вверх"
+
+msgid "No requirements to export."
+msgstr "Нет требований для экспорта."
+
+msgid "Plain text (.txt)"
+msgstr "Текст (.txt)"
+
+msgid "Requirements export — {label}"
+msgstr "Экспорт требований — {label}"
+
+msgid "Select All"
+msgstr "Выбрать всё"
+
+msgid "Select export file"
+msgstr "Выберите файл экспорта"
+
+msgid "Select export file first."
+msgstr "Сначала выберите файл экспорта."
+
+msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgstr "Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все файлы|*.*"
+
+msgid "CSV (.csv)"
+msgstr "CSV (.csv)"
+
+msgid "TSV (.tsv)"
+msgstr "TSV (.tsv)"

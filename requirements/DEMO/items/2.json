@@ -5,7 +5,9 @@
   "attachments": [],
   "conditions": "",
   "id": 2,
-  "labels": [],
+  "labels": [
+    "software"
+  ],
   "modified_at": "",
   "notes": "",
   "owner": "",

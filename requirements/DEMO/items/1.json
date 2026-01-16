@@ -5,7 +5,10 @@
   "attachments": [],
   "conditions": "",
   "id": 1,
-  "labels": [],
+  "labels": [
+    "system",
+    "integration"
+  ],
   "modified_at": "",
   "notes": "",
   "owner": "",

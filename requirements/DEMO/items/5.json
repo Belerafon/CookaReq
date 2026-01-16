@@ -5,7 +5,10 @@
   "attachments": [],
   "conditions": "",
   "id": 5,
-  "labels": [],
+  "labels": [
+    "software",
+    "test"
+  ],
   "modified_at": "",
   "notes": "",
   "owner": "",

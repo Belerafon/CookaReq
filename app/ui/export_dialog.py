@@ -8,6 +8,7 @@ from pathlib import Path
 
 import wx
 
+from ..config import ExportDialogState
 from ..i18n import _
 from . import locale
 
@@ -41,22 +42,36 @@ class RequirementExportDialog(wx.Dialog):
         selected_fields: list[str],
         document_label: str | None = None,
         default_path: Path | None = None,
+        saved_state: ExportDialogState | None = None,
     ) -> None:
         title = _("Export Requirements")
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._document_label = document_label or ""
         self._available_fields = self._build_available_fields(available_fields)
-        self._default_selected = self._build_default_selected(selected_fields)
-        self._field_order = self._build_field_order()
+        selection_seed = selected_fields
+        force_title = True
+        if saved_state and saved_state.columns:
+            selection_seed = saved_state.columns
+            force_title = False
+        self._default_selected = self._build_default_selected(selection_seed, force_title=force_title)
+        self._field_order = self._build_field_order(saved_state.order if saved_state else None)
         self._field_labels = {field: locale.field_label(field) for field in self._available_fields}
+        self._saved_format = self._coerce_format(saved_state.format if saved_state else None)
+        self._saved_path = Path(saved_state.path) if saved_state and saved_state.path else None
 
         self._create_controls()
         self._bind_events()
         self._arrange_layout()
-        if default_path:
-            self.file_picker.SetPath(str(default_path))
+        if self._saved_format is not None:
+            self._apply_format(self._saved_format)
+        path = self._saved_path or default_path
+        if path:
+            path_str = str(path)
+            path_str = self._ensure_extension(path_str)
+            self.file_picker.SetPath(path_str)
         self._refresh_checklist()
         self._update_ok_state()
+        self.SetSize((820, 620))
         self.SetMinSize(self.GetSize())
 
     # ------------------------------------------------------------------
@@ -71,8 +86,13 @@ class RequirementExportDialog(wx.Dialog):
             ordered.append(field)
         return ordered
 
-    def _build_default_selected(self, selected_fields: list[str]) -> list[str]:
-        base = ["title", *selected_fields]
+    def _build_default_selected(
+        self,
+        selected_fields: list[str],
+        *,
+        force_title: bool = True,
+    ) -> list[str]:
+        base = ["title", *selected_fields] if force_title else list(selected_fields)
         selected: list[str] = []
         seen: set[str] = set()
         for field in base:
@@ -86,12 +106,35 @@ class RequirementExportDialog(wx.Dialog):
             selected.append(self._available_fields[0])
         return selected
 
-    def _build_field_order(self) -> list[str]:
-        ordered = list(self._default_selected)
+    def _build_field_order(self, initial_order: list[str] | None) -> list[str]:
+        ordered: list[str] = []
+        if initial_order:
+            for field in initial_order:
+                if field in self._available_fields and field not in ordered:
+                    ordered.append(field)
+        if not ordered:
+            ordered = list(self._default_selected)
         for field in self._available_fields:
             if field not in ordered:
                 ordered.append(field)
         return ordered
+
+    def _apply_format(self, export_format: ExportFormat) -> None:
+        selection_map = {
+            ExportFormat.TXT: 0,
+            ExportFormat.HTML: 1,
+            ExportFormat.CSV: 2,
+            ExportFormat.TSV: 3,
+        }
+        self.format_choice.SetSelection(selection_map.get(export_format, 0))
+
+    def _coerce_format(self, value: str | None) -> ExportFormat | None:
+        if not value:
+            return None
+        try:
+            return ExportFormat(value)
+        except ValueError:
+            return None
 
     def _create_controls(self) -> None:
         self.file_picker = wx.FilePickerCtrl(
@@ -294,4 +337,13 @@ class RequirementExportDialog(wx.Dialog):
             path=Path(path),
             format=self._current_format(),
             columns=columns,
+        )
+
+    def get_state(self) -> ExportDialogState:
+        path = self.file_picker.GetPath() or None
+        return ExportDialogState(
+            path=path,
+            format=self._current_format().value,
+            columns=self._checked_fields(),
+            order=list(self._field_order),
         )

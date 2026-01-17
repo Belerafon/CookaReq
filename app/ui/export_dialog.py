@@ -69,10 +69,11 @@ class RequirementExportDialog(wx.Dialog):
             path_str = str(path)
             path_str = self._ensure_extension(path_str)
             self.file_picker.SetPath(path_str)
+        self._refresh_path_display()
         self._refresh_checklist()
         self._update_ok_state()
         self.SetSize((820, 620))
-        self.SetMinSize(self.GetSize())
+        self.SetMinSize((420, 520))
 
     # ------------------------------------------------------------------
     def _build_available_fields(self, available_fields: list[str]) -> list[str]:
@@ -146,6 +147,8 @@ class RequirementExportDialog(wx.Dialog):
             ),
             style=wx.FLP_SAVE | wx.FLP_OVERWRITE_PROMPT,
         )
+        self.path_label = wx.StaticText(self, label=_("Export file path"))
+        self.path_display = wx.TextCtrl(self, style=wx.TE_READONLY)
 
         self.format_choice = wx.RadioBox(
             self,
@@ -201,6 +204,10 @@ class RequirementExportDialog(wx.Dialog):
             main_sizer.Add(doc_text, 0, wx.BOTTOM, 6)
 
         main_sizer.Add(self.file_picker, 0, wx.EXPAND | wx.ALL, 10)
+        path_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        path_sizer.Add(self.path_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        path_sizer.Add(self.path_display, 1, wx.EXPAND)
+        main_sizer.Add(path_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         main_sizer.Add(self.format_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         columns_sizer = wx.StaticBoxSizer(self.columns_box, wx.VERTICAL)
@@ -274,15 +281,21 @@ class RequirementExportDialog(wx.Dialog):
             return str(target.with_suffix(suffix))
         return path
 
+    def _refresh_path_display(self) -> None:
+        path = self.file_picker.GetPath()
+        updated = self._ensure_extension(path)
+        if updated and updated != path:
+            self.file_picker.SetPath(updated)
+            path = updated
+        self.path_display.ChangeValue(path)
+
     # ------------------------------------------------------------------
     def _on_path_changed(self, _event: wx.CommandEvent) -> None:
+        self._refresh_path_display()
         self._update_ok_state()
 
     def _on_format_changed(self, _event: wx.CommandEvent) -> None:
-        current = self.file_picker.GetPath()
-        updated = self._ensure_extension(current)
-        if current and updated != current:
-            self.file_picker.SetPath(updated)
+        self._refresh_path_display()
         self._update_ok_state()
 
     def _on_columns_changed(self, _event: wx.CommandEvent) -> None:

@@ -241,10 +241,12 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
         "<!DOCTYPE html>",
         "<html><head><meta charset='utf-8'>",
         f"<title>{_escape_html(heading)}</title>",
-        "<style>body{font-family:Arial,Helvetica,sans-serif;margin:24px;}",
-        "h1{margin-top:0;}section.document{margin-bottom:32px;}",
+        "<style>body{font-family:Arial,Helvetica,sans-serif;margin:24px;font-size:14px;line-height:1.5;}",
+        "h1{margin-top:0;font-size:24px;}h2{font-size:20px;}h3{font-size:16px;}h4{font-size:14px;margin-bottom:4px;}",
+        "section.document{margin-bottom:32px;}",
         "article.requirement{border:1px solid #ddd;padding:16px;margin-bottom:16px;border-radius:8px;}",
-        "article.requirement h3{margin-top:0;}dl.meta{display:grid;grid-template-columns:120px 1fr;gap:4px;}",
+        "article.requirement h3{margin-top:0;}article.requirement p{margin:0 0 8px;}",
+        "dl.meta{display:grid;grid-template-columns:120px 1fr;gap:4px;margin:0 0 8px;}",
         "dl.meta dt{font-weight:bold;}dl.meta dd{margin:0;}ul.links{margin:8px 0 0 16px;}",
         "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
         "</style>",
@@ -487,4 +489,3 @@ def render_requirements_pdf(export: RequirementExport, *, title: str | None = No
 
     doc.build(story)
     return buffer.getvalue()
-

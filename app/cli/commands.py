@@ -273,11 +273,17 @@ def _write_trace_matrix_csv(out: TextIO, matrix: TraceMatrix) -> None:
 
 
 def _write_trace_matrix_html(out: TextIO, matrix: TraceMatrix) -> None:
-    out.write("<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n")
+    out.write(
+        "<!DOCTYPE html>\n"
+        "<html><head><meta charset='utf-8'>\n"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>\n"
+    )
     out.write(
         "<style>"
-        "table{border-collapse:collapse;}"
-        "th,td{border:1px solid #ccc;padding:4px;text-align:left;}"
+        "html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%;}"
+        "body{font-family:Arial,Helvetica,sans-serif;margin:24px;font-size:0.875rem;line-height:1.4;}"
+        "table{border-collapse:collapse;font-size:inherit;}"
+        "th,td{border:1px solid #ccc;padding:4px;text-align:left;font-size:inherit;}"
         "th{background:#f2f2f2;}"
         ".suspect{background:#fff3cd;} .linked{background:#d1f2d9;}"
         ".summary{margin-top:1em;} .summary dt{font-weight:bold;}"

@@ -240,9 +240,11 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
     parts: list[str] = [
         "<!DOCTYPE html>",
         "<html><head><meta charset='utf-8'>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>",
         f"<title>{_escape_html(heading)}</title>",
-        "<style>body{font-family:Arial,Helvetica,sans-serif;margin:24px;font-size:14px;line-height:1.5;}",
-        "h1{margin-top:0;font-size:24px;}h2{font-size:20px;}h3{font-size:16px;}h4{font-size:14px;margin-bottom:4px;}",
+        "<style>html{font-size:16px;-webkit-text-size-adjust:100%;text-size-adjust:100%;}",
+        "body{font-family:Arial,Helvetica,sans-serif;margin:24px;font-size:0.875rem;line-height:1.5;}",
+        "h1{margin-top:0;font-size:1.5rem;}h2{font-size:1.25rem;}h3{font-size:1rem;}h4{font-size:0.875rem;margin-bottom:4px;}",
         "section.document{margin-bottom:32px;}",
         "article.requirement{border:1px solid #ddd;padding:16px;margin-bottom:16px;border-radius:8px;}",
         "article.requirement h3{margin-top:0;}article.requirement p{margin:0 0 8px;}",

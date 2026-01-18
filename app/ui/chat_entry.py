@@ -461,6 +461,11 @@ class ChatEntry:
         self._sanitize_token_cache()
         self._reset_view_cache()
 
+    def refresh_timeline_metadata(self) -> None:
+        """Recompute timeline status/checksum based on current raw payload."""
+        payload = _parse_agent_run_payload(self.raw_result)
+        self._update_timeline_metadata(payload)
+
     def _reset_view_cache(self) -> None:
         cache = getattr(self, "_view_cache", None)
         if isinstance(cache, dict):

@@ -2565,6 +2565,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.response = response_text
         entry.display_response = display_text
         entry.raw_result = raw_result
+        entry.refresh_timeline_metadata()
         tokens_info = (
             token_info if token_info is not None else TokenCountResult.exact(0)
         )
@@ -3866,4 +3867,3 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is None:
             return []
         return list(conversation.entries)
-

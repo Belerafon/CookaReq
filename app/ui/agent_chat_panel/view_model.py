@@ -762,13 +762,19 @@ def _build_agent_turn(
     def _event_sort_key(ev: AgentTimelineEvent) -> tuple[Any, ...]:
         if preserve_timeline_order and ev.sequence is not None:
             return (0, ev.sequence)
+        timestamp = ev.timestamp
+        if timestamp.occurred_at is not None:
+            ts_key = (False, timestamp.occurred_at.isoformat(), timestamp.raw or "")
+        elif timestamp.raw:
+            ts_key = (False, "", timestamp.raw)
+        else:
+            ts_key = (True, "", "")
         return (
             1,
+            ts_key[0],
+            ts_key[1],
+            ts_key[2],
             0 if ev.kind == "response" else 1,
-            ev.timestamp.occurred_at.isoformat()
-            if ev.timestamp.occurred_at is not None
-            else "",
-            ev.timestamp.raw or "",
             ev.sequence,
         )
 
@@ -1270,12 +1276,12 @@ def _build_agent_events(
                 )
         return tuple(events)
 
-    def _sort_key_for_timestamp(info: TimestampInfo) -> tuple[str, str]:
+    def _sort_key_for_timestamp(info: TimestampInfo) -> tuple[bool, str, str]:
         if info.occurred_at is not None:
-            return (info.occurred_at.isoformat(), info.raw or "")
+            return (False, info.occurred_at.isoformat(), info.raw or "")
         if info.raw:
-            return ("", info.raw)
-        return ("", "")
+            return (False, "", info.raw)
+        return (True, "", "")
 
     combined_events: list[tuple[tuple[Any, ...], AgentTimelineEvent]] = []
     seen_steps: set[int] = set()
@@ -1303,7 +1309,7 @@ def _build_agent_events(
 
     def _event_key(timestamp: TimestampInfo, kind_order: int, seq_hint: int) -> tuple[Any, ...]:
         ts_key = _sort_key_for_timestamp(timestamp)
-        return (kind_order, ts_key[0], ts_key[1], seq_hint)
+        return (ts_key[0], ts_key[1], ts_key[2], kind_order, seq_hint)
 
     for response in primary_responses + final_responses:
         if (

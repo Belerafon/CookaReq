@@ -305,6 +305,26 @@ def _seconds_between(start_iso: str, end_iso: str) -> float | None:
     return total if total >= 0 else None
 
 
+def _timeline_time_key(
+    value: str | None,
+) -> tuple[bool, bool, datetime.datetime, str]:
+    if not value:
+        return (True, True, datetime.datetime.min.replace(tzinfo=datetime.UTC), "")
+    raw = str(value)
+    try:
+        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return (
+            False,
+            True,
+            datetime.datetime.min.replace(tzinfo=datetime.UTC),
+            raw,
+        )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.UTC)
+    return (False, False, parsed, raw)
+
+
 @dataclass(slots=True)
 class AgentTimelineEntry:
     """Ordered event in the canonical agent turn timeline.
@@ -997,8 +1017,8 @@ def build_agent_timeline(
         seen_call_ids.add(call_id)
     def _entry_order_key(
         entry: AgentTimelineEntry, *, prefer_llm_steps: bool
-    ) -> tuple[bool | int, str, bool, int, int, int, str]:
-        time_key = entry.occurred_at or ""
+    ) -> tuple[bool | int, tuple[bool, bool, datetime.datetime, str], bool, int, int, int, str]:
+        time_key = _timeline_time_key(entry.occurred_at)
         kind_rank = (
             0 if entry.kind == "llm_step" else 1 if entry.kind == "tool_call" else 2
         )
@@ -1052,7 +1072,7 @@ def build_agent_timeline(
 
     def _key(
         entry: AgentTimelineEntry,
-    ) -> tuple[bool | int, str, bool, int, int, int, str]:
+    ) -> tuple[bool | int, tuple[bool, bool, datetime.datetime, str], bool, int, int, int, str]:
         return _entry_order_key(entry, prefer_llm_steps=False)
 
     for base_entry in ordered_base:

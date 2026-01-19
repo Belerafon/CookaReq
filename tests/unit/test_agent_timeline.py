@@ -220,6 +220,125 @@ def test_build_agent_timeline_merges_tool_snapshots_without_tool_events() -> Non
     ]
 
 
+def test_build_agent_timeline_handles_invalid_timestamp() -> None:
+    event_log = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:00Z",
+                payload={"index": 1},
+                sequence=0,
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at="2024-01-01T00:00:10Z",
+                payload={"ok": True, "status": "succeeded"},
+                sequence=1,
+            ),
+        ]
+    )
+    snapshots = [
+        ToolResultSnapshot(
+            call_id="call-1",
+            tool_name="alpha",
+            status="succeeded",
+            started_at="not-a-date",
+        )
+    ]
+
+    timeline = build_agent_timeline(event_log, tool_results=snapshots)
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "agent_finished",
+        "tool_call",
+    ]
+
+
+def test_build_agent_timeline_handles_missing_timestamp() -> None:
+    event_log = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:00Z",
+                payload={"index": 1},
+                sequence=0,
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at="2024-01-01T00:00:10Z",
+                payload={"ok": True, "status": "succeeded"},
+                sequence=1,
+            ),
+        ]
+    )
+    snapshots = [
+        ToolResultSnapshot(
+            call_id="call-1",
+            tool_name="alpha",
+            status="succeeded",
+        )
+    ]
+
+    timeline = build_agent_timeline(event_log, tool_results=snapshots)
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "agent_finished",
+        "tool_call",
+    ]
+
+
+def test_build_agent_timeline_breaks_ties_by_kind() -> None:
+    event_log = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:00Z",
+                payload={"index": 1},
+                sequence=0,
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at="2024-01-01T00:00:05Z",
+                payload={"ok": True, "status": "succeeded"},
+                sequence=1,
+            ),
+        ]
+    )
+    snapshots = [
+        ToolResultSnapshot(
+            call_id="call-1",
+            tool_name="alpha",
+            status="succeeded",
+            started_at="2024-01-01T00:00:00Z",
+        )
+    ]
+    llm_trace = LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2024-01-01T00:00:00Z",
+                request=(),
+                response={
+                    "content": "step1",
+                    "tool_calls": [{"id": "call-1", "name": "alpha", "arguments": {}}],
+                },
+            )
+        ]
+    )
+
+    timeline = build_agent_timeline(
+        event_log, tool_results=snapshots, llm_trace=llm_trace
+    )
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "tool_call",
+        "agent_finished",
+    ]
+
+
 def test_build_agent_timeline_normalizes_sequence_contiguity() -> None:
     event_log = AgentEventLog(
         events=[

@@ -174,6 +174,8 @@ so you know which modules are involved and which regressions to guard against.
     эвристиками. Если `timeline` отсутствует, слой UI пересобирает его из
     согласованных `event_log`, `llm_trace` и `tool_results`, сохраняя порядок
     `event_log` и аккуратно вставляя недостающие LLM-степы/вызовы инструментов.
+    Сортировка по времени нормализуется и устойчиво обрабатывает некорректные
+    метки, чтобы восстановление не падало на неожиданных форматах.
     Контроллеры и тестовые хелперы обязаны подавать уже
     канонизированный `AgentRunPayload` (согласованный `event_log`,
     `llm_trace` и `tool_results`), используя `build_agent_timeline` для

@@ -69,9 +69,9 @@ def test_build_agent_timeline_uses_event_order_and_snapshots() -> None:
     )
 
     assert [(entry.kind, entry.sequence) for entry in timeline] == [
-        ("llm_step", 5),
-        ("tool_call", 6),
-        ("agent_finished", 10),
+        ("llm_step", 0),
+        ("tool_call", 1),
+        ("agent_finished", 2),
     ]
     assert timeline[1].call_id == "tool-1"
     assert timeline[1].status == "succeeded"
@@ -129,16 +129,129 @@ def test_agent_run_payload_rebuilds_timeline_when_missing() -> None:
     parsed = AgentRunPayload.from_dict(raw)
 
     assert [entry.kind for entry in parsed.timeline] == [
-        "tool_call",
         "llm_step",
+        "tool_call",
         "tool_call",
     ]
     assert [entry.call_id for entry in parsed.timeline if entry.call_id] == [
         "tool-1",
         "tool-2",
     ]
-    assert parsed.timeline[0].sequence == 0
-    assert parsed.timeline[-1].sequence > parsed.timeline[0].sequence
+    assert [entry.sequence for entry in parsed.timeline] == [0, 1, 2]
+
+
+def test_build_agent_timeline_merges_tool_snapshots_without_tool_events() -> None:
+    event_log = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:00Z",
+                payload={"index": 1},
+                sequence=0,
+            ),
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:05Z",
+                payload={"index": 2},
+                sequence=1,
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at="2024-01-01T00:00:10Z",
+                payload={"ok": True, "status": "succeeded"},
+                sequence=2,
+            ),
+        ]
+    )
+    snapshots = [
+        ToolResultSnapshot(
+            call_id="call-1",
+            tool_name="alpha",
+            status="succeeded",
+            started_at="2024-01-01T00:00:02Z",
+            completed_at="2024-01-01T00:00:03Z",
+        ),
+        ToolResultSnapshot(
+            call_id="call-2",
+            tool_name="beta",
+            status="succeeded",
+            started_at="2024-01-01T00:00:07Z",
+            completed_at="2024-01-01T00:00:08Z",
+        ),
+    ]
+    llm_trace = LlmTrace(
+        steps=[
+            LlmStep(
+                index=1,
+                occurred_at="2024-01-01T00:00:00Z",
+                request=(),
+                response={
+                    "content": "step1",
+                    "tool_calls": [{"id": "call-1", "name": "alpha", "arguments": {}}],
+                },
+            ),
+            LlmStep(
+                index=2,
+                occurred_at="2024-01-01T00:00:05Z",
+                request=(),
+                response={
+                    "content": "step2",
+                    "tool_calls": [{"id": "call-2", "name": "beta", "arguments": {}}],
+                },
+            ),
+        ]
+    )
+
+    timeline = build_agent_timeline(
+        event_log, tool_results=snapshots, llm_trace=llm_trace
+    )
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "tool_call",
+        "llm_step",
+        "tool_call",
+        "agent_finished",
+    ]
+    assert [entry.sequence for entry in timeline] == list(range(5))
+    assert [entry.step_index for entry in timeline if entry.kind == "tool_call"] == [
+        1,
+        2,
+    ]
+
+
+def test_build_agent_timeline_normalizes_sequence_contiguity() -> None:
+    event_log = AgentEventLog(
+        events=[
+            AgentEvent(
+                kind="llm_step",
+                occurred_at="2024-01-01T00:00:00Z",
+                payload={"index": 1},
+                sequence=10,
+            ),
+            AgentEvent(
+                kind="tool_started",
+                occurred_at="2024-01-01T00:00:01Z",
+                payload={"call_id": "tool-1", "tool_name": "demo"},
+                sequence=20,
+            ),
+            AgentEvent(
+                kind="agent_finished",
+                occurred_at="2024-01-01T00:00:02Z",
+                payload={"ok": True, "status": "succeeded"},
+                sequence=30,
+            ),
+        ]
+    )
+
+    timeline = build_agent_timeline(event_log)
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "tool_call",
+        "agent_finished",
+    ]
+    assert [entry.sequence for entry in timeline] == [0, 1, 2]
 
 
 def test_timeline_checksum_is_order_sensitive_and_stable() -> None:

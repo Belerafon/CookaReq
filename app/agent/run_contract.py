@@ -996,11 +996,17 @@ def build_agent_timeline(
         )
         seen_call_ids.add(call_id)
     def _entry_order_key(
+<<<< codex/investigate-chat-message-ordering-bug-7ax99a
+        entry: AgentTimelineEntry,
+=======
         entry: AgentTimelineEntry, *, prefer_llm_steps: bool
+>>>> main
     ) -> tuple[bool | int, str, bool, int, int, int, str]:
         time_key = entry.occurred_at or ""
         kind_rank = 0 if entry.kind == "llm_step" else 1 if entry.kind == "tool_call" else 2
         sequence_key = entry.sequence if entry.sequence is not None else 0
+<<< codex/investigate-chat-message-ordering-bug-7ax99a
+===
         if prefer_llm_steps:
             return (
                 kind_rank,
@@ -1011,6 +1017,7 @@ def build_agent_timeline(
                 sequence_key,
                 entry.call_id or "",
             )
+>>>> main
         return (
             entry.occurred_at is None,
             time_key,
@@ -1027,6 +1034,17 @@ def build_agent_timeline(
         for sequence, entry in enumerate(entries):
             entry.sequence = sequence
         return entries
+<<< codex/investigate-chat-message-ordering-bug-7ax99a
+
+    ordered_base = sorted(base_entries, key=lambda entry: entry.sequence)
+    if not extra_entries:
+        timeline.extend(ordered_base)
+        return _normalize_sequence(timeline)
+
+    merged_entries = ordered_base + extra_entries
+    ordered_all = sorted(merged_entries, key=_entry_order_key)
+    return _normalize_sequence(ordered_all)
+====
 
     if not base_entries:
         ordered_extras = sorted(
@@ -1061,6 +1079,7 @@ def build_agent_timeline(
     timeline.extend(ordered_base)
     timeline.extend(ordered_extras)
     return _normalize_sequence(timeline)
+>>> main
 
 
 def build_timeline_debug(

@@ -253,9 +253,9 @@ def tool_messages_from_snapshots(
         return ()
 
     messages: list[dict[str, Any]] = []
-    for snapshot in tool_snapshots_from(snapshots):
+    for index, snapshot in enumerate(tool_snapshots_from(snapshots), start=1):
         payload = snapshot.to_dict()
-        identifier = snapshot.call_id
+        identifier = snapshot.call_id or f"tool:{index}"
         name = snapshot.tool_name
         content = json.dumps(payload, ensure_ascii=False, default=str)
         message: dict[str, Any] = {"role": "tool", "content": content}

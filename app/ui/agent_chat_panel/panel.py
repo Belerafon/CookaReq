@@ -1731,6 +1731,18 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                         raw_result["tool_results"] = tool_payloads
                     else:
                         raw_result.pop("tool_results", None)
+                    if handle.llm_trace_preview:
+                        diagnostic = raw_result.get("diagnostic")
+                        if isinstance(diagnostic, Mapping):
+                            diagnostic_map = dict(diagnostic)
+                        else:
+                            diagnostic_map = {}
+                        diagnostic_map["llm_steps"] = [
+                            dict(step)
+                            for step in handle.llm_trace_preview
+                            if isinstance(step, Mapping)
+                        ]
+                        raw_result["diagnostic"] = history_json_safe(diagnostic_map)
             assistant_text = latest_response or conversation_text
             response_tokens = count_text_tokens(
                 assistant_text,
@@ -2089,7 +2101,14 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         )
 
         if payload is None or not payload.timeline:
-            return ()
+            messages: list[dict[str, Any]] = []
+            response_text = entry.response
+            if response_text:
+                messages.append({"role": "assistant", "content": response_text})
+            tool_messages = AgentChatPanel._clone_tool_messages(entry.tool_messages)
+            if tool_messages:
+                messages.extend(tool_messages)
+            return tuple(messages)
 
         tool_messages = tool_messages_from_snapshots(payload.tool_results)
         final_response_text = entry.response or payload.result_text
@@ -2143,6 +2162,23 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 content_value = assistant_message.get("content")
                 if isinstance(content_value, str):
                     existing_assistant_texts.add(content_value)
+                tool_calls = assistant_message.get("tool_calls")
+                if tool_calls:
+                    for call in tool_calls:
+                        if not isinstance(call, Mapping):
+                            continue
+                        call_id = call.get("id") or call.get("call_id")
+                        if not call_id:
+                            continue
+                        call_id_text = str(call_id)
+                        if call_id_text in used_tools:
+                            continue
+                        queued_messages = tool_messages_by_call.pop(call_id_text, [])
+                        if queued_messages:
+                            ordered_messages.extend(
+                                dict(message) for message in queued_messages
+                            )
+                            used_tools.add(call_id_text)
             elif timeline_entry.kind == "tool_call":
                 call_id = timeline_entry.call_id or ""
                 if call_id in used_tools:
@@ -2565,6 +2601,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry.response = response_text
         entry.display_response = display_text
         entry.raw_result = raw_result
+        entry.refresh_timeline_metadata()
         tokens_info = (
             token_info if token_info is not None else TokenCountResult.exact(0)
         )
@@ -2807,6 +2844,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             ),
             tool_schemas=None,
             diagnostic=diagnostic_sections,
+        )
+        payload = ensure_canonical_agent_payload(
+            payload,
+            tool_snapshots=tool_snapshots,
+            llm_trace_preview=handle.llm_trace_preview,
         )
         raw_result = payload.to_dict()
         if tool_payloads:
@@ -3866,4 +3908,3 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         if conversation is None:
             return []
         return list(conversation.entries)
-

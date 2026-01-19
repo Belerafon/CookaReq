@@ -885,16 +885,31 @@ def build_agent_timeline(
     snapshots_by_call: dict[str, ToolResultSnapshot] = {
         snapshot.call_id: snapshot for snapshot in snapshots if snapshot.call_id
     }
+    tool_step_index: dict[str, int] = {}
+    for step in trace.steps:
+        tool_calls = step.response.get("tool_calls")
+        if not isinstance(tool_calls, Sequence) or isinstance(
+            tool_calls, (str, bytes, bytearray)
+        ):
+            continue
+        for call in tool_calls:
+            if not isinstance(call, Mapping):
+                continue
+            identifier = call.get("id") or call.get("call_id")
+            if identifier is None:
+                continue
+            try:
+                tool_step_index[str(identifier)] = int(step.index)
+            except (TypeError, ValueError):
+                continue
 
     timeline: list[AgentTimelineEntry] = []
+    base_entries: list[AgentTimelineEntry] = []
     seen_step_indexes: set[int] = set()
     seen_call_ids: set[str] = set()
-    max_sequence = -1
 
     for log_index, event in enumerate(events.events):
         sequence = event.sequence if event.sequence is not None else log_index
-        if sequence > max_sequence:
-            max_sequence = sequence
         occurred_at = event.occurred_at
         payload = event.payload if isinstance(event.payload, Mapping) else {}
 
@@ -904,7 +919,7 @@ def build_agent_timeline(
                 continue
             if step_index is not None:
                 seen_step_indexes.add(step_index)
-            timeline.append(
+            base_entries.append(
                 AgentTimelineEntry(
                     kind="llm_step",
                     sequence=sequence,
@@ -926,17 +941,18 @@ def build_agent_timeline(
             seen_call_ids.add(call_id)
             snapshot = snapshots_by_call.get(call_id)
             status = snapshot.status if snapshot is not None else None
-            timeline.append(
+            base_entries.append(
                 AgentTimelineEntry(
                     kind="tool_call",
                     sequence=sequence,
                     occurred_at=occurred_at,
                     call_id=call_id,
                     status=status,
+                    step_index=tool_step_index.get(call_id),
                 )
             )
         elif event.kind == "agent_finished":
-            timeline.append(
+            base_entries.append(
                 AgentTimelineEntry(
                     kind="agent_finished",
                     sequence=sequence,
@@ -944,43 +960,89 @@ def build_agent_timeline(
                 )
             )
 
-    next_sequence = max_sequence + 1 if max_sequence >= 0 else len(timeline)
+    extra_entries: list[AgentTimelineEntry] = []
 
     for step in trace.steps:
         if step.index in seen_step_indexes:
             continue
-        timeline.append(
+        extra_entries.append(
             AgentTimelineEntry(
                 kind="llm_step",
-                sequence=next_sequence,
+                sequence=0,
                 occurred_at=step.occurred_at,
                 step_index=step.index,
             )
         )
         seen_step_indexes.add(step.index)
-        next_sequence += 1
 
-    for snapshot in snapshots:
-        call_id = snapshot.call_id
+    for index, snapshot in enumerate(snapshots, start=1):
+        call_id = snapshot.call_id or f"tool:{index}"
         if call_id in seen_call_ids:
             continue
         occurred_at = (
-            snapshot.completed_at
+            snapshot.started_at
             or snapshot.last_observed_at
-            or snapshot.started_at
+            or snapshot.completed_at
         )
-        timeline.append(
+        extra_entries.append(
             AgentTimelineEntry(
                 kind="tool_call",
-                sequence=next_sequence,
+                sequence=0,
                 occurred_at=occurred_at,
                 call_id=call_id,
                 status=snapshot.status,
+                step_index=tool_step_index.get(call_id),
             )
         )
         seen_call_ids.add(call_id)
+    def _entry_order_key(
+        entry: AgentTimelineEntry, *, prefer_llm_steps: bool
+    ) -> tuple[bool | int, str, bool, int, int, str]:
+        time_key = entry.occurred_at or ""
+        kind_rank = 0 if entry.kind == "llm_step" else 1 if entry.kind == "tool_call" else 2
+        if prefer_llm_steps:
+            return (
+                kind_rank,
+                entry.occurred_at is None,
+                time_key,
+                entry.step_index is None,
+                entry.step_index if entry.step_index is not None else 0,
+                0,
+                entry.call_id or "",
+            )
+        return (
+            entry.occurred_at is None,
+            time_key,
+            entry.step_index is None,
+            entry.step_index if entry.step_index is not None else 0,
+            kind_rank,
+            entry.call_id or "",
+        )
+
+    if not base_entries:
+        ordered_extras = sorted(
+            extra_entries,
+            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=True),
+        )
+        for sequence, entry in enumerate(ordered_extras):
+            entry.sequence = sequence
+            timeline.append(entry)
+        return timeline
+
+    ordered_base = sorted(base_entries, key=lambda entry: entry.sequence)
+    max_sequence = max(entry.sequence for entry in ordered_base if entry.sequence is not None)
+    next_sequence = max_sequence + 1
+
+    ordered_extras = sorted(
+        extra_entries,
+        key=lambda entry: _entry_order_key(entry, prefer_llm_steps=False),
+    )
+    for entry in ordered_extras:
+        entry.sequence = next_sequence
         next_sequence += 1
 
+    timeline.extend(ordered_base)
+    timeline.extend(ordered_extras)
     return timeline
 
 

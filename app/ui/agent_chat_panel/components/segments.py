@@ -663,7 +663,7 @@ class MessageSegmentPanel(wx.Panel):
                     step_index = event.response.step_index
                     if step_index is not None:
                         step_reasoning = turn.reasoning_by_step.get(step_index)
-                        if step_reasoning:
+                        if step_reasoning and step_index not in shown_reasoning_steps:
                             reasoning_section = self._create_reasoning_section(
                                 container,
                                 payload,

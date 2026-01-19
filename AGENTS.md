@@ -4,7 +4,6 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 
 ## General instructions
 
-- Work on the main branch (no new branches).
 - Базовый цикл разработки — `pytest --suite core -q`. Все доступные логические наборы описаны в [`tests/README.md`](tests/README.md); краткую сводку печатает `pytest --list-suites`.
 - GUI-тесты идут под `pytest-xvfb`, так что они запускаются без $DISPLAY. Если `xvfb` нужно отключить, оборачивайте ручные прогоны в `xvfb-run -a`.
 - Для точечной отладки указывайте конкретный файл: `pytest --suite gui-smoke tests/gui/test_list_panel_gui.py -q`. Без подходящего `--suite` файл будет помечен как "deselected" и не выполнится.
@@ -37,4 +36,3 @@ The application follows a layered design:
 - **Requirements storage** is represented by JSON documents in the `requirements/` directory and is served by `doc_store`.
 - **LLM and MCP** components interact with the storage through `LocalAgent` and `MCPClient`.
 - **Builds** are produced by the `build.py` script via PyInstaller.
-

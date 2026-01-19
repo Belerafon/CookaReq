@@ -191,6 +191,8 @@ class AgentRunController:
         if not isinstance(safe_payload_raw, Mapping):
             return None
         record = dict(safe_payload_raw)
+        if not record.get("occurred_at"):
+            record["occurred_at"] = handle.prompt_at or utc_now_iso()
         response_payload = payload.get("response")
         if isinstance(response_payload, Mapping):
             content_value = response_payload.get("content")

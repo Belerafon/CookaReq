@@ -54,7 +54,7 @@ class HistorySynchronizer:
         draft = ChatConversation.new()
         history.conversations.append(draft)
         history.set_active_id(draft.conversation_id)
-        history.prune_empty_conversations(verify_with_store=True)
+        history.prune_empty_conversations(verify_with_store=False)
         self._timeline_cache = ConversationTimelineCache()
         self._lazy_history_cleanup_pending = False
         self.schedule_lazy_history_cleanup()

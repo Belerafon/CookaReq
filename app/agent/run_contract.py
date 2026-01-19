@@ -995,42 +995,54 @@ def build_agent_timeline(
             )
         )
         seen_call_ids.add(call_id)
-    def _entry_order_key(entry: AgentTimelineEntry) -> tuple[bool, str, bool, int, int, str]:
+    def _entry_order_key(
+        entry: AgentTimelineEntry, *, prefer_llm_steps: bool
+    ) -> tuple[bool | int, str, bool, int, int, str]:
         time_key = entry.occurred_at or ""
+        kind_rank = 0 if entry.kind == "llm_step" else 1 if entry.kind == "tool_call" else 2
+        if prefer_llm_steps:
+            return (
+                kind_rank,
+                entry.occurred_at is None,
+                time_key,
+                entry.step_index is None,
+                entry.step_index if entry.step_index is not None else 0,
+                0,
+                entry.call_id or "",
+            )
         return (
             entry.occurred_at is None,
             time_key,
             entry.step_index is None,
             entry.step_index if entry.step_index is not None else 0,
-            0 if entry.kind == "llm_step" else 1,
+            kind_rank,
             entry.call_id or "",
         )
 
     if not base_entries:
-        for sequence, entry in enumerate(sorted(extra_entries, key=_entry_order_key)):
+        ordered_extras = sorted(
+            extra_entries,
+            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=True),
+        )
+        for sequence, entry in enumerate(ordered_extras):
             entry.sequence = sequence
             timeline.append(entry)
         return timeline
 
     ordered_base = sorted(base_entries, key=lambda entry: entry.sequence)
+    max_sequence = max(entry.sequence for entry in ordered_base if entry.sequence is not None)
+    next_sequence = max_sequence + 1
 
-    ordered_timeline: list[AgentTimelineEntry] = list(ordered_base)
-    for extra in sorted(extra_entries, key=_entry_order_key):
-        extra_key = _entry_order_key(extra)
-        inserted = False
-        for idx, existing in enumerate(ordered_timeline):
-            existing_key = _entry_order_key(existing)
-            if extra_key < existing_key:
-                ordered_timeline.insert(idx, extra)
-                inserted = True
-                break
-        if not inserted:
-            ordered_timeline.append(extra)
+    ordered_extras = sorted(
+        extra_entries,
+        key=lambda entry: _entry_order_key(entry, prefer_llm_steps=False),
+    )
+    for entry in ordered_extras:
+        entry.sequence = next_sequence
+        next_sequence += 1
 
-    for sequence, entry in enumerate(ordered_timeline):
-        entry.sequence = sequence
-        timeline.append(entry)
-
+    timeline.extend(ordered_base)
+    timeline.extend(ordered_extras)
     return timeline
 
 

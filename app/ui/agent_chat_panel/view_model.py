@@ -1253,6 +1253,8 @@ def _build_agent_events(
                     )
                 )
                 seen_responses.add(entry.step_index)
+                if response is final_response or response.is_final:
+                    final_added = True
             elif entry.kind == "tool_call":
                 tool_call = tools_by_id.get(entry.call_id or "")
                 if tool_call is None:
@@ -1307,7 +1309,7 @@ def _build_agent_events(
             return (False, "", info.raw)
         return (True, "", "")
 
-    combined_events: list[tuple[tuple[Any, ...], AgentTimelineEvent]] = []
+    response_events: list[AgentTimelineEvent] = []
     seen_steps: set[int] = set()
 
     response_candidates: list[AgentResponse] = list(responses)
@@ -1331,10 +1333,6 @@ def _build_agent_events(
         ),
     )
 
-    def _event_key(timestamp: TimestampInfo, kind_order: int, seq_hint: int) -> tuple[Any, ...]:
-        ts_key = _sort_key_for_timestamp(timestamp)
-        return (ts_key[0], ts_key[1], ts_key[2], kind_order, seq_hint)
-
     for response in primary_responses + final_responses:
         if (
             not response.is_final
@@ -1344,20 +1342,13 @@ def _build_agent_events(
             continue
         if response.step_index is not None:
             seen_steps.add(response.step_index)
-        combined_events.append(
-            (
-                _event_key(
-                    response.timestamp,
-                    0,
-                    response.step_index if response.step_index is not None else -1,
-                ),
-                AgentTimelineEvent(
-                    kind="response",
-                    timestamp=response.timestamp,
-                    order_index=0,
-                    sequence=0,
-                    response=response,
-                ),
+        response_events.append(
+            AgentTimelineEvent(
+                kind="response",
+                timestamp=response.timestamp,
+                order_index=0,
+                sequence=0,
+                response=response,
             )
         )
 
@@ -1368,28 +1359,19 @@ def _build_agent_events(
             call.call_identifier or "",
         ),
     )
-    for tool_call in ordered_tools:
-        combined_events.append(
-            (
-                _event_key(
-                    tool_call.timestamp,
-                    1,
-                    tool_call.summary.index if tool_call.summary.index is not None else -1,
-                ),
-                AgentTimelineEvent(
-                    kind="tool",
-                    timestamp=tool_call.timestamp,
-                    order_index=0,
-                    sequence=0,
-                    tool_call=tool_call,
-                ),
-            )
+    tool_events: list[AgentTimelineEvent] = [
+        AgentTimelineEvent(
+            kind="tool",
+            timestamp=tool_call.timestamp,
+            order_index=0,
+            sequence=0,
+            tool_call=tool_call,
         )
-
-    combined_events.sort(key=lambda item: item[0])
+        for tool_call in ordered_tools
+    ]
 
     ordered_events: list[AgentTimelineEvent] = []
-    for order_index, (_, event) in enumerate(combined_events):
+    for order_index, event in enumerate(response_events + tool_events):
         event.order_index = order_index
         event.sequence = order_index
         ordered_events.append(event)
@@ -1437,12 +1419,21 @@ def agent_turn_event_signature(
 def _timeline_timestamp(
     timeline_entries: Sequence[AgentTimelineEntry],
 ) -> TimestampInfo:
-    for entry in sorted(
-        (item for item in timeline_entries if item.occurred_at),
-        key=lambda item: item.sequence if item.sequence is not None else -1,
-        reverse=True,
-    ):
-        return _build_timestamp(entry.occurred_at, source="timeline")
+    latest_timestamp: TimestampInfo | None = None
+    for entry in timeline_entries:
+        if not entry.occurred_at:
+            continue
+        candidate = _build_timestamp(entry.occurred_at, source="timeline")
+        if candidate.occurred_at is None:
+            continue
+        if (
+            latest_timestamp is None
+            or latest_timestamp.occurred_at is None
+            or candidate.occurred_at > latest_timestamp.occurred_at
+        ):
+            latest_timestamp = candidate
+    if latest_timestamp is not None:
+        return latest_timestamp
     return _build_timestamp(None, source="timeline")
 
 

@@ -5125,6 +5125,7 @@ def test_agent_chat_panel_stop_cancels_generation(tmp_path, wx_app):
         history = panel.history
         assert len(history) == 1
         entry = history[0]
+        assert entry.timeline_status == "valid"
         assert entry.prompt == "stop me"
         assert entry.display_response == _("Generation cancelled")
         assert entry.response == ""

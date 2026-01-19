@@ -463,6 +463,8 @@ class ChatEntry:
 
     def refresh_timeline_metadata(self) -> None:
         """Recompute timeline status/checksum based on current raw payload."""
+        self.timeline_status = "unknown"
+        self.timeline_checksum = None
         payload = _parse_agent_run_payload(self.raw_result)
         self._update_timeline_metadata(payload)
 

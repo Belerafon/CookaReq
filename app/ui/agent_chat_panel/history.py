@@ -235,6 +235,11 @@ class AgentChatHistory:
                 if conv.conversation_id in missing_entries
                 and conv not in removable
             )
+        removable.extend(
+            conv
+            for conv in self._conversations
+            if conv.entries_loaded and not conv.entries and conv not in removable
+        )
 
         if not removable:
             return False
@@ -311,4 +316,3 @@ class AgentChatHistory:
 
 
 __all__ = ["AgentChatHistory"]
-

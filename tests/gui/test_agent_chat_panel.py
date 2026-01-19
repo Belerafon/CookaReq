@@ -3553,6 +3553,7 @@ def test_agent_bubbles_follow_event_log_sequence(wx_app):
 
         assert bubble_order[: len(timeline_order)] == timeline_order
 
+        llm_steps = entry_timeline.agent_turn.streamed_responses
         step_labels: list[int] = []
         for bubble in panel_bubbles:
             header = bubble_header_text(bubble)
@@ -3954,9 +3955,9 @@ def test_agent_bubbles_recover_missing_timeline_order(wx_app):
 
         transcript = compose_transcript_text(conversation, timeline=timeline)
         first_response = transcript.index("Interim answer one")
-        first_tool = transcript.index("Agent: tool call 1: reader — completed")
+        first_tool = transcript.index("tool call 1: reader — completed")
         second_response = transcript.index("Interim answer two")
-        second_tool = transcript.index("Agent: tool call 2: analyzer — completed")
+        second_tool = transcript.index("tool call 2: analyzer — completed")
         final_response = transcript.index("Final synthesis")
 
         assert first_response < first_tool < second_response < second_tool < final_response

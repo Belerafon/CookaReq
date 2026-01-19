@@ -517,6 +517,14 @@ def _resolve_agent_timeline(
     if payload is not None and payload.timeline and integrity.status == "valid":
         timeline_entries = tuple(payload.timeline)
         source = "payload"
+        if llm_trace.steps and not any(
+            entry.kind == "llm_step" for entry in timeline_entries
+        ):
+            timeline_entries = ()
+        if tool_snapshots and not any(
+            entry.kind == "tool_call" for entry in timeline_entries
+        ):
+            timeline_entries = ()
     elif payload is not None and payload.timeline:
         source = "payload"
 
@@ -1070,7 +1078,7 @@ def _build_tool_calls(
             ):
                 latest_timestamp = timestamp
 
-        identifier = snapshot.call_id or f"{entry_id}:tool:{index}"
+        identifier = snapshot.call_id or f"tool:{index}"
         tool_calls.append(
             ToolCallDetails(
                 summary=summary,
@@ -1219,9 +1227,13 @@ def _build_agent_events(
     if timeline and timeline_status == "valid":
         ordered_timeline = sorted(timeline, key=lambda entry: entry.sequence)
         seen_responses: set[int] = set()
+        final_added = False
+        last_sequence = -1
 
         for _, entry in enumerate(ordered_timeline):
             occurred_at = entry.occurred_at
+            if entry.sequence is not None:
+                last_sequence = max(last_sequence, entry.sequence)
             if entry.kind == "llm_step":
                 if entry.step_index is None:
                     continue
@@ -1274,6 +1286,18 @@ def _build_agent_events(
                         response=final_response,
                     )
                 )
+                final_added = True
+        if final_response is not None and not final_added:
+            next_sequence = last_sequence + 1 if last_sequence >= 0 else 0
+            events.append(
+                AgentTimelineEvent(
+                    kind="response",
+                    timestamp=final_response.timestamp,
+                    order_index=next_sequence,
+                    sequence=next_sequence,
+                    response=final_response,
+                )
+            )
         return tuple(events)
 
     def _sort_key_for_timestamp(info: TimestampInfo) -> tuple[bool, str, str]:

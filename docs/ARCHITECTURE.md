@@ -171,13 +171,15 @@ so you know which modules are involved and which regressions to guard against.
     Дополнительно в `diagnostic.timeline_debug` записывается плоский снимок
     таймлайна (в порядке событий) с сопоставлением `llm_step`/`tool_*` записей
     и снимков инструментов, чтобы UI больше не восстанавливал порядок
-    эвристиками. История чата больше не выполняет миграции или
-    достраивания устаревших записей: если `timeline` отсутствует, карточка
-    поворота окажется пустой. Контроллеры и тестовые хелперы обязаны
-    подавать уже канонизированный `AgentRunPayload` (согласованный
-    `event_log`, `llm_trace` и `tool_results`), используя
-    `build_agent_timeline` для фиксации порядка перед сохранением или
-    рендерингом.
+    эвристиками. Если `timeline` отсутствует, слой UI пересобирает его из
+    согласованных `event_log`, `llm_trace` и `tool_results`, сохраняя порядок
+    `event_log` и аккуратно вставляя недостающие LLM-степы/вызовы инструментов.
+    Сортировка по времени нормализуется и устойчиво обрабатывает некорректные
+    метки, чтобы восстановление не падало на неожиданных форматах.
+    Контроллеры и тестовые хелперы обязаны подавать уже
+    канонизированный `AgentRunPayload` (согласованный `event_log`,
+    `llm_trace` и `tool_results`), используя `build_agent_timeline` для
+    фиксации порядка перед сохранением или рендерингом.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status, start/finish timestamps and an ordered timeline of events. The LLM

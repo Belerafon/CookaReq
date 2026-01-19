@@ -767,6 +767,13 @@ def _build_agent_turn(
     ordered_events: list[AgentTimelineEvent] = []
     preserve_timeline_order = bool(timeline_entries)
 
+    def _event_step_index(ev: AgentTimelineEvent) -> int | None:
+        if ev.kind == "response" and ev.response is not None:
+            return ev.response.step_index
+        if ev.kind == "tool" and ev.tool_call is not None:
+            return ev.tool_call.step_index
+        return None
+
     def _event_sort_key(ev: AgentTimelineEvent) -> tuple[Any, ...]:
         if preserve_timeline_order and ev.sequence is not None:
             return (0, ev.sequence)
@@ -777,11 +784,15 @@ def _build_agent_turn(
             ts_key = (False, "", timestamp.raw)
         else:
             ts_key = (True, "", "")
+        step_index = _event_step_index(ev)
+        step_key = (step_index is None, step_index if step_index is not None else 0)
         return (
             1,
             ts_key[0],
             ts_key[1],
             ts_key[2],
+            step_key[0],
+            step_key[1],
             0 if ev.kind == "response" else 1,
             ev.sequence,
         )

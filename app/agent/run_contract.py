@@ -997,9 +997,10 @@ def build_agent_timeline(
         seen_call_ids.add(call_id)
     def _entry_order_key(
         entry: AgentTimelineEntry, *, prefer_llm_steps: bool
-    ) -> tuple[bool | int, str, bool, int, int, str]:
+    ) -> tuple[bool | int, str, bool, int, int, int, str]:
         time_key = entry.occurred_at or ""
         kind_rank = 0 if entry.kind == "llm_step" else 1 if entry.kind == "tool_call" else 2
+        sequence_key = entry.sequence if entry.sequence is not None else 0
         if prefer_llm_steps:
             return (
                 kind_rank,
@@ -1007,7 +1008,7 @@ def build_agent_timeline(
                 time_key,
                 entry.step_index is None,
                 entry.step_index if entry.step_index is not None else 0,
-                0,
+                sequence_key,
                 entry.call_id or "",
             )
         return (
@@ -1016,20 +1017,36 @@ def build_agent_timeline(
             entry.step_index is None,
             entry.step_index if entry.step_index is not None else 0,
             kind_rank,
+            sequence_key,
             entry.call_id or "",
         )
+
+    def _normalize_sequence(
+        entries: list[AgentTimelineEntry],
+    ) -> list[AgentTimelineEntry]:
+        for sequence, entry in enumerate(entries):
+            entry.sequence = sequence
+        return entries
 
     if not base_entries:
         ordered_extras = sorted(
             extra_entries,
-            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=True),
+            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=False),
         )
-        for sequence, entry in enumerate(ordered_extras):
-            entry.sequence = sequence
-            timeline.append(entry)
-        return timeline
+        timeline.extend(ordered_extras)
+        return _normalize_sequence(timeline)
 
     ordered_base = sorted(base_entries, key=lambda entry: entry.sequence)
+    has_base_tools = any(entry.kind == "tool_call" for entry in ordered_base)
+    has_extra_tools = any(entry.kind == "tool_call" for entry in extra_entries)
+    if has_extra_tools and not has_base_tools:
+        merged_entries = ordered_base + extra_entries
+        ordered_all = sorted(
+            merged_entries,
+            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=False),
+        )
+        return _normalize_sequence(ordered_all)
+
     max_sequence = max(entry.sequence for entry in ordered_base if entry.sequence is not None)
     next_sequence = max_sequence + 1
 
@@ -1043,7 +1060,7 @@ def build_agent_timeline(
 
     timeline.extend(ordered_base)
     timeline.extend(ordered_extras)
-    return timeline
+    return _normalize_sequence(timeline)
 
 
 def build_timeline_debug(

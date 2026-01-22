@@ -17,6 +17,7 @@ so you know which modules are involved and which regressions to guard against.
 | `app/mcp/` | HTTP server, controller and tool implementations for machine-checkable requirements edits. |
 | `app/ui/` | wxPython UI (frames, panels, controllers, models, dialogs). |
 | `app/util/`, `app/log.py`, `app/telemetry.py` | Cross-cutting utilities: cancellation, JSON helpers, timing, logging and telemetry. |
+| `app/resources/version.json` | Build-stamped version metadata (date only) surfaced in the main window title. |
 | `requirements/` | Bundled sample requirements packs (`DEMO/…`). |
 | `tests/` | End-to-end, GUI, services and core suites (see `tests/README.md`). |
 | `tools/` | Development helpers such as `run_wx.py` for running wx scripts under a virtual display. |

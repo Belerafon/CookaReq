@@ -290,6 +290,16 @@ class HistoryStore:
         return row is not None
 
     # ------------------------------------------------------------------
+    def compact(self) -> None:
+        """Reclaim unused space in the backing SQLite database."""
+        try:
+            with self._connect() as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("VACUUM")
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception("Failed to compact chat history database at %s", self._path)
+
+    # ------------------------------------------------------------------
     def _connect(self) -> sqlite3.Connection:
         path = self._path
         path.parent.mkdir(parents=True, exist_ok=True)

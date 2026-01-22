@@ -128,6 +128,25 @@ def test_set_path_persists_existing_payload(
     assert migrated_entries[0].prompt == sample_conversation.entries[0].prompt
 
 
+def test_compact_reclaims_empty_store(
+    tmp_path: Path, sample_conversation: ChatConversation
+) -> None:
+    history_path = tmp_path / "agent_chats.sqlite"
+    store = HistoryStore(history_path)
+    store.save([sample_conversation], sample_conversation.conversation_id)
+
+    size_with_data = history_path.stat().st_size
+
+    store.save([], None)
+    store.compact()
+
+    size_after = history_path.stat().st_size
+    assert size_after <= size_with_data
+    conversations, active_id = store.load()
+    assert conversations == []
+    assert active_id is None
+
+
 def _fetch_entry_rows(path: Path, conversation_id: str) -> list[sqlite3.Row]:
     with sqlite3.connect(str(path)) as conn:
         conn.row_factory = sqlite3.Row

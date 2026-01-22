@@ -314,5 +314,16 @@ class AgentChatHistory:
                 return True
         return False
 
+    # ------------------------------------------------------------------
+    def compact_store(self) -> None:
+        """Shrink the backing history database after large deletions."""
+        try:
+            self._store.compact()
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to compact agent chat history database at %s",
+                self._store.path,
+            )
+
 
 __all__ = ["AgentChatHistory"]

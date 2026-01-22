@@ -9,22 +9,17 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: Capture commit date for version metadata
+:: Check if Git is available and get commit date
 where git >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo Git is not installed or not in PATH. Please install Git to stamp version metadata.
-    exit /b 1
-)
-
-for /f %%i in ('git log -1 --format=%%cs') do set VERSION_DATE=%%i
-if "%VERSION_DATE%"=="" (
-    echo Failed to read commit date from Git.
-    exit /b 1
-)
-
-python -c "import json, pathlib; pathlib.Path('app/resources/version.json').write_text(json.dumps({'date': '%VERSION_DATE%'}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')"
-if %ERRORLEVEL% neq 0 (
-    echo Failed to write version metadata.
-    exit /b 1
+if %ERRORLEVEL% equ 0 (
+    for /f %%i in ('git log -1 --format=%%ci') do set VERSION_DATE=%%i
+    if not "%VERSION_DATE%"=="" (
+        python -c "import json, pathlib; pathlib.Path('app/resources/version.json').write_text(json.dumps({'date': '%VERSION_DATE%'}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')"
+        if %ERRORLEVEL% neq 0 (
+            echo Failed to write version metadata.
+            exit /b 1
+        )
+    )
 )
 
 :: Create virtual environment if it doesn't exist

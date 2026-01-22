@@ -17,6 +17,7 @@ from ...application import (
 from ...columns import available_columns
 from ...config import ConfigManager
 from ...i18n import _
+from ...version import load_version_date
 from ..requirement_model import RequirementModel
 from ..splitter_utils import refresh_splitter_highlight
 from .agent import MainFrameAgentMixin
@@ -61,7 +62,10 @@ class MainFrame(
         mcp_factory: MCPControllerFactory | None = None,
     ) -> None:
         """Set up main application window and controllers."""
-        self._base_title = "CookaReq"
+        version_date = load_version_date()
+        self._base_title = (
+            f"CookaReq {version_date}" if version_date else "CookaReq"
+        )
         if context is None:
             raise ValueError("MainFrame requires an ApplicationContext instance")
         self.context = context

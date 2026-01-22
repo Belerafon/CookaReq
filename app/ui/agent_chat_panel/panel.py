@@ -947,6 +947,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
     ) -> None:
         if not conversations:
             return
+        total_before = len(self.conversations)
         ids_to_remove = {conv.conversation_id for conv in conversations}
         indices_to_remove = [
             idx
@@ -981,6 +982,8 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             self._set_active_conversation_id(None)
         self._save_history_to_store()
+        if total_before and len(ids_to_remove) >= total_before:
+            self._session.history.compact_store()
         self._notify_history_changed()
         if removed_active:
             self.input.SetValue("")

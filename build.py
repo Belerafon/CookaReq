@@ -139,7 +139,7 @@ def main() -> None:
         ]],
         
         # Add resources
-        f"--add-data={icon}{os.pathsep}app/resources",
+        f"--add-data={(root / 'app' / 'resources')}{os.pathsep}app/resources",
         f"--add-data={(root / 'app' / 'ui' / 'resources')}{os.pathsep}app/ui/resources",
         f"--add-data={(root / 'app' / 'locale')}{os.pathsep}app/locale",
         f"--icon={icon}",

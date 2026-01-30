@@ -1,7 +1,8 @@
 import pytest
 
 from app.core.model import Link, Priority, Requirement, RequirementType, Status, Verification
-from app.core.requirement_tabular_export import render_tabular_html, render_tabular_txt
+from app.core.requirement_tabular_export import render_tabular_html
+from app.core.requirement_text_export import render_requirement_cards_txt
 from app.ui.requirement_exporter import build_tabular_export
 
 
@@ -25,12 +26,13 @@ def _make_requirement():
 
 
 @pytest.mark.unit
-def test_render_tabular_txt_escapes_special_chars():
+def test_render_requirement_cards_txt_formats_multiline_fields():
     headers = ["Title", "Statement"]
     rows = [["A\tB", "Line1\nLine2"]]
-    text = render_tabular_txt(headers, rows)
-    assert text.splitlines()[0] == "Title\tStatement"
-    assert text.splitlines()[1] == "A\\tB\tLine1\\nLine2"
+    text = render_requirement_cards_txt(headers, rows)
+    assert text.splitlines()[0] == "Title: A\tB"
+    assert text.splitlines()[1] == "Statement: Line1"
+    assert text.splitlines()[2] == "  Line2"
 
 
 @pytest.mark.unit

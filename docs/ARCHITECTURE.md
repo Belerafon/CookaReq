@@ -40,11 +40,12 @@ so you know which modules are involved and which regressions to guard against.
 * **Traceability** — `app/core/trace_matrix.py` builds matrices that map
   requirements to external artefacts. The GUI reuses cached document data to
   avoid expensive reloads.
-* **Import/export** — `requirement_import.py`, `requirement_export.py`, and
-  `requirement_tabular_export.py` convert between external formats and the
-  `Requirement` dataclass while delegating all persistence to the document
-  store. The tabular helper renders the selectable-column TXT/HTML/CSV/TSV
-  exports used by the GUI export dialog.
+* **Import/export** — `requirement_import.py`, `requirement_export.py`,
+  `requirement_tabular_export.py`, and `requirement_text_export.py` convert
+  between external formats and the `Requirement` dataclass while delegating all
+  persistence to the document store. The tabular helper renders the
+  selectable-column HTML/CSV/TSV exports, while the text helper builds the
+  plain-text card exports used by the GUI export dialog.
 
 ## Application services and configuration context
 

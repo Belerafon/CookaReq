@@ -19,8 +19,8 @@ from ...core.requirement_import import SequentialIDAllocator, build_requirements
 from ...core.requirement_tabular_export import (
     render_tabular_delimited,
     render_tabular_html,
-    render_tabular_txt,
 )
+from ...core.requirement_text_export import render_requirement_cards_txt
 from ...i18n import _
 from ...log import logger
 from ..controllers import DocumentsController
@@ -698,7 +698,7 @@ class MainFrameDocumentsMixin:
         elif plan.format == ExportFormat.TSV:
             content = render_tabular_delimited(headers, rows, delimiter="\t")
         else:
-            content = render_tabular_txt(headers, rows)
+            content = render_requirement_cards_txt(headers, rows)
 
         try:
             plan.path.write_text(content, encoding="utf-8")

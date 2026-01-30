@@ -10,23 +10,7 @@ from io import StringIO
 __all__ = [
     "render_tabular_delimited",
     "render_tabular_html",
-    "render_tabular_txt",
 ]
-
-
-def _normalize_cell(value: str) -> str:
-    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = normalized.replace("\t", "\\t")
-    return normalized.replace("\n", "\\n")
-
-
-def render_tabular_txt(headers: Sequence[str], rows: Iterable[Sequence[str]]) -> str:
-    """Render tabular export as tab-separated text."""
-    lines = ["\t".join(_normalize_cell(str(header)) for header in headers)]
-    for row in rows:
-        lines.append("\t".join(_normalize_cell(str(cell)) for cell in row))
-    return "\n".join(lines) + "\n"
-
 
 def render_tabular_delimited(
     headers: Sequence[str],

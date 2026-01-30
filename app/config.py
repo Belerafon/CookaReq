@@ -70,6 +70,7 @@ class ExportDialogState:
     format: str | None
     columns: list[str]
     order: list[str]
+    txt_empty_fields_placeholder: bool
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -476,11 +477,15 @@ class ConfigManager:
             order_list: list[str] = []
         else:
             order_list = [str(item) for item in order if item]
+        txt_empty_fields_placeholder = payload.get("txt_empty_fields_placeholder")
+        if not isinstance(txt_empty_fields_placeholder, bool):
+            txt_empty_fields_placeholder = False
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
             columns=columns_list,
             order=order_list,
+            txt_empty_fields_placeholder=txt_empty_fields_placeholder,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -496,6 +501,7 @@ class ConfigManager:
             "format": state.format,
             "columns": list(state.columns),
             "order": list(state.order),
+            "txt_empty_fields_placeholder": state.txt_empty_fields_placeholder,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

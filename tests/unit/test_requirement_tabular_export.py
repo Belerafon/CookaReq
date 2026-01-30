@@ -36,6 +36,25 @@ def test_render_requirement_cards_txt_formats_multiline_fields():
 
 
 @pytest.mark.unit
+def test_render_requirement_cards_txt_omits_empty_fields():
+    headers = ["Title", "Owner"]
+    rows = [["A", ""]]
+    text = render_requirement_cards_txt(headers, rows)
+    lines = text.splitlines()
+    assert lines == ["Title: A"]
+
+
+@pytest.mark.unit
+def test_render_requirement_cards_txt_uses_placeholder_for_empty_fields():
+    headers = ["Title", "Owner"]
+    rows = [["A", ""]]
+    text = render_requirement_cards_txt(headers, rows, empty_field_placeholder="(not set)")
+    lines = text.splitlines()
+    assert lines[0] == "Title: A"
+    assert lines[1] == "Owner: (not set)"
+
+
+@pytest.mark.unit
 def test_render_tabular_html_converts_newlines():
     headers = ["Title", "Statement"]
     rows = [["Hello", "Line1\nLine2"]]

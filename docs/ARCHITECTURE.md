@@ -248,15 +248,22 @@ so you know which modules are involved and which regressions to guard against.
    provides filtered projections to the list panel.
 
 ### Editing and persistence
-1. The UI builds a `Requirement` from the editor panel and passes it to
-   `DocumentsController.save_requirement()`.
+1. The UI builds a `Requirement` from the editor panel and persists it via
+   `EditorPanel.save()` (list-panel edits call
+   `DocumentsController.save_requirement()` directly).
 2. The controller validates uniqueness through `RequirementsService.list_item_ids()`
-   and `document_store.rid_for()`.
-3. `RequirementsService.save_requirement_payload()` serialises the change via
-   `document_store.save_item()` and updates the in-memory model through
-   `RequirementModel.update()`.
-4. Document creation and deletion route through `RequirementsService` to keep
+   and `document_store.rid_for()` before writing to disk.
+3. After a successful save, the main frame and list panel update the
+   `RequirementModel` and refresh derived-map state so the list view reflects
+   the latest requirement content.
+4. Clone/derive actions create a new `Requirement`, register it in the model via
+   `DocumentsController.add_requirement()`, and persist it immediately with
+   `DocumentsController.save_requirement()` to keep the UI and filesystem in sync.
+5. Document creation and deletion route through `RequirementsService` to keep
    the cache consistent with on-disk state.
+6. Unsaved edits are tracked in `RequirementModel` so the list panel can render
+   a visual marker (a leading `*` in the Title/ID columns) and the main frame
+   can offer Save/Keep/Cancel choices when navigating away from dirty entries.
 
 ### Agent and MCP interaction
 1. `AgentChatPanel` gathers the current context and invokes

@@ -17,6 +17,7 @@ class RequirementModel:
         """Initialize empty requirement collections."""
         self._all: list[Requirement] = []
         self._visible: list[Requirement] = []
+        self._unsaved: set[tuple[str, int]] = set()
         self._labels: list[str] = []
         self._labels_match_all: bool = True
         self._query: str = ""
@@ -37,6 +38,7 @@ class RequirementModel:
             prefix = self._infer_common_prefix(requirements)
             if prefix is not None:
                 self._active_doc_prefix = prefix
+        self._prune_unsaved(requirements)
         self._refresh()
 
     def set_active_document(self, prefix: str | None) -> None:
@@ -82,6 +84,7 @@ class RequirementModel:
     def delete(self, req_id: int) -> None:
         """Remove requirement with ``req_id``."""
         self._all = [r for r in self._all if r.id != req_id]
+        self._unsaved = {key for key in self._unsaved if key[1] != req_id}
         self._refresh()
 
     def get_by_id(
@@ -97,6 +100,71 @@ class RequirementModel:
                 continue
             return req
         return None
+
+    # unsaved tracking -----------------------------------------------
+    def mark_unsaved(
+        self,
+        requirement: Requirement | None = None,
+        *,
+        req_id: int | None = None,
+        prefix: str | None = None,
+    ) -> None:
+        key = self._unsaved_key(requirement, req_id=req_id, prefix=prefix)
+        if key is None:
+            return
+        self._unsaved.add(key)
+
+    def clear_unsaved(
+        self,
+        requirement: Requirement | None = None,
+        *,
+        req_id: int | None = None,
+        prefix: str | None = None,
+    ) -> bool:
+        key = self._unsaved_key(requirement, req_id=req_id, prefix=prefix)
+        if key is None:
+            return False
+        if key in self._unsaved:
+            self._unsaved.remove(key)
+            return True
+        return False
+
+    def is_unsaved(
+        self,
+        requirement: Requirement | None = None,
+        *,
+        req_id: int | None = None,
+        prefix: str | None = None,
+    ) -> bool:
+        key = self._unsaved_key(requirement, req_id=req_id, prefix=prefix)
+        if key is None:
+            return False
+        return key in self._unsaved
+
+    def _unsaved_key(
+        self,
+        requirement: Requirement | None,
+        *,
+        req_id: int | None,
+        prefix: str | None,
+    ) -> tuple[str, int] | None:
+        if requirement is not None:
+            req_id = requirement.id
+            prefix = getattr(requirement, "doc_prefix", None)
+        if req_id is None:
+            return None
+        resolved_prefix = prefix or self._active_doc_prefix or ""
+        return (resolved_prefix, int(req_id))
+
+    def _prune_unsaved(self, requirements: Sequence[Requirement]) -> None:
+        if not self._unsaved:
+            return
+        valid = {
+            self._unsaved_key(req, req_id=None, prefix=None)
+            for req in requirements
+        }
+        valid.discard(None)
+        self._unsaved.intersection_update(valid)
 
     # filtering -------------------------------------------------------
     def set_label_filter(self, labels: list[str]) -> None:

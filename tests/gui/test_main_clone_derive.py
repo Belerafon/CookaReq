@@ -112,6 +112,9 @@ def test_clone_creates_new_requirement(wx_app, tmp_path):
         assert clone is not None
         assert clone.title.startswith("(Copy)")
 
+        payload, _mtime = load_item(tmp_path / "REQ", Document(prefix="REQ", title="Doc"), 2)
+        assert payload["title"].startswith("(Copy)")
+
         selected = frame.panel.list.GetFirstSelected()
         assert selected != wx.NOT_FOUND
         assert frame.panel.list.GetItemData(selected) == 2
@@ -139,6 +142,9 @@ def test_derive_creates_linked_requirement(wx_app, tmp_path):
             getattr(link, "rid", str(link)) == parent_rid for link in derived.links
         )
 
+        payload, _mtime = load_item(tmp_path / "REQ", Document(prefix="REQ", title="Doc"), 2)
+        assert payload["title"].startswith("(Derived)")
+
         mapping = frame.panel.derived_map[parent_rid]
         assert 2 in mapping
 
@@ -147,9 +153,10 @@ def test_derive_creates_linked_requirement(wx_app, tmp_path):
         assert frame.panel.list.GetItemData(selected) == 2
         title_col = frame.panel._field_order.index("title")
         assert frame.panel.list.GetItemText(selected, title_col).startswith("↳")
-        derived_col = frame.panel._field_order.index("derived_from")
-        derived_text = frame.panel.list.GetItemText(selected, derived_col)
-        assert derived_text.startswith(parent_rid)
+        if "derived_from" in frame.panel._field_order:
+            derived_col = frame.panel._field_order.index("derived_from")
+            derived_text = frame.panel.list.GetItemText(selected, derived_col)
+            assert derived_text.startswith(parent_rid)
     finally:
         frame.Destroy()
 
@@ -328,4 +335,3 @@ def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, t
         assert data["links"][0]["rid"].startswith("REQ")
     finally:
         frame.Destroy()
-

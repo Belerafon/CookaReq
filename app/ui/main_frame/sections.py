@@ -220,18 +220,64 @@ class MainFrameSectionsMixin:
             self.list_label.SetLabel(_("Requirements"))
         self.update_log_console_labels()
 
-    def _confirm_discard_changes(self: MainFrame) -> bool:
-        """Ask user to discard unsaved edits if editor has pending changes."""
-        from . import confirm
+    def _prompt_unsaved_changes(self: MainFrame) -> str:
+        """Prompt for how to handle unsaved changes."""
+        dlg = wx.MessageDialog(
+            self,
+            _("Save unsaved changes?"),
+            _("Unsaved changes"),
+            style=wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
+        )
+        if hasattr(dlg, "SetYesNoCancelLabels"):
+            dlg.SetYesNoCancelLabels(
+                _("Save"),
+                _("Keep without saving"),
+                _("Cancel"),
+            )
+        result = dlg.ShowModal()
+        dlg.Destroy()
+        if result == wx.ID_YES:
+            return "save"
+        if result == wx.ID_NO:
+            return "keep"
+        return "cancel"
 
+    def _confirm_discard_changes(self: MainFrame) -> bool:
+        """Ask user what to do with unsaved edits before switching."""
         if not getattr(self, "editor", None):
             return True
-        if not self.editor.is_dirty():
+        if not hasattr(self, "model"):
             return True
-        if confirm(_("Discard unsaved changes?")):
-            self.editor.discard_changes()
+        dirty = self.editor.is_dirty()
+        unsaved = False
+        if (
+            hasattr(self.model, "is_unsaved")
+            and getattr(self, "_selected_requirement_id", None) is not None
+        ):
+            prefix = self.current_doc_prefix or str(
+                self.editor.extra.get("doc_prefix", "")
+            )
+            unsaved = self.model.is_unsaved(
+                req_id=self._selected_requirement_id, prefix=prefix
+            )
+        if not dirty and not unsaved:
             return True
-        return False
+
+        choice = self._prompt_unsaved_changes()
+        if choice == "cancel":
+            return False
+        if choice == "save":
+            saved = self._save_editor_contents(
+                self.editor,
+                doc_prefix=self.current_doc_prefix,
+            )
+            return saved is not None
+        if dirty:
+            return self._stash_unsaved_edits(
+                self.editor,
+                doc_prefix=self.current_doc_prefix,
+            )
+        return True
 
     def _default_editor_sash(self: MainFrame) -> int:
         width = self.splitter.GetClientSize().width

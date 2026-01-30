@@ -86,6 +86,32 @@ def _flush_events(wx, count: int = 5) -> None:
         wx.Yield()
 
 
+@pytest.mark.gui_smoke
+def test_list_panel_marks_unsaved(wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["id"])
+    req = _req(1, "Draft")
+    req.doc_prefix = "DOC"
+    panel.set_requirements([req])
+    panel.model.mark_unsaved(req)
+    panel.refresh(select_id=1)
+    _flush_events(wx, 3)
+
+    title_col = panel._field_order.index("title")
+    id_col = panel._field_order.index("id")
+    assert panel.list.GetItemText(0, title_col).startswith("*")
+    assert panel.list.GetItemText(0, id_col).startswith("*")
+
+    frame.Destroy()
+
+
 @pytest.mark.gui
 def test_select_all_suppresses_bulk_selection_events(wx_app):
     wx = pytest.importorskip("wx")

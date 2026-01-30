@@ -633,7 +633,7 @@ class EditorPanel(wx.Panel):
                 "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
                 "verification": locale.code_to_label(
                     "verification",
-                    Verification.ANALYSIS.value,
+                    Verification.NOT_DEFINED.value,
                 ),
             }
             for name, choice in self.enums.items():

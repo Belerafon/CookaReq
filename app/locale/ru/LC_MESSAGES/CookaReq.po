@@ -66,6 +66,18 @@ msgstr "Зафиксировано"
 msgid "Retired"
 msgstr "Снято с применения"
 
+msgid "Rejected"
+msgstr "Отклонено"
+
+msgid "Deferred"
+msgstr "Отложено"
+
+msgid "Superseded"
+msgstr "Заменено"
+
+msgid "Needs clarification"
+msgstr "Нужны уточнения"
+
 msgid "Low"
 msgstr "Низкий"
 
@@ -74,6 +86,9 @@ msgstr "Средний"
 
 msgid "High"
 msgstr "Высокий"
+
+msgid "Not defined"
+msgstr "Не определен"
 
 msgid "Inspection"
 msgstr "Инспекция"

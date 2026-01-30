@@ -28,6 +28,10 @@ class Status(str, Enum):
     APPROVED = "approved"
     BASELINED = "baselined"
     RETIRED = "retired"
+    REJECTED = "rejected"
+    DEFERRED = "deferred"
+    SUPERSEDED = "superseded"
+    NEEDS_CLARIFICATION = "needs_clarification"
 
 
 class Priority(str, Enum):
@@ -41,6 +45,7 @@ class Priority(str, Enum):
 class Verification(str, Enum):
     """Enumerate possible verification methods."""
 
+    NOT_DEFINED = "not_defined"
     INSPECTION = "inspection"
     ANALYSIS = "analysis"
     DEMONSTRATION = "demonstration"
@@ -234,7 +239,7 @@ class Requirement:
             priority=_enum_value("priority", Priority, Priority.MEDIUM),
             source=source,
             verification=_enum_value(
-                "verification", Verification, Verification.ANALYSIS
+                "verification", Verification, Verification.NOT_DEFINED
             ),
             acceptance=acceptance,
             conditions=conditions,
@@ -362,4 +367,3 @@ class Link:
         if self.suspect:
             data["suspect"] = self.suspect
         return data
-

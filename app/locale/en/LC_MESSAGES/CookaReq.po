@@ -222,6 +222,18 @@ msgstr "Requirement RID"
 msgid "Retired"
 msgstr "Retired"
 
+msgid "Rejected"
+msgstr "Rejected"
+
+msgid "Deferred"
+msgstr "Deferred"
+
+msgid "Superseded"
+msgstr "Superseded"
+
+msgid "Needs clarification"
+msgstr "Needs clarification"
+
 msgid "Save"
 msgstr "Save"
 
@@ -281,6 +293,9 @@ msgstr "Source"
 
 msgid "Status"
 msgstr "Status"
+
+msgid "Not defined"
+msgstr "Not defined"
 
 msgid "Test"
 msgstr "Test"

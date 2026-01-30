@@ -789,15 +789,28 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             except Exception:
                 self.list.SetItemData(index, 0)
             for col, field in enumerate(self._field_order):
+                is_unsaved = bool(getattr(self.model, "is_unsaved", None)) and self.model.is_unsaved(req)
                 if field == "title":
                     title = getattr(req, "title", "")
                     derived = bool(getattr(req, "links", []))
-                    display = f"↳ {title}".strip() if derived else title
+                    parts: list[str] = []
+                    if is_unsaved:
+                        parts.append("*")
+                    if derived:
+                        parts.append("↳")
+                    if title:
+                        parts.append(title)
+                    display = " ".join(parts)
                     self.list.SetItem(index, col, display)
                     continue
                 if field == "labels":
                     value = getattr(req, "labels", [])
                     self._set_label_image(index, col, value)
+                    continue
+                if field == "id":
+                    value = getattr(req, "id", "")
+                    display = f"* {value}".strip() if is_unsaved else str(value)
+                    self.list.SetItem(index, col, display)
                     continue
                 if field == "derived_from":
                     value = self._first_parent_text(req)
@@ -1457,6 +1470,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
         try:
             self._docs_controller.save_requirement(self._current_doc_prefix, req)
+            if hasattr(self.model, "clear_unsaved"):
+                self.model.clear_unsaved(req)
         except Exception:  # pragma: no cover - log and continue
             rid = getattr(req, "rid", req.id)
             logger.exception("Failed to save requirement %s", rid)

@@ -87,6 +87,8 @@ class MainFrameEditorMixin:
         requirement = editor_panel.get_data()
         requirement.doc_prefix = prefix or requirement.doc_prefix
         self.model.update(requirement)
+        if hasattr(self.model, "clear_unsaved"):
+            self.model.clear_unsaved(requirement)
         self.panel.recalc_derived_map(self.model.get_all())
         labels, freeform = self.docs_controller.collect_labels(prefix)
         editor_panel.update_labels_list(labels, freeform)
@@ -100,6 +102,13 @@ class MainFrameEditorMixin:
             ):
                 self.editor.load(requirement)
         self._selected_requirement_id = requirement.id
+        if hasattr(self, "panel") and hasattr(self.panel, "refresh"):
+            select_id = (
+                self._selected_requirement_id
+                if self.current_doc_prefix == prefix
+                else None
+            )
+            self.panel.refresh(select_id=select_id)
         return requirement
 
     def _on_editor_save(self: MainFrame) -> None:
@@ -116,7 +125,35 @@ class MainFrameEditorMixin:
         )
         if not requirement:
             return False
+        if hasattr(self.model, "clear_unsaved"):
+            self.model.clear_unsaved(requirement)
         self.editor.load(requirement)
+        return True
+
+    def _stash_unsaved_edits(
+        self: MainFrame,
+        editor_panel: EditorPanel,
+        *,
+        doc_prefix: str | None = None,
+    ) -> bool:
+        prefix = doc_prefix or str(editor_panel.extra.get("doc_prefix", ""))
+        if not prefix:
+            prefix = self.current_doc_prefix or ""
+        if not prefix:
+            return False
+        try:
+            requirement = editor_panel.get_data()
+        except Exception as exc:  # pragma: no cover - GUI validation
+            from . import show_error_dialog
+
+            show_error_dialog(self, str(exc), title=_("Error"))
+            return False
+        requirement.doc_prefix = prefix or requirement.doc_prefix
+        self.model.update(requirement)
+        if hasattr(self.model, "mark_unsaved"):
+            self.model.mark_unsaved(requirement)
+        self.panel.recalc_derived_map(self.model.get_all())
+        self.panel.refresh(select_id=requirement.id)
         return True
 
     def _open_detached_editor(self: MainFrame, requirement: Requirement) -> None:

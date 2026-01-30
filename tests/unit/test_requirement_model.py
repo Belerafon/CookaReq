@@ -30,3 +30,17 @@ def test_status_filter():
     assert [r.id for r in model.get_visible()] == [2]
     model.set_status(None)
     assert [r.id for r in model.get_visible()] == [1, 2]
+
+
+def test_unsaved_tracking():
+    model = RequirementModel()
+    req = _req(1, Status.DRAFT)
+    req.doc_prefix = "DOC"
+    model.set_requirements([req])
+
+    assert model.is_unsaved(req) is False
+    model.mark_unsaved(req)
+    assert model.is_unsaved(req) is True
+
+    assert model.clear_unsaved(req) is True
+    assert model.is_unsaved(req) is False

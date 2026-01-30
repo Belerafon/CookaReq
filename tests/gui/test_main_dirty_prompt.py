@@ -29,30 +29,43 @@ def test_confirm_discard_changes(monkeypatch, wx_app, tmp_path):
 
     frame = _create_frame(main_frame_mod, tmp_path)
     try:
+        from app.core.model import (
+            Priority,
+            Requirement,
+            RequirementType,
+            Status,
+            Verification,
+        )
+
+        requirement = Requirement(
+            id=1,
+            title="Stored",
+            statement="Statement",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Spec",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+            rid="DOC-1",
+        )
+        frame.model.set_requirements([requirement])
+        frame._selected_requirement_id = requirement.id
+        frame.current_doc_prefix = "DOC"
+        frame.editor.load(requirement)
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
 
-        messages: list[str] = []
-
-        def reject(message: str) -> bool:
-            messages.append(message)
-            return False
-
-        monkeypatch.setattr(main_frame_mod, "confirm", reject)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "cancel")
 
         assert frame._confirm_discard_changes() is False
-        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
         assert frame.editor.is_dirty() is True
 
-        def accept(message: str) -> bool:
-            messages.append(message)
-            return True
-
-        monkeypatch.setattr(main_frame_mod, "confirm", accept)
-
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "keep")
         assert frame._confirm_discard_changes() is True
-        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
-        assert frame.editor.is_dirty() is False
+        assert frame.editor.is_dirty() is True
+        assert frame.model.is_unsaved(requirement) is True
     finally:
         frame.Destroy()
 
@@ -69,10 +82,7 @@ def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app, tmp_path):
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
 
-        def reject(_message: str) -> bool:
-            return False
-
-        monkeypatch.setattr(main_frame_mod, "confirm", reject)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "cancel")
 
         event = wx.CloseEvent(wx.wxEVT_CLOSE_WINDOW, frame.GetId())
         event.SetEventObject(frame)
@@ -93,8 +103,6 @@ def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app, tmp_path):
 
 def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
-
-    from dataclasses import replace
 
     import app.ui.main_frame as main_frame_mod
     from app.core.model import (
@@ -126,21 +134,11 @@ def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app, tmp_path
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
 
-        updated = replace(requirement, title="Updated")
-        frame.model.update(updated)
-
-        messages: list[str] = []
-
-        def accept(message: str) -> bool:
-            messages.append(message)
-            return True
-
-        monkeypatch.setattr(main_frame_mod, "confirm", accept)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "keep")
 
         assert frame._confirm_discard_changes() is True
-        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
-        assert frame.editor.fields["title"].GetValue() == "Updated"
-        assert frame.editor.is_dirty() is False
+        assert frame.editor.fields["title"].GetValue() == "Dirty"
+        assert frame.model.is_unsaved(requirement) is True
     finally:
         frame.Destroy()
 
@@ -189,13 +187,7 @@ def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
 
-        messages: list[str] = []
-
-        def reject(message: str) -> bool:
-            messages.append(message)
-            return False
-
-        monkeypatch.setattr(main_frame_mod, "confirm", reject)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "cancel")
 
         frame.doc_tree.tree.SelectItem(frame.doc_tree._node_for_prefix["FEA"])
         wx.YieldIfNeeded()
@@ -204,7 +196,6 @@ def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
         assert controller.collect_calls == ["DOC"]
         assert frame.current_doc_prefix == "DOC"
         assert frame.doc_tree.tree.GetSelection() == initial_item
-        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
         assert frame.editor.is_dirty() is True
     finally:
         frame.Destroy()
@@ -254,6 +245,7 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
             priority=Priority.MEDIUM,
             source="Source",
             verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
         )
         req2 = Requirement(
             id=2,
@@ -265,6 +257,7 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
             priority=Priority.MEDIUM,
             source="Source",
             verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
         )
         frame.model.set_requirements([req1, req2])
 
@@ -280,21 +273,97 @@ def test_requirement_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path
         frame.editor.fields["title"].ChangeValue("Dirty")
         assert frame.editor.is_dirty() is True
 
-        messages: list[str] = []
-
-        def reject(message: str) -> bool:
-            messages.append(message)
-            return False
-
-        monkeypatch.setattr(main_frame_mod, "confirm", reject)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "cancel")
 
         frame.panel.list.Select(1)
         wx.YieldIfNeeded()
 
-        assert messages[-1] == main_frame_mod._("Discard unsaved changes?")
         assert frame._selected_requirement_id == 1
         assert frame.panel.list.GetFirstSelected() == 0
         assert frame.editor.fields["title"].GetValue() == "Dirty"
+    finally:
+        frame.Destroy()
+
+
+def test_requirement_selection_keeps_unsaved(monkeypatch, wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import wx
+
+    import app.ui.main_frame as main_frame_mod
+    from app.core.document_store import Document
+    from app.core.model import (
+        Requirement,
+        RequirementType,
+        Status,
+        Priority,
+        Verification,
+    )
+
+    frame = _create_frame(main_frame_mod, tmp_path, name="req_keep.ini")
+    try:
+        doc = Document(prefix="DOC", title="Doc")
+        docs = {"DOC": doc}
+        frame.doc_tree.set_documents(docs)
+
+        class DummyController:
+            def __init__(self) -> None:
+                self.documents = docs
+
+            def load_items(self, prefix: str) -> dict:
+                return {}
+
+            def collect_labels(self, prefix: str) -> tuple[list, bool]:
+                return ([], False)
+
+        frame.docs_controller = DummyController()
+        frame.current_dir = tmp_path
+
+        req1 = Requirement(
+            id=1,
+            title="Req 1",
+            statement="Statement 1",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Source",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+        )
+        req2 = Requirement(
+            id=2,
+            title="Req 2",
+            statement="Statement 2",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Source",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+        )
+        frame.model.set_requirements([req1, req2])
+
+        doc_item = frame.doc_tree._node_for_prefix["DOC"]
+        frame.doc_tree.tree.SelectItem(doc_item)
+        wx.YieldIfNeeded()
+
+        frame.panel.list.Select(0)
+        wx.YieldIfNeeded()
+
+        assert frame._selected_requirement_id == 1
+
+        frame.editor.fields["title"].ChangeValue("Dirty")
+        assert frame.editor.is_dirty() is True
+
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "keep")
+
+        frame.panel.list.Select(1)
+        wx.YieldIfNeeded()
+
+        assert frame._selected_requirement_id == 2
+        assert frame.model.is_unsaved(req1) is True
     finally:
         frame.Destroy()
 

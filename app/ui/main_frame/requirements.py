@@ -30,6 +30,50 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 class MainFrameRequirementsMixin:
     """Implement actions triggered from the requirements list."""
 
+    def _persist_new_requirement(
+        self: MainFrame,
+        requirement: Requirement,
+        *,
+        action_label: str,
+    ) -> bool:
+        if not (self.docs_controller and self.current_doc_prefix):
+            return False
+        prefix = self.current_doc_prefix
+        try:
+            self.docs_controller.add_requirement(prefix, requirement)
+            self.docs_controller.save_requirement(prefix, requirement)
+        except (
+            DocumentNotFoundError,
+            RequirementIDCollisionError,
+            ValidationError,
+        ) as exc:
+            self.model.delete(requirement.id)
+            message = _("{action} failed for {rid}: {error}").format(
+                action=action_label,
+                rid=requirement.rid or f"{prefix}{requirement.id}",
+                error=str(exc),
+            )
+            logger.warning("%s", message)
+            wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
+            return False
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self.model.delete(requirement.id)
+            logger.exception(
+                "%s failed for %s",
+                action_label,
+                requirement.rid or f"{prefix}{requirement.id}",
+            )
+            wx.MessageBox(
+                _("{action} failed: {error}").format(
+                    action=action_label,
+                    error=str(exc),
+                ),
+                _("Error"),
+                wx.ICON_ERROR,
+            )
+            return False
+        return True
+
     def on_toggle_column(self: MainFrame, event: wx.CommandEvent) -> None:
         """Show or hide column associated with menu item."""
         field = self.navigation.get_field_for_id(event.GetId())
@@ -53,6 +97,8 @@ class MainFrameRequirementsMixin:
         self.editor.fields["id"].SetValue(str(new_id))
         data = self.editor.get_data()
         self.docs_controller.add_requirement(self.current_doc_prefix, data)
+        if hasattr(self.model, "mark_unsaved"):
+            self.model.mark_unsaved(data)
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(data, path=None, mtime=None)
@@ -77,7 +123,10 @@ class MainFrameRequirementsMixin:
             modified_at="",
             revision=1,
         )
-        self.docs_controller.add_requirement(self.current_doc_prefix, clone)
+        if not self._persist_new_requirement(clone, action_label=_("Clone")):
+            return
+        if hasattr(self.model, "mark_unsaved"):
+            self.model.mark_unsaved(clone)
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(clone, path=None, mtime=None)
@@ -140,7 +189,8 @@ class MainFrameRequirementsMixin:
         if not source:
             return
         clone, parent_rid = self._create_linked_copy(source)
-        self.docs_controller.add_requirement(self.current_doc_prefix, clone)
+        if not self._persist_new_requirement(clone, action_label=_("Derive")):
+            return
         self.panel.record_link(parent_rid, clone.id)
         self._selected_requirement_id = clone.id
         self.panel.refresh(select_id=clone.id)

@@ -290,9 +290,7 @@ class RequirementExportDialog(wx.Dialog):
 
     def _update_text_options_visibility(self) -> None:
         is_txt = self._current_format() == ExportFormat.TXT
-        self.txt_options_box.Show(is_txt)
-        self.txt_empty_fields_checkbox.Show(is_txt)
-        self._txt_options_sizer.Show(is_txt)
+        self._main_sizer.Show(self._txt_options_sizer, is_txt, recursive=True)
         self._main_sizer.Layout()
 
     def _ensure_extension(self, path: str) -> str:

@@ -698,7 +698,13 @@ class MainFrameDocumentsMixin:
         elif plan.format == ExportFormat.TSV:
             content = render_tabular_delimited(headers, rows, delimiter="\t")
         else:
-            content = render_requirement_cards_txt(headers, rows)
+            placeholder_label = _("(not set)")
+            empty_placeholder = placeholder_label if plan.txt_empty_fields_placeholder else None
+            content = render_requirement_cards_txt(
+                headers,
+                rows,
+                empty_field_placeholder=empty_placeholder,
+            )
 
         try:
             plan.path.write_text(content, encoding="utf-8")

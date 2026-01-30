@@ -92,7 +92,8 @@ so you know which modules are involved and which regressions to guard against.
   context for consistent wiring.
 * **`ConfigManager`** — lives in `app/config.py` and persists UI state and
   integration settings (`llm`, `mcp`, panels, splitter positions, last opened
-  document and export dialog state per directory) in
+  document and export dialog state per directory, including text-only handling
+  for empty fields) in
   `~/.config/CookaReq/config.json`. It bridges Pydantic settings
   (`app/settings.py`) and runtime wx widgets.
 
@@ -212,7 +213,8 @@ so you know which modules are involved and which regressions to guard against.
   propagation choices and deletion clean-up flags before the controller forwards
   the plan to `RequirementsService.update_document_labels()`. The export dialog
   (`app/ui/export_dialog.py`) lets users choose columns and format before
-  rendering tabular output.
+  rendering tabular output, including a text-only option for omitting or
+  labelling empty fields.
 
 ## Cross-cutting infrastructure
 

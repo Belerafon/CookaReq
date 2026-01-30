@@ -25,6 +25,8 @@ def _format_card_field(label: str, value: str, *, indent: str = "  ") -> str:
 def render_requirement_cards_txt(
     headers: Sequence[str],
     rows: Iterable[Sequence[str]],
+    *,
+    empty_field_placeholder: str | None = None,
 ) -> str:
     """Render requirements as a plain text card list."""
     cards: list[str] = []
@@ -33,6 +35,10 @@ def render_requirement_cards_txt(
         for header, cell in zip(headers, row, strict=False):
             label = str(header)
             value = "" if cell is None else str(cell)
+            if not value:
+                if empty_field_placeholder is None:
+                    continue
+                value = empty_field_placeholder
             fields.append(_format_card_field(label, value))
         cards.append("\n".join(fields))
     return "\n\n".join(cards) + "\n"

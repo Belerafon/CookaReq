@@ -2599,6 +2599,15 @@ msgstr "Выберите файл экспорта"
 msgid "Select export file first."
 msgstr "Сначала выберите файл экспорта."
 
+msgid "Show empty fields as {placeholder}"
+msgstr "Показывать незаполненные поля как {placeholder}"
+
+msgid "Text options"
+msgstr "Параметры текста"
+
+msgid "(not set)"
+msgstr "(не задано)"
+
 msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
 msgstr "Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все файлы|*.*"
 

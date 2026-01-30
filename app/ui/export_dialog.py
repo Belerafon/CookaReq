@@ -29,6 +29,7 @@ class RequirementExportPlan:
     path: Path
     format: ExportFormat
     columns: list[str]
+    txt_empty_fields_placeholder: bool
 
 
 class RequirementExportDialog(wx.Dialog):
@@ -58,6 +59,11 @@ class RequirementExportDialog(wx.Dialog):
         self._field_labels = {field: locale.field_label(field) for field in self._available_fields}
         self._saved_format = self._coerce_format(saved_state.format if saved_state else None)
         self._saved_path = Path(saved_state.path) if saved_state and saved_state.path else None
+        self._txt_empty_fields_placeholder = (
+            bool(saved_state.txt_empty_fields_placeholder) if saved_state else False
+        )
+        self._txt_placeholder_label = _("(not set)")
+        self._drag_start_index: int | None = None
 
         self._create_controls()
         self._bind_events()
@@ -71,6 +77,7 @@ class RequirementExportDialog(wx.Dialog):
             self.file_picker.SetPath(path_str)
         self._refresh_path_display()
         self._refresh_checklist()
+        self._update_text_options_visibility()
         self._update_ok_state()
         self.SetSize((820, 620))
         self.SetMinSize((420, 520))
@@ -171,6 +178,15 @@ class RequirementExportDialog(wx.Dialog):
         self.select_all_btn = wx.Button(self.columns_box, label=_("Select All"))
         self.clear_btn = wx.Button(self.columns_box, label=_("Clear"))
 
+        self.txt_options_box = wx.StaticBox(self, label=_("Text options"))
+        self.txt_empty_fields_checkbox = wx.CheckBox(
+            self.txt_options_box,
+            label=_("Show empty fields as {placeholder}").format(
+                placeholder=self._txt_placeholder_label
+            ),
+        )
+        self.txt_empty_fields_checkbox.SetValue(self._txt_empty_fields_placeholder)
+
         buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         ok_button = None
         if hasattr(buttons, "GetAffirmativeButton"):
@@ -187,6 +203,8 @@ class RequirementExportDialog(wx.Dialog):
         self.file_picker.Bind(wx.EVT_FILEPICKER_CHANGED, self._on_path_changed)
         self.format_choice.Bind(wx.EVT_RADIOBOX, self._on_format_changed)
         self.column_list.Bind(wx.EVT_CHECKLISTBOX, self._on_columns_changed)
+        self.column_list.Bind(wx.EVT_LEFT_DOWN, self._on_column_left_down)
+        self.column_list.Bind(wx.EVT_LEFT_UP, self._on_column_left_up)
         self.move_up_btn.Bind(wx.EVT_BUTTON, lambda _evt: self._move_column(-1))
         self.move_down_btn.Bind(wx.EVT_BUTTON, lambda _evt: self._move_column(1))
         self.select_all_btn.Bind(wx.EVT_BUTTON, self._on_select_all)
@@ -210,6 +228,10 @@ class RequirementExportDialog(wx.Dialog):
         main_sizer.Add(path_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         main_sizer.Add(self.format_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
+        txt_options_sizer = wx.StaticBoxSizer(self.txt_options_box, wx.VERTICAL)
+        txt_options_sizer.Add(self.txt_empty_fields_checkbox, 0, wx.ALL, 6)
+        main_sizer.Add(txt_options_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+
         columns_sizer = wx.StaticBoxSizer(self.columns_box, wx.VERTICAL)
         list_sizer = wx.BoxSizer(wx.HORIZONTAL)
         list_sizer.Add(self.column_list, 1, wx.EXPAND)
@@ -229,6 +251,8 @@ class RequirementExportDialog(wx.Dialog):
 
         self.SetSizer(main_sizer)
         self.Layout()
+        self._main_sizer = main_sizer
+        self._txt_options_sizer = txt_options_sizer
 
     # ------------------------------------------------------------------
     def _refresh_checklist(self, *, keep_selection: int | None = None) -> None:
@@ -264,6 +288,13 @@ class RequirementExportDialog(wx.Dialog):
         has_columns = bool(self._checked_fields())
         self.ok_button.Enable(has_path and has_columns)
 
+    def _update_text_options_visibility(self) -> None:
+        is_txt = self._current_format() == ExportFormat.TXT
+        self.txt_options_box.Show(is_txt)
+        self.txt_empty_fields_checkbox.Show(is_txt)
+        self._txt_options_sizer.Show(is_txt)
+        self._main_sizer.Layout()
+
     def _ensure_extension(self, path: str) -> str:
         if not path:
             return path
@@ -296,6 +327,7 @@ class RequirementExportDialog(wx.Dialog):
 
     def _on_format_changed(self, _event: wx.CommandEvent) -> None:
         self._refresh_path_display()
+        self._update_text_options_visibility()
         self._update_ok_state()
 
     def _on_columns_changed(self, _event: wx.CommandEvent) -> None:
@@ -306,18 +338,39 @@ class RequirementExportDialog(wx.Dialog):
         if idx == wx.NOT_FOUND:
             return
         new_idx = idx + delta
-        if new_idx < 0 or new_idx >= len(self._field_order):
+        self._reorder_field(idx, new_idx)
+
+    def _reorder_field(self, from_idx: int, to_idx: int) -> None:
+        if from_idx == to_idx:
+            return
+        if from_idx < 0 or from_idx >= len(self._field_order):
+            return
+        if to_idx < 0 or to_idx >= len(self._field_order):
             return
         checked = set(self._checked_fields())
-        self._field_order[idx], self._field_order[new_idx] = (
-            self._field_order[new_idx],
-            self._field_order[idx],
-        )
-        self.column_list.SetSelection(new_idx)
+        field = self._field_order.pop(from_idx)
+        self._field_order.insert(to_idx, field)
         self.column_list.Set([self._field_labels[field] for field in self._field_order])
         for i, field in enumerate(self._field_order):
             self.column_list.Check(i, field in checked)
+        self.column_list.SetSelection(to_idx)
+        self.column_list.SetFocus()
         self._update_ok_state()
+
+    def _on_column_left_down(self, event: wx.MouseEvent) -> None:
+        idx = self.column_list.HitTest(event.GetPosition())
+        self._drag_start_index = idx if idx != wx.NOT_FOUND else None
+        event.Skip()
+
+    def _on_column_left_up(self, event: wx.MouseEvent) -> None:
+        if self._drag_start_index is None:
+            event.Skip()
+            return
+        target = self.column_list.HitTest(event.GetPosition())
+        if target != wx.NOT_FOUND and target != self._drag_start_index:
+            self._reorder_field(self._drag_start_index, target)
+        self._drag_start_index = None
+        event.Skip()
 
     def _on_select_all(self, _event: wx.CommandEvent) -> None:
         for idx in range(len(self._field_order)):
@@ -350,6 +403,7 @@ class RequirementExportDialog(wx.Dialog):
             path=Path(path),
             format=self._current_format(),
             columns=columns,
+            txt_empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -359,4 +413,5 @@ class RequirementExportDialog(wx.Dialog):
             format=self._current_format().value,
             columns=self._checked_fields(),
             order=list(self._field_order),
+            txt_empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
         )

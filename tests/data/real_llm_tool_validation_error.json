@@ -2,10 +2,10 @@
   "ok": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+    "message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
     "details": {
       "type": "ToolValidationError",
-      "llm_message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+      "llm_message": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
       "llm_tool_calls": [
         {
           "id": "chatcmpl-tool-1",
@@ -88,7 +88,7 @@
           },
           {
             "role": "assistant",
-            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
             "tool_calls": [
               {
                 "id": "chatcmpl-tool-2",
@@ -104,7 +104,7 @@
             "role": "tool",
             "tool_call_id": "chatcmpl-tool-2",
             "name": "update_requirement_field",
-            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']\", \"details\": {\"type\": \"ToolValidationError\"}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-2\", \"call_id\": \"chatcmpl-tool-2\", \"tool_arguments\": {\"rid\": \"DEMO1\", \"field\": \"status\", \"value\": \"in_last_review\"}, \"agent_status\": \"failed\"}"
+            "content": "{\"ok\": false, \"error\": {\"code\": \"VALIDATION_ERROR\", \"message\": \"Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']\", \"details\": {\"type\": \"ToolValidationError\"}}, \"tool_name\": \"update_requirement_field\", \"tool_call_id\": \"chatcmpl-tool-2\", \"call_id\": \"chatcmpl-tool-2\", \"tool_arguments\": {\"rid\": \"DEMO1\", \"field\": \"status\", \"value\": \"in_last_review\"}, \"agent_status\": \"failed\"}"
           }
         ]
       }
@@ -113,7 +113,7 @@
       {
         "step": 1,
         "response": {
-          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
           "tool_calls": [
             {
               "id": "chatcmpl-tool-1",
@@ -141,7 +141,7 @@
       {
         "step": 2,
         "response": {
-          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+          "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
           "tool_calls": [
             {
               "id": "chatcmpl-tool-2",
@@ -166,7 +166,7 @@
           },
           {
             "role": "assistant",
-            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired']",
+            "content": "Invalid arguments for update_requirement_field: value: 'in_last_review' is not one of ['draft', 'in_review', 'approved', 'baselined', 'retired', 'rejected', 'deferred', 'superseded', 'needs_clarification']",
             "tool_calls": [
               {
                 "id": "chatcmpl-tool-2",

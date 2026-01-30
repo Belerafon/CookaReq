@@ -32,8 +32,11 @@ so you know which modules are involved and which regressions to guard against.
   documents, items, relationship links and label collections. It keeps ID
   counters, validates JSON payloads and hides filesystem concerns from callers.
 * **Domain models** — `app/core/model.py` defines `Requirement` and supporting
-  enums (status, priority, link types). Any schema change must stay in sync with
-  the JSON representation and migrations for existing files.
+  enums (status, priority, link types). The status set currently includes draft,
+  in_review, approved, baselined, retired, rejected, deferred, superseded and
+  needs_clarification, while verification values include not_defined,
+  inspection, analysis, demonstration and test. Any schema change must stay in
+  sync with the JSON representation and migrations for existing files.
 * **Search and filtering** — `app/core/search.py` provides predicates used by
   the wx models in `app/ui/requirement_model.py` to filter by text, labels and
   status. Sorting also happens in these layers.

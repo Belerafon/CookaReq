@@ -239,7 +239,7 @@ class Requirement:
             priority=_enum_value("priority", Priority, Priority.MEDIUM),
             source=source,
             verification=_enum_value(
-                "verification", Verification, Verification.NOT_DEFINED
+                "verification", Verification, Verification.ANALYSIS
             ),
             acceptance=acceptance,
             conditions=conditions,

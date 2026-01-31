@@ -9,6 +9,7 @@ import markdown
 import wx
 import wx.html as html
 
+from ...core.markdown_utils import sanitize_html
 from ..text import normalize_for_display
 
 
@@ -65,7 +66,8 @@ _MARKDOWN = _build_markdown_renderer()
 def _render_markdown(markdown_text: str) -> str:
     renderer = _MARKDOWN
     renderer.reset()
-    return renderer.convert(markdown_text or "")
+    markup = renderer.convert(markdown_text or "")
+    return sanitize_html(markup)
 
 
 def _estimate_contrast(background: wx.Colour) -> str:
@@ -628,4 +630,3 @@ class MarkdownContent(wx.Panel):
     def _on_container_destroy(self, _event: wx.WindowDestroyEvent) -> None:
         self._destroyed = True
         self._scroller = None
-

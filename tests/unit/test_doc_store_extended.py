@@ -28,7 +28,7 @@ def test_save_and_load_extended_fields(tmp_path: Path):
         priority=Priority.MEDIUM,
         source="s",
         verification=Verification.ANALYSIS,
-        attachments=[Attachment(path="file.txt", note="n")],
+        attachments=[Attachment(id="att-1", path="file.txt", note="n")],
         approved_at="2024-01-01",
         notes="note",
         rationale="reason",
@@ -38,6 +38,7 @@ def test_save_and_load_extended_fields(tmp_path: Path):
     data, _ = load_item(doc_dir, doc, 1)
     loaded = Requirement.from_mapping(data)
     assert loaded.attachments[0].path == "file.txt"
+    assert loaded.attachments[0].id == "att-1"
     assert loaded.approved_at == "2024-01-01"
     assert loaded.notes == "note"
     assert loaded.rationale == "reason"

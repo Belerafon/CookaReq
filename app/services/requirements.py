@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -301,6 +303,26 @@ class RequirementsService:
             docs=docs,
         )
 
+    def upload_requirement_attachment(
+        self,
+        prefix: str,
+        source: Path,
+        *,
+        note: str = "",
+    ) -> dict[str, str]:
+        """Copy ``source`` into the document assets and return attachment metadata."""
+        attachment_id = str(uuid.uuid4())
+        relative_path = self._copy_attachment_asset(prefix, source)
+        return {"id": attachment_id, "path": relative_path, "note": note}
+
+    def get_requirement_attachment_path(self, rid: str, attachment_id: str) -> Path:
+        """Resolve the attachment file path for ``attachment_id`` on requirement ``rid``."""
+        requirement = self.get_requirement(rid)
+        for attachment in requirement.attachments:
+            if attachment.id == attachment_id:
+                return self.root / requirement.doc_prefix / attachment.path
+        raise ValidationError(f"attachment id not found: {attachment_id}")
+
     def set_requirement_links(
         self,
         rid: str,
@@ -314,6 +336,30 @@ class RequirementsService:
             links=links,
             docs=docs,
         )
+
+    def _copy_attachment_asset(self, prefix: str, source: Path) -> str:
+        self.get_document(prefix)
+        if not source.exists():
+            raise ValidationError(f"attachment does not exist: {source}")
+        if not source.is_file():
+            raise ValidationError(f"attachment is not a file: {source}")
+        target_dir = self.root / prefix / "assets"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = source.name
+        candidate = target_dir / filename
+        if candidate.exists():
+            stem = candidate.stem
+            suffix = candidate.suffix
+            for idx in range(1, 10_000):
+                candidate = target_dir / f"{stem}-{idx}{suffix}"
+                if not candidate.exists():
+                    break
+            if candidate.exists():
+                raise ValidationError(
+                    f"attachment filename collision in assets: {candidate.name}"
+                )
+        shutil.copy2(source, candidate)
+        return str(Path("assets") / candidate.name)
 
     def link_requirements(
         self,

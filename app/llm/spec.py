@@ -81,7 +81,7 @@ SYSTEM_PROMPT = (
         When listing or searching requirements you may combine filters. `list_requirements` requires the `prefix` of the requirements document you want to inspect (for example, `SYS`). The system instructions include a "Requirements documents" section listing every available prefix with its requirement count—choose one of those values. Optional filters: `page`, `per_page`, `status`, `labels` and `fields`. `search_requirements` accepts `query`, `labels`, `status`, `page`, `per_page` and `fields`. Use `fields` to limit the payload to specific requirement attributes; the `rid` is always included even when not requested. Provide `fields` as an array of field names—the server falls back to the full payload when the value is malformed. Status values: draft, in_review, approved, baselined, retired, rejected, deferred, superseded, needs_clarification — always use these lowercase codes even when the user provides alternative wording or another language. Labels must be arrays of strings.
         When editing a requirement use the specialised tools described below: `update_requirement_field` changes exactly one field at a time. Allowed field names: {editable_fields}. Provide the new content via the `value` argument as a plain string (use ISO 8601 for timestamps; send an empty string when you need to clear optional text). The server increments the revision automatically.
         `set_requirement_labels` replaces the full label list; pass an array of strings (use [] to clear all labels).
-        `set_requirement_attachments` replaces attachments; supply an array of objects such as {{"path": "docs/spec.pdf", "note": "optional comment"}} or [] to remove them.
+        `set_requirement_attachments` replaces attachments; supply an array of objects such as {{"id": "uuid", "path": "assets/spec.pdf", "note": "optional comment"}} or [] to remove them.
         `set_requirement_links` replaces outgoing trace links; provide an array of link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically.
         `create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.
         `delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.
@@ -326,16 +326,20 @@ TOOLS: list[dict[str, Any]] = [
                                 "items": {
                                     "type": "object",
                                     "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "description": "Unique attachment identifier referenced from the statement.",
+                                        },
                                         "path": {
                                             "type": "string",
-                                            "description": "Path to the attachment relative to the project root.",
+                                            "description": "Path to the attachment relative to the document root.",
                                         },
                                         "note": {
                                             "type": "string",
                                             "description": "Optional note shown alongside the attachment.",
                                         },
                                     },
-                                    "required": ["path"],
+                                    "required": ["id", "path"],
                                     "additionalProperties": False,
                                 },
                             },
@@ -459,6 +463,10 @@ TOOLS: list[dict[str, Any]] = [
                         "items": {
                             "type": "object",
                             "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Unique attachment identifier referenced from the statement.",
+                                },
                                 "path": {
                                     "type": "string",
                                     "description": "Relative path to the attachment file.",
@@ -468,7 +476,7 @@ TOOLS: list[dict[str, Any]] = [
                                     "description": "Optional note displayed together with the attachment.",
                                 },
                             },
-                            "required": ["path"],
+                            "required": ["id", "path"],
                             "additionalProperties": False,
                         },
                         "description": "Attachments to store; use an empty array when no files should remain linked.",
@@ -790,5 +798,4 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
-
 

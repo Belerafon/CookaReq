@@ -18,6 +18,7 @@ class ExportFormat(Enum):
 
     TXT = "txt"
     HTML = "html"
+    DOCX = "docx"
     CSV = "csv"
     TSV = "tsv"
 
@@ -78,6 +79,7 @@ class RequirementExportDialog(wx.Dialog):
         self._refresh_path_display()
         self._refresh_checklist()
         self._update_text_options_visibility()
+        self._update_columns_visibility()
         self._update_ok_state()
         self.SetSize((820, 620))
         self.SetMinSize((420, 520))
@@ -131,8 +133,9 @@ class RequirementExportDialog(wx.Dialog):
         selection_map = {
             ExportFormat.TXT: 0,
             ExportFormat.HTML: 1,
-            ExportFormat.CSV: 2,
-            ExportFormat.TSV: 3,
+            ExportFormat.DOCX: 2,
+            ExportFormat.CSV: 3,
+            ExportFormat.TSV: 4,
         }
         self.format_choice.SetSelection(selection_map.get(export_format, 0))
 
@@ -150,7 +153,8 @@ class RequirementExportDialog(wx.Dialog):
             message=_("Select export file"),
             wildcard=_(
                 "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|"
-                "CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+                "DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|"
+                "TSV files (*.tsv)|*.tsv|All files|*.*"
             ),
             style=wx.FLP_SAVE | wx.FLP_OVERWRITE_PROMPT,
         )
@@ -163,6 +167,7 @@ class RequirementExportDialog(wx.Dialog):
             choices=[
                 _("Plain text (.txt)"),
                 _("HTML (.html)"),
+                _("Word (.docx)"),
                 _("CSV (.csv)"),
                 _("TSV (.tsv)"),
             ],
@@ -253,6 +258,7 @@ class RequirementExportDialog(wx.Dialog):
         self.Layout()
         self._main_sizer = main_sizer
         self._txt_options_sizer = txt_options_sizer
+        self._columns_sizer = columns_sizer
 
     # ------------------------------------------------------------------
     def _refresh_checklist(self, *, keep_selection: int | None = None) -> None:
@@ -275,8 +281,10 @@ class RequirementExportDialog(wx.Dialog):
         if selection == 1:
             return ExportFormat.HTML
         if selection == 2:
-            return ExportFormat.CSV
+            return ExportFormat.DOCX
         if selection == 3:
+            return ExportFormat.CSV
+        if selection == 4:
             return ExportFormat.TSV
         return ExportFormat.TXT
 
@@ -285,12 +293,18 @@ class RequirementExportDialog(wx.Dialog):
             return
         path = self.file_picker.GetPath()
         has_path = bool(path)
-        has_columns = bool(self._checked_fields())
+        require_columns = self._current_format() != ExportFormat.DOCX
+        has_columns = bool(self._checked_fields()) if require_columns else True
         self.ok_button.Enable(has_path and has_columns)
 
     def _update_text_options_visibility(self) -> None:
         is_txt = self._current_format() == ExportFormat.TXT
         self._main_sizer.Show(self._txt_options_sizer, is_txt, recursive=True)
+        self._main_sizer.Layout()
+
+    def _update_columns_visibility(self) -> None:
+        show_columns = self._current_format() != ExportFormat.DOCX
+        self._main_sizer.Show(self._columns_sizer, show_columns, recursive=True)
         self._main_sizer.Layout()
 
     def _ensure_extension(self, path: str) -> str:
@@ -299,6 +313,8 @@ class RequirementExportDialog(wx.Dialog):
         current = self._current_format()
         if current == ExportFormat.HTML:
             suffix = ".html"
+        elif current == ExportFormat.DOCX:
+            suffix = ".docx"
         elif current == ExportFormat.CSV:
             suffix = ".csv"
         elif current == ExportFormat.TSV:
@@ -306,7 +322,7 @@ class RequirementExportDialog(wx.Dialog):
         else:
             suffix = ".txt"
         target = Path(path)
-        if target.suffix.lower() in {".txt", ".html", ".htm", ".csv", ".tsv"}:
+        if target.suffix.lower() in {".txt", ".html", ".htm", ".docx", ".csv", ".tsv"}:
             return str(target.with_suffix(suffix))
         return path
 
@@ -326,6 +342,7 @@ class RequirementExportDialog(wx.Dialog):
     def _on_format_changed(self, _event: wx.CommandEvent) -> None:
         self._refresh_path_display()
         self._update_text_options_visibility()
+        self._update_columns_visibility()
         self._update_ok_state()
 
     def _on_columns_changed(self, _event: wx.CommandEvent) -> None:
@@ -384,7 +401,7 @@ class RequirementExportDialog(wx.Dialog):
         if not self.file_picker.GetPath():
             wx.MessageBox(_("Select export file first."), _("Export blocked"))
             return
-        if not self._checked_fields():
+        if self._current_format() != ExportFormat.DOCX and not self._checked_fields():
             wx.MessageBox(_("Choose at least one column to export."), _("Export blocked"))
             return
         event.Skip()
@@ -395,7 +412,7 @@ class RequirementExportDialog(wx.Dialog):
         if not path:
             return None
         columns = self._checked_fields()
-        if not columns:
+        if not columns and self._current_format() != ExportFormat.DOCX:
             return None
         return RequirementExportPlan(
             path=Path(path),

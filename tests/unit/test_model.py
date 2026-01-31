@@ -89,13 +89,14 @@ def test_requirement_extended_roundtrip():
         priority=Priority.MEDIUM,
         source="s",
         verification=Verification.ANALYSIS,
-        attachments=[Attachment(path="doc.txt", note="ref")],
+        attachments=[Attachment(id="att-1", path="doc.txt", note="ref")],
         approved_at="2024-01-01 00:00:00",
         notes="extra",
         rationale="because",
         assumptions="if ready",
     )
     data = req.to_mapping()
+    assert data["attachments"][0]["id"] == "att-1"
     assert data["attachments"][0]["path"] == "doc.txt"
     assert data["approved_at"] == "2024-01-01 00:00:00"
     assert "acceptance" in data and data["acceptance"] is None

@@ -63,7 +63,7 @@ def test_editor_panel_discard_changes_without_storage_restores_form_state(wx_app
         panel = EditorPanel(frame)
         panel.fields["title"].ChangeValue("Original")
         panel.notes_ctrl.ChangeValue("Base note")
-        panel.attachments = [{"path": "doc.txt", "note": "ref"}]
+        panel.attachments = [{"id": "att-1", "path": "doc.txt", "note": "ref"}]
         panel.mark_clean()
 
         panel.fields["title"].ChangeValue("Changed")
@@ -75,7 +75,7 @@ def test_editor_panel_discard_changes_without_storage_restores_form_state(wx_app
 
         assert panel.fields["title"].GetValue() == "Original"
         assert panel.notes_ctrl.GetValue() == "Base note"
-        assert panel.attachments == [{"path": "doc.txt", "note": "ref"}]
+        assert panel.attachments == [{"id": "att-1", "path": "doc.txt", "note": "ref"}]
         assert panel.is_dirty() is False
     finally:
         frame.Destroy()

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable, Mapping, Sequence
 
-from ..model import Link, Requirement, requirement_fingerprint
+from ..model import Attachment, Link, Requirement, requirement_fingerprint
 from ..search import filter_by_labels, filter_by_status, search
 from .types import (
     Document,
@@ -555,7 +555,15 @@ def set_requirement_attachments(
     def mutate(payload: dict[str, Any], _prefix: str, _doc: Document) -> None:
         if not isinstance(attachments, Sequence) or isinstance(attachments, (str, bytes)):
             raise ValidationError("attachments must be a list")
-        payload["attachments"] = list(attachments)
+        normalized: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for entry in attachments:
+            attachment = Attachment.from_mapping(entry)
+            if attachment.id in seen_ids:
+                raise ValidationError("attachment ids must be unique")
+            seen_ids.add(attachment.id)
+            normalized.append(attachment.to_mapping())
+        payload["attachments"] = normalized
 
     return _update_requirement(root, rid, docs, mutate)
 

@@ -95,6 +95,24 @@ def test_search_text():
     assert [r.id for r in found] == [1]
 
 
+def test_search_text_strips_markdown():
+    reqs = [
+        Requirement(
+            id=10,
+            title="Markdown",
+            statement="Use **bold** statement",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="",
+            priority=Priority.MEDIUM,
+            source="spec",
+            verification=Verification.ANALYSIS,
+        ),
+    ]
+    found = search_text(reqs, "bold", ["statement"])
+    assert [r.id for r in found] == [10]
+
+
 def test_search_text_empty_query_returns_all():
     reqs = sample_requirements()
     assert search_text(reqs, "", ["title"]) == reqs

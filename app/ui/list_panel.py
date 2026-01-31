@@ -13,6 +13,7 @@ from wx.lib.mixins.listctrl import ColumnSorterMixin
 from .. import columns
 from ..services.requirements import LabelDef, label_color, parse_rid, stable_color
 from ..core.model import Requirement, Status
+from ..core.markdown_utils import strip_markdown
 from ..i18n import _
 from ..log import logger
 from . import locale
@@ -232,6 +233,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
+    STATEMENT_PREVIEW_LIMIT = 160
 
     def __init__(
         self,
@@ -839,10 +841,22 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     )
                     self.list.SetItem(index, col, value)
                     continue
+                if field == "statement":
+                    value = self._statement_preview_text(getattr(req, "statement", ""))
+                    self.list.SetItem(index, col, value)
+                    continue
                 value = getattr(req, field, "")
                 if isinstance(value, Enum):
                     value = locale.code_to_label(field, value.value)
                 self.list.SetItem(index, col, str(value))
+
+    def _statement_preview_text(self, value: str) -> str:
+        text = strip_markdown(str(value))
+        text = " ".join(text.split())
+        if len(text) <= self.STATEMENT_PREVIEW_LIMIT:
+            return text
+        trimmed = text[: self.STATEMENT_PREVIEW_LIMIT - 1].rstrip()
+        return f"{trimmed}…"
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

@@ -198,6 +198,49 @@ def test_set_attachments_and_links_reject_none(
         )
 
 
+def test_create_requirement_accepts_attachment_metadata(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={
+            **_base_payload(),
+            "attachments": [{"id": "att-1", "path": "assets/diagram.png", "note": "ref"}],
+        },
+        docs=docs,
+    )
+
+    assert created.attachments[0].id == "att-1"
+    assert created.attachments[0].path == "assets/diagram.png"
+    assert created.attachments[0].note == "ref"
+
+
+def test_set_requirement_attachments_rejects_duplicate_ids(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data=_base_payload(),
+        docs=docs,
+    )
+
+    with pytest.raises(ValidationError):
+        set_requirement_attachments(
+            tmp_path,
+            created.rid,
+            attachments=[
+                {"id": "dup", "path": "assets/a.png"},
+                {"id": "dup", "path": "assets/b.png"},
+            ],
+            docs=docs,
+        )
+
+
 def test_move_requirement_updates_links(tmp_path: Path) -> None:
     sys_doc = Document(
         prefix="SYS",

@@ -494,6 +494,7 @@ def build_wx_stub() -> tuple[types.SimpleNamespace, types.SimpleNamespace, types
         IMAGE_LIST_SMALL=0,
         Config=Config,
         ContextMenuEvent=types.SimpleNamespace,
+        Event=types.SimpleNamespace,
         ArtProvider=ArtProvider,
         Font=Font,
         Colour=Colour,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 
 from .model import Requirement, Status
+from .markdown_utils import strip_markdown
 
 # Fields allowed for text search
 SEARCHABLE_FIELDS = {
@@ -16,6 +17,15 @@ SEARCHABLE_FIELDS = {
     "notes",
     "rationale",
     "assumptions",
+}
+
+MARKDOWN_FIELDS = {
+    "statement",
+    "acceptance",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "notes",
 }
 
 
@@ -76,7 +86,12 @@ def search_text(
     for r in reqs:
         for field in fields:
             value = getattr(r, field, None)
-            if value and q in str(value).lower():
+            if not value:
+                continue
+            text = str(value)
+            if field in MARKDOWN_FIELDS:
+                text = strip_markdown(text)
+            if q in text.lower():
                 result.append(r)
                 break
     return result
@@ -100,7 +115,15 @@ def filter_text_fields(
         if not query or field not in SEARCHABLE_FIELDS:
             continue
         q = query.lower()
-        reqs = [r for r in reqs if q in str(getattr(r, field, "")).lower()]
+        filtered: list[Requirement] = []
+        for req in reqs:
+            value = getattr(req, field, "")
+            text = str(value)
+            if field in MARKDOWN_FIELDS:
+                text = strip_markdown(text)
+            if q in text.lower():
+                filtered.append(req)
+        reqs = filtered
     return reqs
 
 

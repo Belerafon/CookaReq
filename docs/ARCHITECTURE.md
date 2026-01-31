@@ -28,6 +28,7 @@ so you know which modules are involved and which regressions to guard against.
   * `document.json` stores metadata (title, parent, labels).
   * `items/<ID>.json` keeps individual requirement payloads.
   * `agent_chats.zip` retains previous agent transcripts for that document.
+  * `assets/` stores attachment files referenced from requirement statements.
 * **Document store** — `app/core/document_store/` exposes CRUD helpers for
   documents, items, relationship links and label collections. It keeps ID
   counters, validates JSON payloads and hides filesystem concerns from callers.
@@ -37,6 +38,8 @@ so you know which modules are involved and which regressions to guard against.
   needs_clarification, while verification values include not_defined,
   inspection, analysis, demonstration and test. Any schema change must stay in
   sync with the JSON representation and migrations for existing files.
+  Attachments are stored as `{id, path, note}` entries, where `id` is referenced
+  from Markdown statements and `path` points to the document-local assets file.
 * **Search and filtering** — `app/core/search.py` provides predicates used by
   the wx models in `app/ui/requirement_model.py` to filter by text, labels and
   status. Sorting also happens in these layers.
@@ -48,7 +51,12 @@ so you know which modules are involved and which regressions to guard against.
   between external formats and the `Requirement` dataclass while delegating all
   persistence to the document store. The tabular helper renders the
   selectable-column HTML/CSV/TSV exports, while the text helper builds the
-  plain-text card exports used by the GUI export dialog.
+  plain-text card exports used by the GUI export dialog. The HTML export cards
+  render Markdown in requirement sections and resolve attachment links to the
+  stored asset paths. The same export pipeline can also render DOCX cards with
+  embedded attachments, and the GUI export dialog exposes DOCX alongside the
+  tabular/text formats. The GUI export flow writes outputs into a dedicated
+  directory and copies the document `assets/` folder alongside the export file.
 
 ## Application services and configuration context
 
@@ -70,7 +78,9 @@ so you know which modules are involved and which regressions to guard against.
   when keys change or disappear. `copy_requirement()` duplicates a requirement
   into another document, resetting the revision counter (unless explicitly
   overridden) and promoting any missing label definitions in the destination so
-  the copy can be persisted without manual metadata curation.
+  the copy can be persisted without manual metadata curation. Attachment helpers
+  copy uploaded files into `assets/` and resolve attachment IDs back to local
+  file paths for preview or export flows.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small
@@ -134,7 +144,9 @@ so you know which modules are involved and which regressions to guard against.
     deriving, deleting and now transferring requirements between documents via
     a modal dialog that lets users choose between copy/move semantics and the
     destination document.
-  * `editor_panel.py` manages requirement editing and metadata updates.
+  * `editor_panel.py` manages requirement editing and metadata updates,
+    including a Markdown preview mode that renders statements with attachment
+    links resolved to the document-local `assets/` directory.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is
   still executing; the panel surfaces the pending message in a cancellable

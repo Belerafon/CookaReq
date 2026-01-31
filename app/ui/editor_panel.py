@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ from .enums import ENUMS
 from .helpers import AutoHeightListCtrl, HelpStaticBox, dip, inherit_background, make_help_button
 from .label_selection_dialog import LabelSelectionDialog
 from .resources import load_editor_config
+from .widgets.markdown_view import MarkdownContent
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,11 @@ class EditorPanel(wx.Panel):
         self._id_conflict = False
         self._saved_state: dict[str, Any] | None = None
         self._link_metadata_cache: dict[str, dict[str, Any]] = {}
+        self._statement_mode: wx.Choice | None = None
+        self._statement_preview: MarkdownContent | None = None
+        self._insert_image_btn: wx.Button | None = None
+
+        self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
         config = load_editor_config()
         labels = {name: locale.field_label(name) for name in config.field_names}
@@ -86,12 +93,24 @@ class EditorPanel(wx.Panel):
             row = wx.BoxSizer(wx.HORIZONTAL)
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+            if spec.name == "statement":
+                mode = wx.Choice(content, choices=[_("Edit"), _("Preview")])
+                mode.SetSelection(0)
+                mode.Bind(wx.EVT_CHOICE, self._on_statement_mode_change)
+                row.Add(mode, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                self._statement_mode = mode
+                insert_btn = wx.Button(content, label=_("Insert Image…"))
+                insert_btn.Bind(wx.EVT_BUTTON, self._on_insert_image)
+                row.Add(insert_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                self._insert_image_btn = insert_btn
             content_sizer.Add(row, 0, wx.TOP, border)
 
             style = wx.TE_MULTILINE if spec.multiline else 0
             ctrl = wx.TextCtrl(content, style=style)
             if spec.multiline:
                 self._bind_autosize(ctrl)
+            if spec.name == "statement":
+                ctrl.Bind(wx.EVT_TEXT, self._on_statement_text_change)
             self.fields[spec.name] = ctrl
             # Multiline controls are sized manually, so the sizer receives no grow factor.
             content_sizer.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
@@ -99,6 +118,17 @@ class EditorPanel(wx.Panel):
                 ctrl.SetHint(_(spec.hint))
             if spec.name == "id":
                 ctrl.Bind(wx.EVT_TEXT, self._on_id_change)
+            if spec.name == "statement":
+                preview = MarkdownContent(
+                    content,
+                    markdown="",
+                    foreground_colour=content.GetForegroundColour(),
+                    background_colour=content.GetBackgroundColour(),
+                )
+                preview.SetMinSize(wx.Size(-1, dip(self, 160)))
+                preview.Hide()
+                self._statement_preview = preview
+                content_sizer.Add(preview, 1, wx.EXPAND | wx.TOP, border)
 
         grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         grid.AddGrowableCol(0, 1)
@@ -763,6 +793,7 @@ class EditorPanel(wx.Panel):
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
         """Collect form data into a :class:`Requirement`."""
+        self._sync_attachments_with_statement()
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
             raise ValueError(_("ID is required"))
@@ -951,8 +982,19 @@ class EditorPanel(wx.Panel):
             self.attachments_list.SendSizeEvent()
         self.Layout()
         self.FitInside()
+        if self._statement_preview and self._is_statement_preview_mode():
+            self._update_statement_preview()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
+        service = self._service
+        prefix = self._effective_prefix()
+        if service is None or not prefix:
+            wx.MessageBox(
+                _("Select a document before adding attachments."),
+                _("Error"),
+                style=wx.ICON_ERROR,
+            )
+            return
         dlg = wx.FileDialog(
             self,
             _("Select attachment"),
@@ -968,7 +1010,15 @@ class EditorPanel(wx.Panel):
         if ndlg.ShowModal() == wx.ID_OK:
             note = ndlg.GetValue()
         ndlg.Destroy()
-        self.attachments.append({"path": path, "note": note})
+        try:
+            attachment = service.upload_requirement_attachment(
+                prefix, Path(path), note=note
+            )
+        except Exception as exc:  # pragma: no cover - UI error guard
+            logger.exception("Failed to add attachment %s", path)
+            wx.MessageBox(str(exc), _("Error"), style=wx.ICON_ERROR)
+            return
+        self.attachments.append(attachment)
         self._refresh_attachments()
 
     def _on_remove_attachment(self, _event: wx.CommandEvent) -> None:
@@ -976,6 +1026,193 @@ class EditorPanel(wx.Panel):
         if idx != -1:
             del self.attachments[idx]
             self._refresh_attachments()
+
+    def _on_insert_image(self, _event: wx.CommandEvent) -> None:
+        service = self._service
+        prefix = self._effective_prefix()
+        if service is None or not prefix:
+            wx.MessageBox(
+                _("Select a document before adding attachments."),
+                _("Error"),
+                style=wx.ICON_ERROR,
+            )
+            return
+        dlg = wx.FileDialog(
+            self,
+            _("Select image"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        )
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        path = dlg.GetPath()
+        dlg.Destroy()
+        try:
+            attachment = service.upload_requirement_attachment(
+                prefix, Path(path), note=""
+            )
+        except Exception as exc:  # pragma: no cover - UI error guard
+            logger.exception("Failed to add attachment %s", path)
+            wx.MessageBox(str(exc), _("Error"), style=wx.ICON_ERROR)
+            return
+        self.attachments.append(attachment)
+        self._refresh_attachments()
+        alt_text = Path(path).stem or _("Image")
+        self._insert_attachment_markdown(attachment["id"], alt_text)
+
+    def _on_statement_mode_change(self, _event: wx.CommandEvent) -> None:
+        self._set_statement_preview_mode(self._is_statement_preview_mode())
+
+    def _on_statement_text_change(self, event: wx.CommandEvent) -> None:
+        if self._suspend_events:
+            event.Skip()
+            return
+        if self._statement_preview and self._is_statement_preview_mode():
+            self._update_statement_preview()
+        event.Skip()
+
+    def _is_statement_preview_mode(self) -> bool:
+        if self._statement_mode is None:
+            return False
+        return self._statement_mode.GetSelection() == 1
+
+    def _set_statement_preview_mode(self, enabled: bool) -> None:
+        preview = self._statement_preview
+        statement_ctrl = self.fields.get("statement")
+        if preview is None or statement_ctrl is None:
+            return
+        statement_ctrl.Show(not enabled)
+        preview.Show(enabled)
+        if enabled:
+            self._update_statement_preview()
+        self.Layout()
+        self.FitInside()
+
+    def _update_statement_preview(self) -> None:
+        preview = self._statement_preview
+        if preview is None:
+            return
+        markdown = self._statement_markdown_for_preview()
+        preview.SetMarkdown(markdown)
+
+    def _statement_markdown_for_preview(self) -> str:
+        statement_ctrl = self.fields.get("statement")
+        if statement_ctrl is None:
+            return ""
+        raw = statement_ctrl.GetValue()
+        if not raw:
+            return ""
+        if not self.attachments:
+            return raw
+        attachment_map: dict[str, str] = {}
+        for attachment in self.attachments:
+            if not isinstance(attachment, dict):
+                continue
+            attachment_id = str(attachment.get("id", "")).strip()
+            path = str(attachment.get("path", "")).strip()
+            if attachment_id and path:
+                attachment_map[attachment_id] = path
+        if not attachment_map:
+            return raw
+
+        prefix = self._effective_prefix()
+        root = self._service.root if self._service is not None else None
+
+        def _replace(match: re.Match[str]) -> str:
+            attachment_id = match.group(1)
+            path = attachment_map.get(attachment_id)
+            if not path:
+                return match.group(0)
+            candidate = Path(path)
+            if not candidate.is_absolute() and root is not None and prefix:
+                candidate = Path(root) / prefix / candidate
+            if candidate.is_absolute():
+                return candidate.resolve().as_uri()
+            return match.group(0)
+
+        return self._attachment_link_re.sub(_replace, raw)
+
+    def _insert_attachment_markdown(self, attachment_id: str, alt_text: str) -> None:
+        statement_ctrl = self.fields.get("statement")
+        if statement_ctrl is None:
+            return
+        if not attachment_id:
+            return
+        safe_alt = alt_text.strip() or _("Image")
+        snippet = f"![{safe_alt}](attachment:{attachment_id})"
+        statement_ctrl.WriteText(snippet)
+        if self._statement_preview and self._is_statement_preview_mode():
+            self._update_statement_preview()
+
+    def _referenced_attachment_ids(self) -> set[str]:
+        statement_ctrl = self.fields.get("statement")
+        if statement_ctrl is None:
+            return set()
+        raw = statement_ctrl.GetValue() or ""
+        return {match.group(1) for match in self._attachment_link_re.finditer(raw)}
+
+    def _sync_attachments_with_statement(self) -> None:
+        referenced = self._referenced_attachment_ids()
+        current_attachments = list(self.attachments)
+        removed = [
+            att
+            for att in current_attachments
+            if str(att.get("id", "")).strip() not in referenced
+        ]
+        if removed:
+            proceed = self._prompt_attachment_cleanup(removed)
+            if not proceed:
+                return
+        if not referenced:
+            self.attachments = []
+        else:
+            self.attachments = [
+                att
+                for att in current_attachments
+                if str(att.get("id", "")).strip() in referenced
+            ]
+        self._refresh_attachments()
+
+    def _prompt_attachment_cleanup(self, removed: list[dict[str, str]]) -> bool:
+        service = self._service
+        prefix = self._effective_prefix()
+        if service is None or not prefix:
+            return True
+        for attachment in removed:
+            path = attachment.get("path", "")
+            if not path:
+                continue
+            file_path = Path(path)
+            if not file_path.is_absolute():
+                file_path = Path(service.root) / prefix / file_path
+            if not file_path.exists():
+                continue
+            message = _("Delete attachment file?\n{path}").format(path=file_path)
+            dlg = wx.MessageDialog(
+                self,
+                message,
+                _("Delete attachment"),
+                style=wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION,
+            )
+            dlg.SetYesNoLabels(_("Delete"), _("Skip"))
+            dlg.SetCancelLabel(_("Cancel"))
+            result = dlg.ShowModal()
+            dlg.Destroy()
+            if result == wx.ID_CANCEL:
+                return False
+            if result != wx.ID_YES:
+                continue
+            try:
+                file_path.unlink()
+            except OSError:  # pragma: no cover - filesystem errors
+                wx.MessageBox(
+                    _("Failed to delete attachment file:\n{path}").format(
+                        path=file_path
+                    ),
+                    _("Error"),
+                    style=wx.ICON_ERROR,
+                )
+        return True
 
     # generic link handlers -------------------------------------------
     def _on_add_link_generic(self, attr: str) -> None:
@@ -1221,9 +1458,9 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self.mark_clean()
 
-    def add_attachment(self, path: str, note: str = "") -> None:
-        """Append attachment with ``path`` and optional ``note``."""
-        self.attachments.append({"path": path, "note": note})
+    def add_attachment(self, attachment_id: str, path: str, note: str = "") -> None:
+        """Append attachment with ``attachment_id``, ``path`` and optional ``note``."""
+        self.attachments.append({"id": attachment_id, "path": path, "note": note})
         if hasattr(self, "attachments_list"):
             idx = self.attachments_list.InsertItem(
                 self.attachments_list.GetItemCount(),

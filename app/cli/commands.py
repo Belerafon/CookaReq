@@ -43,6 +43,7 @@ from app.core.trace_matrix import (
 from app.core.requirement_export import (
     build_requirement_export,
     render_requirements_html,
+    render_requirements_docx,
     render_requirements_markdown,
     render_requirements_pdf,
 )
@@ -111,6 +112,17 @@ class ItemPayload:
             errors.append(_("links must be a list"))
         if not isinstance(self.attachments, list):
             errors.append(_("attachments must be a list"))
+        else:
+            for attachment in self.attachments:
+                if not isinstance(attachment, Mapping):
+                    errors.append(_("attachments must be a list of objects"))
+                    break
+                if not attachment.get("id"):
+                    errors.append(_("attachment id is required"))
+                    break
+                if not attachment.get("path"):
+                    errors.append(_("attachment path is required"))
+                    break
         if self.revision is not None and not isinstance(self.revision, int):
             errors.append(_("revision must be an integer"))
 
@@ -1027,6 +1039,16 @@ def cmd_export_requirements(
                 out.close()
         return
 
+    if fmt == "docx":
+        payload = render_requirements_docx(export, title=title)
+        out, close_out = _open_export_output(getattr(args, "output", None), binary=True)
+        try:
+            out.write(payload)
+        finally:
+            if close_out:
+                out.close()
+        return
+
     raise SystemExit(f"unknown format: {fmt}")
 
 
@@ -1047,7 +1069,7 @@ def add_export_arguments(p: argparse.ArgumentParser) -> None:
     )
     req.add_argument(
         "--format",
-        choices=["markdown", "html", "pdf"],
+        choices=["markdown", "html", "pdf", "docx"],
         default="markdown",
         help=_("output format"),
     )

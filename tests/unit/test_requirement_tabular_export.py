@@ -55,6 +55,17 @@ def test_render_requirement_cards_txt_uses_placeholder_for_empty_fields():
 
 
 @pytest.mark.unit
+def test_render_requirement_cards_txt_strips_markdown():
+    headers = ["Statement"]
+    rows = [["See **bold** and [link](https://example.com) and `code`."]]
+    text = render_requirement_cards_txt(headers, rows, strip_markdown_text=True)
+    assert "bold" in text
+    assert "link" in text
+    assert "code" in text
+    assert "**" not in text
+
+
+@pytest.mark.unit
 def test_render_tabular_html_converts_newlines():
     headers = ["Title", "Statement"]
     rows = [["Hello", "Line1\nLine2"]]

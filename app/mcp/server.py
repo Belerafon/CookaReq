@@ -358,7 +358,16 @@ _TOOL_ARGUMENT_SCHEMAS: dict[str, dict[str, Any]] = {
             "rid": {"type": "string"},
             "attachments": {
                 "type": "array",
-                "items": {"type": "object"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "path": {"type": "string"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["id", "path"],
+                    "additionalProperties": False,
+                },
             },
         },
         "required": ["rid", "attachments"],

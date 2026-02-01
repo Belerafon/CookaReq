@@ -56,6 +56,7 @@ class Verification(str, Enum):
 class Attachment:
     """Represent a file attached to a requirement."""
 
+    id: str
     path: str
     note: str = ""
 
@@ -65,17 +66,21 @@ class Attachment:
         if not isinstance(data, Mapping):
             raise TypeError("attachment must be a mapping")
         try:
+            attachment_id_raw = data["id"]
             path_raw = data["path"]
         except KeyError as exc:  # pragma: no cover - defensive
-            raise TypeError("attachment mapping missing 'path'") from exc
+            raise TypeError("attachment mapping missing required fields") from exc
+        attachment_id = str(attachment_id_raw).strip()
+        if not attachment_id:
+            raise TypeError("attachment id cannot be empty")
         note_raw = data.get("note", "")
         path = str(path_raw)
         note = "" if note_raw is None else str(note_raw)
-        return cls(path=path, note=note)
+        return cls(id=attachment_id, path=path, note=note)
 
     def to_mapping(self) -> dict[str, Any]:
         """Serialise the attachment for JSON storage."""
-        return {"path": self.path, "note": self.note}
+        return {"id": self.id, "path": self.path, "note": self.note}
 
 
 @dataclass(slots=True)
@@ -164,6 +169,11 @@ class Requirement:
                 attachments.append(entry)
             else:
                 attachments.append(Attachment.from_mapping(entry))
+        seen_attachment_ids: set[str] = set()
+        for attachment in attachments:
+            if attachment.id in seen_attachment_ids:
+                raise ValueError("attachment ids must be unique")
+            seen_attachment_ids.add(attachment.id)
 
         raw_links = data.get("links")
         links: list[Link] = []

@@ -180,6 +180,26 @@ def test_labels_column_uses_imagelist(stubbed_list_panel_env):
         assert panel.list._item_images[0] == -1
 
 
+def test_statement_column_shows_plain_preview(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_columns(["statement"])
+    statement = (
+        "Intro **bold** text with [link](https://example.com) and more "
+        + ("A" * 200)
+    )
+    panel.set_requirements([_req(1, "Title", statement=statement)])
+
+    statement_col = panel._field_order.index("statement")
+    display = panel.list.GetItem(0, statement_col).GetText()
+
+    assert "**" not in display
+    assert "bold" in display
+    assert "link" in display
+    assert len(display) <= panel.STATEMENT_PREVIEW_LIMIT
+    assert display.endswith("…")
+
+
 def test_label_imagelist_handles_resizes(stubbed_list_panel_env):
     env = stubbed_list_panel_env
     wx_stub = env.wx

@@ -125,7 +125,7 @@ def test_item_move_merges_sources(tmp_path, capsys, cli_context):
         "assumptions": "Existing assumptions",
         "modified_at": "2024-03-01T00:00:00Z",
         "labels": ["seed"],
-        "attachments": [{"path": "seed.txt", "note": "seed"}],
+        "attachments": [{"id": "att-seed", "path": "seed.txt", "note": "seed"}],
         "approved_at": "2024-03-02T00:00:00Z",
         "notes": "Existing notes",
         "links": [],
@@ -159,7 +159,7 @@ def test_item_move_merges_sources(tmp_path, capsys, cli_context):
     move_template = {
         "statement": "Template statement",
         "priority": Priority.LOW.value,
-        "attachments": [{"path": "template.txt", "note": "tpl"}],
+        "attachments": [{"id": "att-template", "path": "template.txt", "note": "tpl"}],
         "labels": ["template"],
         "notes": "Template notes",
         "links": ["SYS2", "SYS50"],
@@ -176,7 +176,7 @@ def test_item_move_merges_sources(tmp_path, capsys, cli_context):
         title="Moved title",
         owner="CLI owner",
         labels="cli, label",
-        attachments=json.dumps([{"path": "cli.txt", "note": "cli"}]),
+        attachments=json.dumps([{"id": "att-cli", "path": "cli.txt", "note": "cli"}]),
         links="SYS2,SYS3",
         acceptance="",
     )
@@ -203,7 +203,7 @@ def test_item_move_merges_sources(tmp_path, capsys, cli_context):
     assert data_new["assumptions"] == "Existing assumptions"
     assert data_new["modified_at"] == "2024-03-01 00:00:00"
     assert data_new["labels"] == ["cli", "label"]
-    assert data_new["attachments"] == [{"path": "cli.txt", "note": "cli"}]
+    assert data_new["attachments"] == [{"id": "att-cli", "path": "cli.txt", "note": "cli"}]
     assert data_new["approved_at"] == "2024-03-02 00:00:00"
     assert data_new["notes"] == "Template notes"
     assert [entry["rid"] for entry in data_new["links"]] == ["SYS2", "SYS3"]
@@ -277,7 +277,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys, cli_context):
         "assumptions": "Base assumptions",
         "modified_at": "2024-01-01T00:00:00Z",
         "labels": ["base"],
-        "attachments": [{"path": "base.txt"}],
+        "attachments": [{"id": "att-base", "path": "base.txt"}],
         "approved_at": "2024-02-01T00:00:00Z",
         "notes": "Base notes",
         "links": ["SYS1"],
@@ -294,7 +294,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys, cli_context):
         type=RequirementType.INTERFACE.value,
         labels="cli, labels",
         links="SYS1,SYS2",
-        attachments='[{"path": "cli.txt", "note": "n"}]',
+        attachments='[{"id": "att-cli-2", "path": "cli.txt", "note": "n"}]',
         acceptance="",
     )
     commands.cmd_item_add(args, cli_context)
@@ -317,7 +317,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys, cli_context):
     assert data["assumptions"] == "Base assumptions"
     assert data["modified_at"] == "2024-01-01 00:00:00"
     assert data["labels"] == ["cli", "labels"]
-    assert data["attachments"] == [{"path": "cli.txt", "note": "n"}]
+    assert data["attachments"] == [{"id": "att-cli-2", "path": "cli.txt", "note": "n"}]
     assert data["approved_at"] == "2024-02-01 00:00:00"
     assert data["notes"] == "Base notes"
     assert [entry["rid"] for entry in data["links"]] == ["SYS1", "SYS2"]
@@ -482,4 +482,3 @@ def test_item_delete_reports_revision_error(tmp_path, capsys, cli_context):
     assert "revision" in out.lower()
     assert "SYS1" in out
     assert path.exists()
-

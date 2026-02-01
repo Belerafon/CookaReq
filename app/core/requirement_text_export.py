@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from .markdown_utils import strip_markdown
+
 __all__ = ["render_requirement_cards_txt"]
 
 
@@ -18,9 +19,9 @@ def _format_card_field(
     value: str,
     *,
     indent: str = "  ",
-    strip_markdown: bool = False,
+    strip_markdown_text: bool = False,
 ) -> str:
-    if strip_markdown:
+    if strip_markdown_text:
         value = strip_markdown(value)
     lines = _normalize_text(value)
     if not lines:
@@ -36,7 +37,7 @@ def render_requirement_cards_txt(
     rows: Iterable[Sequence[str]],
     *,
     empty_field_placeholder: str | None = None,
-    strip_markdown: bool = False,
+    strip_markdown_text: bool = False,
 ) -> str:
     """Render requirements as a plain text card list."""
     cards: list[str] = []
@@ -50,7 +51,7 @@ def render_requirement_cards_txt(
                     continue
                 value = empty_field_placeholder
             fields.append(
-                _format_card_field(label, value, strip_markdown=strip_markdown)
+                _format_card_field(label, value, strip_markdown_text=strip_markdown_text)
             )
         cards.append("\n".join(fields))
     return "\n\n".join(cards) + "\n"

@@ -58,7 +58,7 @@ def test_render_requirement_cards_txt_uses_placeholder_for_empty_fields():
 def test_render_requirement_cards_txt_strips_markdown():
     headers = ["Statement"]
     rows = [["See **bold** and [link](https://example.com) and `code`."]]
-    text = render_requirement_cards_txt(headers, rows, strip_markdown=True)
+    text = render_requirement_cards_txt(headers, rows, strip_markdown_text=True)
     assert "bold" in text
     assert "link" in text
     assert "code" in text

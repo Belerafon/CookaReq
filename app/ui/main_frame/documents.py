@@ -720,7 +720,7 @@ class MainFrameDocumentsMixin:
                     headers,
                     rows,
                     empty_field_placeholder=empty_placeholder,
-                    strip_markdown=True,
+                    strip_markdown_text=True,
                 )
 
         assets_source = self.current_dir / doc.prefix / "assets"

@@ -82,3 +82,61 @@ def test_render_requirements_docx_renders_tables(tmp_path: Path) -> None:
         assert "<w:tbl>" in document_xml
         assert "A" in document_xml
         assert "1" in document_xml
+
+
+def test_render_requirements_docx_keeps_formula_text(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=3,
+        title="Formula requirement",
+        statement="Speed \\(v = s/t\\)",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS3",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="text")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "v = s/t" in document_xml
+
+
+def test_render_requirements_docx_renders_formula_omml(tmp_path: Path) -> None:
+    pytest.importorskip("latex2mathml")
+    pytest.importorskip("mathml2omml")
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=4,
+        title="Formula requirement",
+        statement="Energy \\(E = mc^2\\)",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS4",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="mathml")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "<m:oMath" in document_xml

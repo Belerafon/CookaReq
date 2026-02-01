@@ -694,7 +694,11 @@ class MainFrameDocumentsMixin:
                 link_lookup=self.model.get_all(),
             )
             title = _("Requirements export — {label}").format(label=document_label)
-            content = render_requirements_docx(export, title=title)
+            content = render_requirements_docx(
+                export,
+                title=title,
+                formula_renderer=plan.docx_formula_renderer or "text",
+            )
         else:
             derived_map = getattr(self.panel, "derived_map", {}) or {}
             header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"

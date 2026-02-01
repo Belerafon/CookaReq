@@ -285,6 +285,7 @@ def _escape_html(text: str) -> str:
 
 
 _ATTACHMENT_LINK_RE = re.compile(r"!\[([^\]]*)\]\(attachment:([^)]+)\)")
+_INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
 
 
@@ -295,6 +296,51 @@ def _split_table_row(line: str) -> list[str]:
     if raw.endswith("|"):
         raw = raw[:-1]
     return [cell.strip() for cell in raw.split("|")]
+
+
+def _latex_to_omml(latex: str) -> str | None:
+    try:
+        from latex2mathml.converter import convert as latex_to_mathml
+        from mathml2omml import convert as mathml_to_omml
+    except ImportError:
+        return None
+    try:
+        mathml = latex_to_mathml(latex)
+        return mathml_to_omml(mathml)
+    except Exception:  # pragma: no cover - conversion failures
+        return None
+
+
+def _append_omml_run(paragraph: docx.text.paragraph.Paragraph, omml_xml: str) -> None:
+    from docx.oxml import parse_xml
+
+    if "xmlns:m=" not in omml_xml:
+        if "<m:oMath" in omml_xml:
+            omml_xml = omml_xml.replace(
+                "<m:oMath",
+                "<m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"",
+                1,
+            )
+        else:
+            omml_xml = (
+                "<m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">"
+                f"{omml_xml}</m:oMath>"
+            )
+    paragraph._p.append(parse_xml(omml_xml))
+
+
+def _render_formula_run(
+    paragraph: docx.text.paragraph.Paragraph,
+    formula: str,
+    *,
+    formula_renderer: str,
+) -> None:
+    if formula_renderer == "mathml":
+        omml = _latex_to_omml(formula)
+        if omml:
+            _append_omml_run(paragraph, omml)
+            return
+    paragraph.add_run(formula)
 
 def _build_markdown_renderer() -> markdown.Markdown:
     renderer = markdown.Markdown(
@@ -468,6 +514,7 @@ def _docx_add_markdown(
     base_path: Path,
     doc_prefix: str,
     image_width: float,
+    formula_renderer: str,
 ) -> None:
     segments = _iter_markdown_segments(text, attachment_map=attachment_map)
     for kind, payload in segments:
@@ -487,6 +534,36 @@ def _docx_add_markdown(
         idx = 0
         while idx < len(lines):
             line = lines[idx]
+            stripped = line.strip()
+            if stripped.startswith("$$"):
+                if stripped.endswith("$$") and len(stripped) > 4:
+                    formula = stripped[2:-2].strip()
+                    paragraph = doc.add_paragraph()
+                    _render_formula_run(
+                        paragraph,
+                        formula,
+                        formula_renderer=formula_renderer,
+                    )
+                    idx += 1
+                    continue
+                if stripped == "$$":
+                    idx += 1
+                    block_lines: list[str] = []
+                    while idx < len(lines):
+                        if lines[idx].strip() == "$$":
+                            idx += 1
+                            break
+                        block_lines.append(lines[idx])
+                        idx += 1
+                    formula = "\n".join(block_lines).strip()
+                    if formula:
+                        paragraph = doc.add_paragraph()
+                        _render_formula_run(
+                            paragraph,
+                            formula,
+                            formula_renderer=formula_renderer,
+                        )
+                    continue
             if "|" in line and idx + 1 < len(lines) and _TABLE_SEPARATOR_RE.match(lines[idx + 1]):
                 header_cells = _split_table_row(line)
                 idx += 2
@@ -512,13 +589,34 @@ def _docx_add_markdown(
                             row_cells[col_idx].text = strip_markdown(cell)
                 continue
             if line.strip():
-                doc.add_paragraph(strip_markdown(line.strip()))
+                paragraph = doc.add_paragraph()
+                last_idx = 0
+                for match in _INLINE_FORMULA_RE.finditer(line):
+                    text_segment = line[last_idx:match.start()]
+                    if text_segment:
+                        paragraph.add_run(strip_markdown(text_segment))
+                    formula = match.group(1).strip()
+                    if formula:
+                        _render_formula_run(
+                            paragraph,
+                            formula,
+                            formula_renderer=formula_renderer,
+                        )
+                    last_idx = match.end()
+                tail = line[last_idx:]
+                if tail:
+                    paragraph.add_run(strip_markdown(tail))
             else:
                 doc.add_paragraph("")
             idx += 1
 
 
-def render_requirements_docx(export: RequirementExport, *, title: str | None = None) -> bytes:
+def render_requirements_docx(
+    export: RequirementExport,
+    *,
+    title: str | None = None,
+    formula_renderer: str = "text",
+) -> bytes:
     """Render export data as a DOCX document."""
     heading = title or "Requirements export"
     document = docx.Document()
@@ -577,6 +675,7 @@ def render_requirements_docx(export: RequirementExport, *, title: str | None = N
                     base_path=export.base_path,
                     doc_prefix=req.doc_prefix,
                     image_width=image_width,
+                    formula_renderer=formula_renderer,
                 )
             document.add_paragraph("")
 

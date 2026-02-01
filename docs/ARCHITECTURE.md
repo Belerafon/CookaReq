@@ -55,8 +55,9 @@ so you know which modules are involved and which regressions to guard against.
   render Markdown in requirement sections and resolve attachment links to the
   stored asset paths. The same export pipeline can also render DOCX cards with
   embedded attachments, and the GUI export dialog exposes DOCX alongside the
-  tabular/text formats. The GUI export flow writes outputs into a dedicated
-  directory and copies the document `assets/` folder alongside the export file.
+  tabular/text formats with a selectable DOCX formula renderer. The GUI export
+  flow writes outputs into a dedicated directory and copies the document
+  `assets/` folder alongside the export file.
 
 ## Application services and configuration context
 

@@ -285,6 +285,16 @@ def _escape_html(text: str) -> str:
 
 
 _ATTACHMENT_LINK_RE = re.compile(r"!\[([^\]]*)\]\(attachment:([^)]+)\)")
+_TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
+
+
+def _split_table_row(line: str) -> list[str]:
+    raw = line.strip()
+    if raw.startswith("|"):
+        raw = raw[1:]
+    if raw.endswith("|"):
+        raw = raw[:-1]
+    return [cell.strip() for cell in raw.split("|")]
 
 def _build_markdown_renderer() -> markdown.Markdown:
     renderer = markdown.Markdown(
@@ -473,9 +483,39 @@ def _docx_add_markdown(
             else:
                 doc.add_paragraph(strip_markdown(payload))
             continue
-        for line in strip_markdown(payload).splitlines():
+        lines = payload.splitlines()
+        idx = 0
+        while idx < len(lines):
+            line = lines[idx]
+            if "|" in line and idx + 1 < len(lines) and _TABLE_SEPARATOR_RE.match(lines[idx + 1]):
+                header_cells = _split_table_row(line)
+                idx += 2
+                table_rows: list[list[str]] = []
+                while idx < len(lines):
+                    row_line = lines[idx]
+                    if "|" not in row_line:
+                        break
+                    row_cells = _split_table_row(row_line)
+                    if row_cells:
+                        table_rows.append(row_cells)
+                    idx += 1
+                if header_cells:
+                    col_count = len(header_cells)
+                    table = doc.add_table(rows=0, cols=col_count)
+                    table.style = "Light Grid"
+                    header_row = table.add_row().cells
+                    for col_idx, cell in enumerate(header_cells):
+                        header_row[col_idx].text = strip_markdown(cell)
+                    for row in table_rows:
+                        row_cells = table.add_row().cells
+                        for col_idx, cell in enumerate(row[:col_count]):
+                            row_cells[col_idx].text = strip_markdown(cell)
+                continue
             if line.strip():
-                doc.add_paragraph(line.strip())
+                doc.add_paragraph(strip_markdown(line.strip()))
+            else:
+                doc.add_paragraph("")
+            idx += 1
 
 
 def render_requirements_docx(export: RequirementExport, *, title: str | None = None) -> bytes:

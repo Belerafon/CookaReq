@@ -1095,6 +1095,9 @@ msgstr "JSON template file"
 msgid "Key"
 msgstr "Key"
 
+msgid "Count"
+msgstr "Count"
+
 msgid ""
 "Language for menus and dialogs.\n"
 "Changes apply after restarting CookaReq."

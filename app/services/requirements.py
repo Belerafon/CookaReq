@@ -401,6 +401,21 @@ class RequirementsService:
         docs = self._ensure_documents()
         return doc_store.collect_label_defs(prefix, docs)
 
+    def label_usage_counts(self, prefix: str) -> dict[str, int]:
+        """Return label usage counts for ``prefix`` and its descendants."""
+
+        docs = self._ensure_documents()
+        prefixes = self._descendant_prefixes(prefix, docs)
+        counts: dict[str, int] = {}
+        for requirement in doc_store.load_requirements(
+            self.root,
+            prefixes=prefixes,
+            docs=docs,
+        ):
+            for label in getattr(requirement, "labels", []) or []:
+                counts[label] = counts.get(label, 0) + 1
+        return counts
+
     def describe_label_definitions(self, prefix: str) -> dict[str, object]:
         """Return detailed metadata about labels available to ``prefix``."""
 

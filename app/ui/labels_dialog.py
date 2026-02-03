@@ -33,7 +33,12 @@ class _LabelEditDialog(wx.Dialog):
 class LabelsDialog(wx.Dialog):
     """Dialog allowing to view labels and adjust their colors."""
 
-    def __init__(self, parent: wx.Window | None, labels: list[LabelDef]):
+    def __init__(
+        self,
+        parent: wx.Window | None,
+        labels: list[LabelDef],
+        usage_counts: dict[str, int] | None = None,
+    ):
         """Initialize labels dialog with editable label list."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
@@ -46,6 +51,7 @@ class LabelsDialog(wx.Dialog):
         }
         self._key_changes: dict[str, tuple[str, bool]] = {}
         self._removed_labels: dict[str, bool] = {}
+        self._usage_counts = dict(usage_counts or {})
         cfg = getattr(parent, "config", None)
         if cfg is None:
             cfg = ConfigManager()
@@ -54,6 +60,7 @@ class LabelsDialog(wx.Dialog):
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list.InsertColumn(0, _("Key"))
         self.list.InsertColumn(1, _("Title"))
+        self.list.InsertColumn(2, _("Count"), format=wx.LIST_FORMAT_RIGHT)
 
         # image list to display colored rectangles instead of hex codes
         self._img_list = wx.ImageList(16, 16)
@@ -121,6 +128,7 @@ class LabelsDialog(wx.Dialog):
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
+            self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
             img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
         self._resize_columns()
@@ -155,6 +163,14 @@ class LabelsDialog(wx.Dialog):
         """Return the original key associated with ``key``."""
 
         return self._original_key_lookup.get(key, key)
+
+    def _label_usage_count(self, key: str) -> int:
+        """Return usage count for ``key`` based on original keys."""
+
+        original = self._get_original_key(key)
+        if original in self._usage_counts:
+            return self._usage_counts[original]
+        return self._usage_counts.get(key, 0)
 
     def _on_add_preset_set(self, key: str) -> None:  # pragma: no cover - GUI event
         existing = {lbl.key for lbl in self._labels}
@@ -283,9 +299,12 @@ class LabelsDialog(wx.Dialog):
     def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            first = int(width * 0.4)
+            count_width = min(self.FromDIP(70), max(self.FromDIP(40), width // 5))
+            remaining = max(width - count_width - 6, 0)
+            first = int(remaining * 0.4)
             self.list.SetColumnWidth(0, first)
-            self.list.SetColumnWidth(1, width - first - 4)
+            self.list.SetColumnWidth(1, max(remaining - first, 0))
+            self.list.SetColumnWidth(2, count_width)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._resize_columns()
@@ -337,6 +356,7 @@ class LabelsDialog(wx.Dialog):
             else:
                 if original_key in self._key_changes:
                     self._key_changes.pop(original_key, None)
+            self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
         finally:
             dlg.Destroy()
 

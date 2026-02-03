@@ -1111,6 +1111,9 @@ msgstr "JSON-шаблон"
 msgid "Key"
 msgstr "Ключ"
 
+msgid "Count"
+msgstr "Количество"
+
 msgid ""
 "Language for menus and dialogs.\n"
 "Changes apply after restarting CookaReq."

@@ -328,21 +328,23 @@ def _position_window_near_anchor(window: wx.Window, anchor: wx.Window | None) ->
     window.SetPosition(position)
 
 
-def show_help(
-    parent: wx.Window,
+_help_dialogs: dict[tuple[int, str], wx.Dialog] = {}
+
+
+def _help_dialog_key(parent: wx.Window | None, message: str) -> tuple[int, str]:
+    return (id(parent) if parent else 0, message)
+
+
+def _create_help_dialog(
+    parent: wx.Window | None,
     message: str,
     *,
-    title: str | None = None,
-    anchor: wx.Window | None = None,
-) -> None:
-    """Display a modal dialog with ``message`` near the triggering control."""
-    top_level = parent.GetTopLevelParent() if parent else None
-    dialog_parent = top_level or parent
-
+    title: str,
+) -> tuple[wx.Dialog, wx.TextCtrl]:
     dlg = wx.Dialog(
-        dialog_parent,
-        title=title or _("Hint"),
-        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        parent,
+        title=title,
+        style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER | wx.STAY_ON_TOP,
     )
     text = wx.TextCtrl(
         dlg,
@@ -359,9 +361,52 @@ def show_help(
         sizer.Add(btns, 0, wx.ALL | wx.ALIGN_CENTER, 5)
     dlg.SetSizerAndFit(sizer)
     dlg.Layout()
+    return dlg, text
+
+
+def show_help(
+    parent: wx.Window,
+    message: str,
+    *,
+    title: str | None = None,
+    anchor: wx.Window | None = None,
+) -> None:
+    """Display a help dialog with ``message`` near the triggering control."""
+    top_level = parent.GetTopLevelParent() if parent else None
+    dialog_parent = top_level or parent
+    key = _help_dialog_key(dialog_parent, message)
+    dlg = _help_dialogs.get(key)
+    if dlg and dlg:
+        if not dlg.IsShown():
+            dlg.Show()
+        _position_window_near_anchor(dlg, anchor or parent)
+        dlg.Raise()
+        dlg.SetFocus()
+        return
+
+    dlg, text = _create_help_dialog(
+        dialog_parent,
+        message,
+        title=title or _("Hint"),
+    )
+
+    def _on_close(evt: wx.CloseEvent) -> None:
+        _help_dialogs.pop(key, None)
+        evt.Skip()
+
+    def _on_ok(_evt: wx.CommandEvent) -> None:
+        dlg.Close()
+
+    dlg.Bind(wx.EVT_CLOSE, _on_close)
+    ok_button = dlg.FindWindowById(wx.ID_OK)
+    if ok_button:
+        ok_button.Bind(wx.EVT_BUTTON, _on_ok)
+
+    _help_dialogs[key] = dlg
     _position_window_near_anchor(dlg, anchor or parent)
-    dlg.ShowModal()
-    dlg.Destroy()
+    dlg.Show()
+    dlg.Raise()
+    dlg.SetFocus()
 
 
 def make_help_button(

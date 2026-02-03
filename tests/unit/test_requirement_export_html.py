@@ -64,3 +64,30 @@ def test_render_requirements_html_renders_tables(tmp_path: Path) -> None:
 
     assert "<table>" in html
     assert "<td>1</td>" in html
+
+
+def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=3,
+        title="Formula requirement",
+        statement="Inline \\(E = mc^2\\) and block:\n$$\\frac{a}{b}$$",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS3",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert "<math" in html
+    assert "\\(E = mc^2\\)" not in html

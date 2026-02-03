@@ -16,3 +16,5 @@ bleach>=6.1
 python-docx>=1.1
 latex2mathml>=3.77
 mathml2omml>=0.2
+matplotlib>=3.8
+cairosvg>=2.7

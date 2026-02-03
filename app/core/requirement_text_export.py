@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from .markdown_utils import strip_markdown
+from .markdown_utils import render_markdown_plain_text, strip_markdown
 
 __all__ = ["render_requirement_cards_txt"]
 
@@ -22,7 +22,7 @@ def _format_card_field(
     strip_markdown_text: bool = False,
 ) -> str:
     if strip_markdown_text:
-        value = strip_markdown(value)
+        value = render_markdown_plain_text(value)
     lines = _normalize_text(value)
     if not lines:
         return f"{label}:"

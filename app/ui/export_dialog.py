@@ -202,6 +202,8 @@ class RequirementExportDialog(wx.Dialog):
             choices=[
                 _("Plain text"),
                 _("MathML (LaTeX → MathML → OMML)"),
+                _("PNG (LaTeX → PNG)"),
+                _("SVG (LaTeX → SVG → PNG)"),
             ],
         )
         self._apply_docx_formula_choice()
@@ -338,6 +340,10 @@ class RequirementExportDialog(wx.Dialog):
         selection = 0
         if self._docx_formula_renderer == "mathml":
             selection = 1
+        elif self._docx_formula_renderer == "png":
+            selection = 2
+        elif self._docx_formula_renderer == "svg":
+            selection = 3
         self.docx_formula_choice.SetSelection(selection)
 
     def _ensure_extension(self, path: str) -> str:
@@ -453,6 +459,10 @@ class RequirementExportDialog(wx.Dialog):
             docx_renderer = "text"
             if self.docx_formula_choice.GetSelection() == 1:
                 docx_renderer = "mathml"
+            elif self.docx_formula_choice.GetSelection() == 2:
+                docx_renderer = "png"
+            elif self.docx_formula_choice.GetSelection() == 3:
+                docx_renderer = "svg"
         return RequirementExportPlan(
             path=Path(path),
             format=self._current_format(),
@@ -472,6 +482,10 @@ class RequirementExportDialog(wx.Dialog):
             docx_formula_renderer=(
                 "mathml"
                 if self.docx_formula_choice.GetSelection() == 1
+                else "png"
+                if self.docx_formula_choice.GetSelection() == 2
+                else "svg"
+                if self.docx_formula_choice.GetSelection() == 3
                 else "text"
             )
             if self._current_format() == ExportFormat.DOCX

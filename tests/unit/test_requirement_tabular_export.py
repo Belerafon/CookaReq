@@ -66,6 +66,17 @@ def test_render_requirement_cards_txt_strips_markdown():
 
 
 @pytest.mark.unit
+def test_render_requirement_cards_txt_formats_markdown_tables():
+    headers = ["Statement"]
+    rows = [["| A | B |\n|---|---|\n| 1 | 22 |"]]
+    text = render_requirement_cards_txt(headers, rows, strip_markdown_text=True)
+    lines = text.splitlines()
+    assert "Statement: +---+----+" in lines[0]
+    assert "| A | B  |" in text
+    assert "| 1 | 22 |" in text
+
+
+@pytest.mark.unit
 def test_render_tabular_html_converts_newlines():
     headers = ["Title", "Statement"]
     rows = [["Hello", "Line1\nLine2"]]

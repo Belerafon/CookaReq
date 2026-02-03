@@ -9,7 +9,7 @@ import markdown
 import wx
 import wx.html as html
 
-from ...core.markdown_utils import sanitize_html
+from ...core.markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
 from ..text import normalize_for_display
 
 
@@ -45,7 +45,7 @@ def _font_size(font: wx.Font) -> int:
     return max(font.GetPointSize(), 8)
 
 
-def _build_markdown_renderer() -> markdown.Markdown:
+def _build_markdown_renderer(*, allow_html: bool) -> markdown.Markdown:
     renderer = markdown.Markdown(
         extensions=[
             "markdown.extensions.extra",
@@ -53,20 +53,25 @@ def _build_markdown_renderer() -> markdown.Markdown:
         ],
         output_format="html5",
     )
-    # Hide raw HTML returned by the LLM to avoid embedding arbitrary tags.
-    renderer.preprocessors.deregister("html_block")
-    renderer.inlinePatterns.deregister("html")
+    if not allow_html:
+        # Hide raw HTML returned by the LLM to avoid embedding arbitrary tags.
+        renderer.preprocessors.deregister("html_block")
+        renderer.inlinePatterns.deregister("html")
     renderer.reset()
     return renderer
 
 
-_MARKDOWN = _build_markdown_renderer()
+_MARKDOWN = _build_markdown_renderer(allow_html=False)
+_MARKDOWN_WITH_HTML = _build_markdown_renderer(allow_html=True)
 
 
-def _render_markdown(markdown_text: str) -> str:
-    renderer = _MARKDOWN
+def _render_markdown(markdown_text: str, *, allow_html: bool, render_math: bool) -> str:
+    renderer = _MARKDOWN_WITH_HTML if allow_html else _MARKDOWN
     renderer.reset()
-    markup = renderer.convert(markdown_text or "")
+    prepared = (
+        convert_markdown_math(markdown_text or "") if render_math else (markdown_text or "")
+    )
+    markup = renderer.convert(prepared)
     return sanitize_html(markup)
 
 
@@ -105,6 +110,7 @@ class MarkdownView(html.HtmlWindow):
         *,
         foreground_colour: wx.Colour,
         background_colour: wx.Colour,
+        render_math: bool = False,
     ) -> None:
         super().__init__(
             parent,
@@ -112,6 +118,7 @@ class MarkdownView(html.HtmlWindow):
         )
         self._theme = MarkdownTheme(foreground_colour, background_colour)
         self._markdown: str = ""
+        self._render_math = bool(render_math)
         self._pending_markup: str | None = None
         self._pending_render: bool = False
         self._pending_render_attempts: int = 0
@@ -128,7 +135,13 @@ class MarkdownView(html.HtmlWindow):
     def SetMarkdown(self, markdown_text: str) -> None:
         """Update control contents with *markdown_text*."""
         self._markdown = markdown_text
-        markup = self._wrap_html(_render_markdown(markdown_text))
+        markup = self._wrap_html(
+            _render_markdown(
+                markdown_text,
+                allow_html=self._render_math,
+                render_math=self._render_math,
+            )
+        )
         self._pending_markup = normalize_for_display(markup)
         if self._try_render_pending_markup():
             return
@@ -149,7 +162,7 @@ class MarkdownView(html.HtmlWindow):
     def GetPlainText(self) -> str:
         text = self.ToText()
         if not text.strip():
-            return self._markdown
+            return strip_markdown(self._markdown)
         return text
 
     def _on_size(self, event: wx.SizeEvent) -> None:
@@ -403,6 +416,7 @@ class MarkdownContent(wx.Panel):
         markdown: str,
         foreground_colour: wx.Colour,
         background_colour: wx.Colour,
+        render_math: bool = False,
     ) -> None:
         super().__init__(parent)
         self.SetBackgroundColour(background_colour)
@@ -427,6 +441,7 @@ class MarkdownContent(wx.Panel):
             scroller,
             foreground_colour=foreground_colour,
             background_colour=background_colour,
+            render_math=render_math,
         )
         self._view.SetMinSize(wx.Size(self.FromDIP(160), -1))
         self._view.add_render_listener(self._on_view_rendered)

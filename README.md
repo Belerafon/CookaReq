@@ -147,6 +147,22 @@ requirements/
 
 Each `document.json` provides the canonical prefix, title, parent prefix, label presets (with `allowFreeform` flags), and arbitrary metadata. Requirement payloads live under `items/<id>.json` and include `title`, `statement`, ownership, verification, revision, attachments, labels, and outgoing links. The GUI/CLI operate strictly on this schema; remove stray files before editing repositories manually.
 
+### Markdown in requirement statements
+
+CookaReq treats the `statement` field as Markdown by default. Use Markdown to keep requirements readable while preserving a single, testable statement. Supported patterns include:
+
+- **Inline emphasis and lists** (`**bold**`, `_italic_`, `- list`).
+- **Tables** for structured values:
+  ```
+  | Parameter | Value |
+  |-----------|-------|
+  | Mass      | 12 kg |
+  ```
+- **Images stored as attachments**: `![Diagram](attachment:<id>)` where `<id>` is the attachment ID stored in the requirement metadata.
+- **Formula notation** as plain text (inline `\\(v = s/t\\)` or block `$$E = mc^2$$`); HTML exports and previews convert these into MathML so they render as formulas in compatible viewers.
+
+For safety and consistent exports, raw HTML inside statements is restricted to a small, sanitized tag list, and URLs are validated for safe schemes. Statements longer than 50 000 characters are rejected, and uploaded attachment files must stay within 10 MiB. These limits ensure exports, previews, and search indexing remain reliable.
+
 ### Revisions, history, and collaboration
 
 CookaReq deliberately stores requirement documents as plain JSON files and expects teams to manage them with Git (or another VCS). This design provides:

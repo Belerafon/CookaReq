@@ -74,20 +74,24 @@ so you know which modules are involved and which regressions to guard against.
   service automatically promotes every newly applied key into the owning
   document (or the nearest ancestor that permits freeform labels), synthesising
   a human-friendly title and deterministic colour before persisting the updated
-  `document.json`. The GUI may additionally request a retroactive promotion that
-  scans existing requirements and registers previously ad-hoc labels so that
-  historical datasets gain the same metadata guarantees. The service also
-  centralises label maintenance: `update_document_labels()` replaces the full
-  definition list while recording rename propagation decisions and optional
-  requirement clean-up. Thin wrappers (`add_label_definition()`,
-  `update_label_definition()`, `remove_label_definition()`) power the MCP tools
-  and GUI, ensuring that document metadata and requirement payloads stay in sync
-  when keys change or disappear. `copy_requirement()` duplicates a requirement
-  into another document, resetting the revision counter (unless explicitly
-  overridden) and promoting any missing label definitions in the destination so
-  the copy can be persisted without manual metadata curation. Attachment helpers
-  copy uploaded files into `assets/` (rejecting oversized uploads) and resolve
-  attachment IDs back to local file paths for preview or export flows.
+  `document.json`. Label keys are treated case-insensitively: when applying
+  labels the service normalises casing to the canonical key from document
+  metadata, de-duplicates user input, and refuses case-only duplicates in the
+  label definition editor to avoid diverging metadata. The GUI may additionally
+  request a retroactive promotion that scans existing requirements and registers
+  previously ad-hoc labels so that historical datasets gain the same metadata
+  guarantees. The service also centralises label maintenance:
+  `update_document_labels()` replaces the full definition list while recording
+  rename propagation decisions and optional requirement clean-up. Thin wrappers
+  (`add_label_definition()`, `update_label_definition()`,
+  `remove_label_definition()`) power the MCP tools and GUI, ensuring that
+  document metadata and requirement payloads stay in sync when keys change or
+  disappear. `copy_requirement()` duplicates a requirement into another
+  document, resetting the revision counter (unless explicitly overridden) and
+  promoting any missing label definitions in the destination so the copy can be
+  persisted without manual metadata curation. Attachment helpers copy uploaded
+  files into `assets/` (rejecting oversized uploads) and resolve attachment IDs
+  back to local file paths for preview or export flows.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small

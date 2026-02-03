@@ -214,7 +214,7 @@ class LabelsDialog(wx.Dialog):
             if not new_key:
                 wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
                 return
-            if any(label.key == new_key for label in self._labels):
+            if any(label.key.casefold() == new_key.casefold() for label in self._labels):
                 wx.MessageBox(_("Label already exists"), _("Error"), wx.ICON_ERROR)
                 return
             definition = LabelDef(new_key, new_title or new_key, None)
@@ -309,9 +309,11 @@ class LabelsDialog(wx.Dialog):
                 wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
                 return
             existing = {
-                label.key for i, label in enumerate(self._labels) if i != idx
+                label.key.casefold()
+                for i, label in enumerate(self._labels)
+                if i != idx
             }
-            if new_key in existing:
+            if new_key.casefold() in existing:
                 wx.MessageBox(_("Label already exists"), _("Error"), style=wx.ICON_ERROR)
                 return
             if new_key != old_key:

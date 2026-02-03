@@ -25,6 +25,15 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
 
+        dialog.format_choice.SetSelection(1)
+        dialog._update_text_options_visibility()
+        dialog._update_columns_visibility()
+        dialog._update_docx_options_visibility()
+        wx_app.Yield()
+        assert not dialog.txt_options_box.IsShown()
+        assert not dialog.columns_box.IsShown()
+        assert not dialog.docx_formula_box.IsShown()
+
         dialog.format_choice.SetSelection(2)
         dialog._update_text_options_visibility()
         dialog._update_columns_visibility()

@@ -18,10 +18,10 @@ from ...services.requirements import (
 from ...core.requirement_import import SequentialIDAllocator, build_requirements
 from ...core.requirement_tabular_export import (
     render_tabular_delimited,
-    render_tabular_html,
 )
 from ...core.requirement_export import (
     build_requirement_export_from_requirements,
+    render_requirements_html,
     render_requirements_docx,
 )
 from ...core.requirement_text_export import render_requirement_cards_txt
@@ -700,32 +700,40 @@ class MainFrameDocumentsMixin:
                 formula_renderer=plan.docx_formula_renderer or "text",
             )
         else:
-            derived_map = getattr(self.panel, "derived_map", {}) or {}
-            header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"
-            value_style = "raw" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "display"
-            headers, rows = build_tabular_export(
-                requirements,
-                plan.columns,
-                derived_map=derived_map,
-                header_style=header_style,
-                value_style=value_style,
-            )
             if plan.format == ExportFormat.HTML:
-                title = _("Requirements export — {label}").format(label=document_label)
-                content = render_tabular_html(headers, rows, title=title)
-            elif plan.format == ExportFormat.CSV:
-                content = render_tabular_delimited(headers, rows, delimiter=",")
-            elif plan.format == ExportFormat.TSV:
-                content = render_tabular_delimited(headers, rows, delimiter="\t")
-            else:
-                placeholder_label = _("(not set)")
-                empty_placeholder = placeholder_label if plan.txt_empty_fields_placeholder else None
-                content = render_requirement_cards_txt(
-                    headers,
-                    rows,
-                    empty_field_placeholder=empty_placeholder,
-                    strip_markdown_text=True,
+                export = build_requirement_export_from_requirements(
+                    requirements,
+                    self.docs_controller.documents,
+                    base_path=self.current_dir,
+                    prefixes=(doc.prefix,),
+                    link_lookup=self.model.get_all(),
                 )
+                title = _("Requirements export — {label}").format(label=document_label)
+                content = render_requirements_html(export, title=title)
+            else:
+                derived_map = getattr(self.panel, "derived_map", {}) or {}
+                header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"
+                value_style = "raw" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "display"
+                headers, rows = build_tabular_export(
+                    requirements,
+                    plan.columns,
+                    derived_map=derived_map,
+                    header_style=header_style,
+                    value_style=value_style,
+                )
+                if plan.format == ExportFormat.CSV:
+                    content = render_tabular_delimited(headers, rows, delimiter=",")
+                elif plan.format == ExportFormat.TSV:
+                    content = render_tabular_delimited(headers, rows, delimiter="\t")
+                else:
+                    placeholder_label = _("(not set)")
+                    empty_placeholder = placeholder_label if plan.txt_empty_fields_placeholder else None
+                    content = render_requirement_cards_txt(
+                        headers,
+                        rows,
+                        empty_field_placeholder=empty_placeholder,
+                        strip_markdown_text=True,
+                    )
 
         assets_source = self.current_dir / doc.prefix / "assets"
         export_path = prepare_export_destination(plan.path, assets_source=assets_source)

@@ -775,7 +775,8 @@ class MainFrameDocumentsMixin:
                 doc = self.docs_controller.load_documents().get(prefix)
 
         labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
-        dlg = LabelsDialog(self, labels)
+        usage_counts = self.docs_controller.label_usage_counts(prefix)
+        dlg = LabelsDialog(self, labels, usage_counts=usage_counts)
         if dlg.ShowModal() == wx.ID_OK:
             try:
                 updated_labels = dlg.get_labels()

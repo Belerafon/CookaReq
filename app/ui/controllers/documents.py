@@ -64,6 +64,11 @@ class DocumentsController:
         """Return labels and free-form flag for document ``prefix``."""
         return self.service.collect_label_defs(prefix)
 
+    def label_usage_counts(self, prefix: str) -> dict[str, int]:
+        """Return label usage counts for document ``prefix`` tree."""
+
+        return self.service.label_usage_counts(prefix)
+
     def sync_labels_from_requirements(self, prefix: str) -> list[LabelDef]:
         """Ensure that labels used by requirements are declared in metadata."""
 

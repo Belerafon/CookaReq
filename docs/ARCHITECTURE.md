@@ -53,16 +53,17 @@ so you know which modules are involved and which regressions to guard against.
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all
   persistence to the document store. The tabular helper renders the
-  selectable-column HTML/CSV/TSV exports, while the text helper builds the
+  selectable-column CSV/TSV exports, while the text helper builds the
   plain-text card exports used by the GUI export dialog and renders Markdown
   tables as ASCII grids for readability. The HTML export cards render Markdown
   in requirement sections, convert LaTeX-style formulas into MathML, and
   resolve attachment links to the stored asset paths. The same export pipeline
   can also render DOCX cards with embedded attachments, and the GUI export
-  dialog exposes DOCX alongside the tabular/text formats with a selectable DOCX
-  formula renderer (plain text, MathML→OMML, PNG fallback, or SVG→PNG
-  fallback). The GUI export flow writes outputs into a dedicated directory and
-  copies the document `assets/` folder alongside the export file.
+  dialog uses the card renderer for HTML/DOCX alongside the tabular/text
+  formats with a selectable DOCX formula renderer (plain text, MathML→OMML, PNG
+  fallback, or SVG→PNG fallback). The GUI export flow writes outputs into a
+  dedicated directory and copies the document `assets/` folder alongside the
+  export file.
 
 ## Application services and configuration context
 

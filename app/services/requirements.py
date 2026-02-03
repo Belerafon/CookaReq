@@ -178,10 +178,18 @@ class RequirementsService:
     def create_requirement(self, prefix: str, data: Mapping[str, Any]) -> Requirement:
         """Create a new requirement within ``prefix``."""
         docs = self._ensure_documents()
+        payload = dict(data)
+        labels = payload.get("labels")
+        if isinstance(labels, Sequence):
+            normalized = self._normalize_requirement_labels(prefix, labels, docs)
+            payload["labels"] = normalized
+            promoted = self._promote_label_definitions(prefix, normalized, docs)
+            if promoted:
+                docs = self._ensure_documents(refresh=True)
         return doc_store.create_requirement(
             self.root,
             prefix=prefix,
-            data=data,
+            data=payload,
             docs=docs,
 )
     def copy_requirement(
@@ -265,11 +273,12 @@ class RequirementsService:
             prefix, _ = doc_store.parse_rid(rid)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
-        promoted = self._promote_label_definitions(prefix, labels, docs)
+        normalized = self._normalize_requirement_labels(prefix, labels, docs)
+        promoted = self._promote_label_definitions(prefix, normalized, docs)
         requirement = doc_store.set_requirement_labels(
             self.root,
             rid,
-            labels=labels,
+            labels=normalized,
             docs=docs,
         )
         if promoted:
@@ -448,17 +457,23 @@ class RequirementsService:
         if not allow_freeform:
             return []
 
-        known = {definition.key for definition in defs}
+        known: dict[str, str] = {}
+        for definition in defs:
+            known[definition.key.casefold()] = definition.key
         new_keys: list[str] = []
         seen: set[str] = set()
         for label in labels:
             if not isinstance(label, str):
                 continue
-            if label in seen:
+            key = label.strip()
+            if not key:
                 continue
-            seen.add(label)
-            if label not in known:
-                new_keys.append(label)
+            folded = key.casefold()
+            if folded in seen:
+                continue
+            seen.add(folded)
+            if folded not in known:
+                new_keys.append(key)
         if not new_keys:
             return []
 
@@ -528,6 +543,33 @@ class RequirementsService:
         if color == "":
             color = None
         return LabelDef(key=key, title=title, color=color)
+
+    def _normalize_requirement_labels(
+        self,
+        prefix: str,
+        labels: Sequence[str],
+        docs: Mapping[str, Document],
+    ) -> list[str]:
+        if not isinstance(labels, Sequence) or isinstance(labels, (str, bytes)):
+            raise ValidationError("labels must be a list of strings")
+        defs, _ = doc_store.collect_label_defs(prefix, docs)
+        canonical: dict[str, str] = {}
+        for definition in defs:
+            canonical[definition.key.casefold()] = definition.key
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for label in labels:
+            if not isinstance(label, str):
+                raise ValidationError("labels must be a list of strings")
+            key = label.strip()
+            if not key:
+                continue
+            folded = key.casefold()
+            if folded in seen:
+                continue
+            seen.add(folded)
+            normalized.append(canonical.get(folded, key))
+        return normalized
 
     def _descendant_prefixes(self, prefix: str, docs: Mapping[str, Document]) -> list[str]:
         """Return prefixes where ``prefix`` is an ancestor (including itself)."""
@@ -607,9 +649,10 @@ class RequirementsService:
         seen: set[str] = set()
         for definition in updated:
             sanitized = self._normalise_label_definition(definition)
-            if sanitized.key in seen:
+            folded = sanitized.key.casefold()
+            if folded in seen:
                 raise ValidationError(f"duplicate label key: {sanitized.key}")
-            seen.add(sanitized.key)
+            seen.add(folded)
             normalized.append(sanitized)
 
         document = self.get_document(prefix)

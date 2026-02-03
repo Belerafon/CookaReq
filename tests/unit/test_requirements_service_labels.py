@@ -104,6 +104,45 @@ def test_set_labels_respects_disabled_freeform(tmp_path: Path) -> None:
     assert all(defn.key != "new_label" for defn in persisted.labels.defs)
 
 
+def test_set_labels_dedupes_case_insensitively(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(
+            allow_freeform=True,
+            defs=[LabelDef("Safety", "Safety", "#112233")],
+        ),
+    )
+    save_document(root / "SYS", doc)
+    requirement = _base_requirement("SYS")
+    save_item(root / "SYS", doc, requirement.to_mapping())
+
+    service = RequirementsService(root)
+    updated = service.set_requirement_labels("SYS1", ["safety", "SAFETY"])
+
+    assert updated.labels == ["Safety"]
+    refreshed = service.get_document("SYS")
+    keys = [definition.key for definition in refreshed.labels.defs]
+    assert keys.count("Safety") == 1
+
+
+def test_update_document_labels_rejects_case_only_duplicates(tmp_path: Path) -> None:
+    root = tmp_path
+    doc = Document(prefix="SYS", title="System")
+    save_document(root / "SYS", doc)
+    service = RequirementsService(root)
+
+    with pytest.raises(ValidationError):
+        service.update_document_labels(
+            "SYS",
+            original=[],
+            updated=[LabelDef("Safety", "Safety", None), LabelDef("safety", "Safety", None)],
+            rename_choices={},
+            removal_choices={},
+        )
+
+
 def test_update_document_labels_renames_with_propagation(tmp_path: Path) -> None:
     root = tmp_path
     doc = Document(

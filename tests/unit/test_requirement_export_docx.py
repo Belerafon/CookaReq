@@ -140,3 +140,62 @@ def test_render_requirements_docx_renders_formula_omml(tmp_path: Path) -> None:
     with ZipFile(io.BytesIO(payload)) as archive:
         document_xml = archive.read("word/document.xml").decode("utf-8")
         assert "<m:oMath" in document_xml
+
+
+def test_render_requirements_docx_renders_formula_png(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=5,
+        title="Formula requirement",
+        statement="Energy \\(E = mc^2\\)",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS5",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="png")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        media_files = [name for name in archive.namelist() if name.startswith("word/media/")]
+        assert media_files
+
+
+def test_render_requirements_docx_renders_formula_svg(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("cairosvg")
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=6,
+        title="Formula requirement",
+        statement="Energy \\(E = mc^2\\)",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS6",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="svg")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        media_files = [name for name in archive.namelist() if name.startswith("word/media/")]
+        assert media_files

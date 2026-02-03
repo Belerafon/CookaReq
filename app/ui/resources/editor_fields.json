@@ -28,7 +28,11 @@
       "help": [
         "The full requirement statement describing what the system must do or the constraint it imposes.",
         "This wording becomes the authoritative baseline for implementation and contractual obligations.",
-        "Detailed phrasing here prevents ambiguity during design and review."
+        "Detailed phrasing here prevents ambiguity during design and review.",
+        "Keep each statement testable and unambiguous; avoid vague qualifiers such as \"as needed\" or \"when possible\" without clear criteria.",
+        "Prefer one requirement per statement to avoid splitting obligations across multiple thoughts.",
+        "Markdown is supported: lists, tables, and emphasis can improve readability without changing the core meaning.",
+        "Reference images as attachments with ![Description](attachment:<id>). Inline formula notation can be written as \\(v = s/t\\) or $$E = mc^2$$."
       ]
     },
     {

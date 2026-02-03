@@ -13,6 +13,8 @@ dependencies = [
     "openai",
     "markdown",
     "reportlab",
+    "matplotlib",
+    "cairosvg",
 ]
 
 [project.optional-dependencies]

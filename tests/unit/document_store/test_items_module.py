@@ -22,6 +22,7 @@ from app.core.document_store.items import (
     set_requirement_links,
     update_requirement_field,
 )
+from app.core.markdown_utils import MAX_STATEMENT_LENGTH
 from app.core.model import requirement_fingerprint
 
 pytestmark = pytest.mark.unit
@@ -168,6 +169,54 @@ def test_update_requirement_field_rejects_unknown_status(
     message = str(exc.value)
     assert "invalid status" in message
     assert "draft" in message
+
+
+def test_create_requirement_rejects_invalid_markdown_table(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+    payload = _base_payload()
+    payload["statement"] = "| A | B |\n|---|---|\n| 1 |"
+    with pytest.raises(ValidationError, match="table row"):
+        create_requirement(
+            tmp_path,
+            prefix="SYS",
+            data=payload,
+            docs=docs,
+        )
+
+
+def test_update_requirement_rejects_disallowed_html(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data=_base_payload(),
+        docs=docs,
+    )
+    with pytest.raises(ValidationError, match="HTML tag"):
+        update_requirement_field(
+            tmp_path,
+            created.rid,
+            field="statement",
+            value="Look <script>alert(1)</script>",
+            docs=docs,
+        )
+
+
+def test_statement_length_limit(tmp_path: Path, _document: Document) -> None:
+    docs = load_documents(tmp_path)
+    payload = _base_payload()
+    payload["statement"] = "x" * (MAX_STATEMENT_LENGTH + 1)
+    with pytest.raises(ValidationError, match="maximum length"):
+        create_requirement(
+            tmp_path,
+            prefix="SYS",
+            data=payload,
+            docs=docs,
+        )
 
 
 def test_set_attachments_and_links_reject_none(

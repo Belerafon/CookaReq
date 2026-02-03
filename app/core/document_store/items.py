@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable, Mapping, Sequence
 
+from ..markdown_utils import validate_markdown
 from ..model import Attachment, Link, Requirement, requirement_fingerprint
 from ..search import filter_by_labels, filter_by_status, search
 from .types import (
@@ -55,6 +56,13 @@ READ_ONLY_FIELDS = {
     "doc_prefix",
     "rid",
 }
+
+
+def _validate_statement_markdown(statement: str) -> None:
+    try:
+        validate_markdown(statement)
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
 
 
 def _load_fingerprint_for_rid(
@@ -445,6 +453,7 @@ def create_requirement(
     payload["id"] = item_id
     if "revision" not in payload:
         payload["revision"] = 1
+    _validate_statement_markdown(payload.get("statement", ""))
     try:
         req = Requirement.from_mapping(
             payload, doc_prefix=prefix, rid=rid_for(doc, item_id)
@@ -489,6 +498,7 @@ def _update_requirement(
     if err:
         raise ValidationError(err)
     payload["labels"] = labels
+    _validate_statement_markdown(payload.get("statement", ""))
     try:
         req = Requirement.from_mapping(
             payload, doc_prefix=prefix, rid=canonical_rid

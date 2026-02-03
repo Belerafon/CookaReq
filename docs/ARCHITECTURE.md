@@ -32,6 +32,9 @@ so you know which modules are involved and which regressions to guard against.
 * **Document store** — `app/core/document_store/` exposes CRUD helpers for
   documents, items, relationship links and label collections. It keeps ID
   counters, validates JSON payloads and hides filesystem concerns from callers.
+  Requirement statements are validated as Markdown (table structure, safe HTML
+  subset, and URI schemes) and rejected if they exceed the maximum statement
+  length so stored requirements remain previewable and export-ready.
 * **Domain models** — `app/core/model.py` defines `Requirement` and supporting
   enums (status, priority, link types). The status set currently includes draft,
   in_review, approved, baselined, retired, rejected, deferred, superseded and
@@ -51,13 +54,15 @@ so you know which modules are involved and which regressions to guard against.
   between external formats and the `Requirement` dataclass while delegating all
   persistence to the document store. The tabular helper renders the
   selectable-column HTML/CSV/TSV exports, while the text helper builds the
-  plain-text card exports used by the GUI export dialog. The HTML export cards
-  render Markdown in requirement sections and resolve attachment links to the
-  stored asset paths. The same export pipeline can also render DOCX cards with
-  embedded attachments, and the GUI export dialog exposes DOCX alongside the
-  tabular/text formats with a selectable DOCX formula renderer. The GUI export
-  flow writes outputs into a dedicated directory and copies the document
-  `assets/` folder alongside the export file.
+  plain-text card exports used by the GUI export dialog and renders Markdown
+  tables as ASCII grids for readability. The HTML export cards render Markdown
+  in requirement sections, convert LaTeX-style formulas into MathML, and
+  resolve attachment links to the stored asset paths. The same export pipeline
+  can also render DOCX cards with embedded attachments, and the GUI export
+  dialog exposes DOCX alongside the tabular/text formats with a selectable DOCX
+  formula renderer (plain text, MathML→OMML, PNG fallback, or SVG→PNG
+  fallback). The GUI export flow writes outputs into a dedicated directory and
+  copies the document `assets/` folder alongside the export file.
 
 ## Application services and configuration context
 
@@ -80,8 +85,8 @@ so you know which modules are involved and which regressions to guard against.
   into another document, resetting the revision counter (unless explicitly
   overridden) and promoting any missing label definitions in the destination so
   the copy can be persisted without manual metadata curation. Attachment helpers
-  copy uploaded files into `assets/` and resolve attachment IDs back to local
-  file paths for preview or export flows.
+  copy uploaded files into `assets/` (rejecting oversized uploads) and resolve
+  attachment IDs back to local file paths for preview or export flows.
 * **`UserDocumentsService`** — indexes external documentation for the agent.
   It enforces size limits, token budgets and serialises directory snapshots so
   that LLM prompts only include manageable chunks. Token counters read small

@@ -23,6 +23,8 @@ from ..core.document_store import (
 )
 from ..core.model import Requirement
 
+MAX_REQUIREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024
+
 # Re-export selected helpers so callers do not need to depend on ``document_store``.
 @dataclass(frozen=True, slots=True)
 class DocumentInventoryEntry:
@@ -39,6 +41,7 @@ __all__ = [
     "DocumentNotFoundError",
     "DocumentInventoryEntry",
     "LabelDef",
+    "MAX_REQUIREMENT_ATTACHMENT_BYTES",
     "RequirementIDCollisionError",
     "RequirementNotFoundError",
     "RequirementPage",
@@ -180,8 +183,7 @@ class RequirementsService:
             prefix=prefix,
             data=data,
             docs=docs,
-        )
-
+)
     def copy_requirement(
         self,
         rid: str,
@@ -343,6 +345,12 @@ class RequirementsService:
             raise ValidationError(f"attachment does not exist: {source}")
         if not source.is_file():
             raise ValidationError(f"attachment is not a file: {source}")
+        size = source.stat().st_size
+        if size > MAX_REQUIREMENT_ATTACHMENT_BYTES:
+            raise ValidationError(
+                "attachment size exceeds limit of "
+                f"{MAX_REQUIREMENT_ATTACHMENT_BYTES} bytes"
+            )
         target_dir = self.root / prefix / "assets"
         target_dir.mkdir(parents=True, exist_ok=True)
         filename = source.name

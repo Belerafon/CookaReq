@@ -30,7 +30,7 @@ class RequirementExportPlan:
     path: Path
     format: ExportFormat
     columns: list[str]
-    txt_empty_fields_placeholder: bool
+    empty_fields_placeholder: bool
     docx_formula_renderer: str | None
 
 
@@ -61,8 +61,8 @@ class RequirementExportDialog(wx.Dialog):
         self._field_labels = {field: locale.field_label(field) for field in self._available_fields}
         self._saved_format = self._coerce_format(saved_state.format if saved_state else None)
         self._saved_path = Path(saved_state.path) if saved_state and saved_state.path else None
-        self._txt_empty_fields_placeholder = (
-            bool(saved_state.txt_empty_fields_placeholder) if saved_state else False
+        self._empty_fields_placeholder = (
+            bool(saved_state.empty_fields_placeholder) if saved_state else False
         )
         self._docx_formula_renderer = (
             saved_state.docx_formula_renderer if saved_state else None
@@ -188,14 +188,14 @@ class RequirementExportDialog(wx.Dialog):
         self.select_all_btn = wx.Button(self.columns_box, label=_("Select All"))
         self.clear_btn = wx.Button(self.columns_box, label=_("Clear"))
 
-        self.txt_options_box = wx.StaticBox(self, label=_("Text options"))
+        self.txt_options_box = wx.StaticBox(self, label=_("Card options"))
         self.txt_empty_fields_checkbox = wx.CheckBox(
             self.txt_options_box,
             label=_("Show empty fields as {placeholder}").format(
                 placeholder=self._txt_placeholder_label
             ),
         )
-        self.txt_empty_fields_checkbox.SetValue(self._txt_empty_fields_placeholder)
+        self.txt_empty_fields_checkbox.SetValue(self._empty_fields_placeholder)
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
             self.docx_formula_box,
@@ -323,8 +323,12 @@ class RequirementExportDialog(wx.Dialog):
         self.ok_button.Enable(has_path and has_columns)
 
     def _update_text_options_visibility(self) -> None:
-        is_txt = self._current_format() == ExportFormat.TXT
-        self._main_sizer.Show(self._txt_options_sizer, is_txt, recursive=True)
+        show_options = self._current_format() in {
+            ExportFormat.TXT,
+            ExportFormat.HTML,
+            ExportFormat.DOCX,
+        }
+        self._main_sizer.Show(self._txt_options_sizer, show_options, recursive=True)
         self._main_sizer.Layout()
 
     def _update_columns_visibility(self) -> None:
@@ -487,7 +491,7 @@ class RequirementExportDialog(wx.Dialog):
             path=Path(path),
             format=self._current_format(),
             columns=columns,
-            txt_empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
+            empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
             docx_formula_renderer=docx_renderer,
         )
 
@@ -498,7 +502,7 @@ class RequirementExportDialog(wx.Dialog):
             format=self._current_format().value,
             columns=self._checked_fields(),
             order=list(self._field_order),
-            txt_empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
+            empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
             docx_formula_renderer=(
                 "mathml"
                 if self.docx_formula_choice.GetSelection() == 1

@@ -91,3 +91,31 @@ def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
 
     assert "<math" in html
     assert "\\(E = mc^2\\)" not in html
+
+
+def test_render_requirements_html_shows_empty_fields_placeholder(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=4,
+        title="Empty fields",
+        statement="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS4",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export, empty_field_placeholder="(not set)")
+
+    assert "<dt>Owner</dt><dd>(not set)</dd>" in html
+    assert "<dt>Source</dt><dd>(not set)</dd>" in html
+    assert "(not set)" in html

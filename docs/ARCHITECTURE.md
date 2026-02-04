@@ -113,10 +113,9 @@ so you know which modules are involved and which regressions to guard against.
   context for consistent wiring.
 * **`ConfigManager`** — lives in `app/config.py` and persists UI state and
   integration settings (`llm`, `mcp`, panels, splitter positions, last opened
-  document and export dialog state per directory, including text-only handling
-  for empty fields) in
-  `~/.config/CookaReq/config.json`. It bridges Pydantic settings
-  (`app/settings.py`) and runtime wx widgets.
+  document and export dialog state per directory, including card export
+  placeholders for empty fields) in `~/.config/CookaReq/config.json`. It
+  bridges Pydantic settings (`app/settings.py`) and runtime wx widgets.
 
 ## Agent, LLM and MCP layers
 

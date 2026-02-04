@@ -694,10 +694,15 @@ class MainFrameDocumentsMixin:
                 link_lookup=self.model.get_all(),
             )
             title = _("Requirements export — {label}").format(label=document_label)
+            placeholder_label = _("(not set)")
+            empty_placeholder = (
+                placeholder_label if plan.empty_fields_placeholder else None
+            )
             content = render_requirements_docx(
                 export,
                 title=title,
                 formula_renderer=plan.docx_formula_renderer or "text",
+                empty_field_placeholder=empty_placeholder,
             )
         else:
             if plan.format == ExportFormat.HTML:
@@ -709,7 +714,15 @@ class MainFrameDocumentsMixin:
                     link_lookup=self.model.get_all(),
                 )
                 title = _("Requirements export — {label}").format(label=document_label)
-                content = render_requirements_html(export, title=title)
+                placeholder_label = _("(not set)")
+                empty_placeholder = (
+                    placeholder_label if plan.empty_fields_placeholder else None
+                )
+                content = render_requirements_html(
+                    export,
+                    title=title,
+                    empty_field_placeholder=empty_placeholder,
+                )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}
                 header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"
@@ -727,7 +740,9 @@ class MainFrameDocumentsMixin:
                     content = render_tabular_delimited(headers, rows, delimiter="\t")
                 else:
                     placeholder_label = _("(not set)")
-                    empty_placeholder = placeholder_label if plan.txt_empty_fields_placeholder else None
+                    empty_placeholder = (
+                        placeholder_label if plan.empty_fields_placeholder else None
+                    )
                     content = render_requirement_cards_txt(
                         headers,
                         rows,

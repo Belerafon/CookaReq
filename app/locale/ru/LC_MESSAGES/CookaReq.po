@@ -2650,8 +2650,8 @@ msgstr "Сначала выберите файл экспорта."
 msgid "Show empty fields as {placeholder}"
 msgstr "Показывать незаполненные поля как {placeholder}"
 
-msgid "Text options"
-msgstr "Параметры текста"
+msgid "Card options"
+msgstr "Параметры карточек"
 
 msgid "(not set)"
 msgstr "(не задано)"

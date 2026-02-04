@@ -112,6 +112,35 @@ def test_render_requirements_docx_keeps_formula_text(tmp_path: Path) -> None:
         assert "v = s/t" in document_xml
 
 
+def test_render_requirements_docx_shows_empty_fields_placeholder(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=4,
+        title="Missing fields",
+        statement="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS4",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, empty_field_placeholder="(not set)")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "Owner" in document_xml
+        assert "(not set)" in document_xml
+
+
 def test_render_requirements_docx_renders_formula_omml(tmp_path: Path) -> None:
     pytest.importorskip("latex2mathml")
     pytest.importorskip("mathml2omml")

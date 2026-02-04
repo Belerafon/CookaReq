@@ -2625,6 +2625,15 @@ msgstr "Select export file"
 msgid "Select export file first."
 msgstr "Select export file first."
 
+msgid "Show empty fields as {placeholder}"
+msgstr "Show empty fields as {placeholder}"
+
+msgid "Card options"
+msgstr "Card options"
+
+msgid "(not set)"
+msgstr "(not set)"
+
 msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
 msgstr "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
 

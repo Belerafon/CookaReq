@@ -50,6 +50,21 @@ SECTION_PLACEHOLDER = "(not provided)"
 REQUIRED_SECTION_LABELS = {"Rationale"}
 
 
+def _resolve_field_content(
+    value: str | None,
+    *,
+    required: bool,
+    empty_field_placeholder: str | None,
+) -> str | None:
+    if value:
+        return value
+    if empty_field_placeholder is not None:
+        return empty_field_placeholder
+    if required:
+        return SECTION_PLACEHOLDER
+    return None
+
+
 @dataclass(slots=True)
 class RequirementExportLink:
     """Representation of a requirement relationship for export."""
@@ -208,7 +223,12 @@ def _format_markdown_block(text: str) -> list[str]:
     return block
 
 
-def render_requirements_markdown(export: RequirementExport, *, title: str | None = None) -> str:
+def render_requirements_markdown(
+    export: RequirementExport,
+    *,
+    title: str | None = None,
+    empty_field_placeholder: str | None = None,
+) -> str:
     """Render export data as Markdown."""
     heading = title or "Requirements export"
     parts: list[str] = [f"# {heading}", ""]
@@ -224,20 +244,28 @@ def render_requirements_markdown(export: RequirementExport, *, title: str | None
             req = view.requirement
             parts.append(f"### {req.rid} — {req.title or '(no title)'}")
             parts.append("")
+            meta_fields: Iterable[tuple[str, str | None, bool]] = [
+                ("Priority", getattr(req.priority, "value", None), True),
+                ("Owner", req.owner or None, False),
+                ("Labels", ", ".join(sorted(req.labels)) if req.labels else None, False),
+                ("Source", req.source or None, False),
+                ("Modified", req.modified_at or None, False),
+                ("Approved", req.approved_at or None, False),
+            ]
             parts.append(f"- **Type:** ``{req.type.value}``")
             parts.append(f"- **Status:** ``{req.status.value}``")
-            if req.priority:
-                parts.append(f"- **Priority:** ``{req.priority.value}``")
-            if req.owner:
-                parts.append(f"- **Owner:** {req.owner}")
-            if req.labels:
-                parts.append("- **Labels:** " + ", ".join(sorted(req.labels)))
-            if req.source:
-                parts.append(f"- **Source:** {req.source}")
-            if req.modified_at:
-                parts.append(f"- **Modified:** {req.modified_at}")
-            if req.approved_at:
-                parts.append(f"- **Approved:** {req.approved_at}")
+            for label, value, use_code in meta_fields:
+                content = _resolve_field_content(
+                    value,
+                    required=False,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
+                    continue
+                if use_code:
+                    parts.append(f"- **{label}:** ``{content}``")
+                else:
+                    parts.append(f"- **{label}:** {content}")
             parts.append(f"- **Revision:** {req.revision}")
             parts.append("")
 
@@ -250,9 +278,13 @@ def render_requirements_markdown(export: RequirementExport, *, title: str | None
                 ("Notes", req.notes, False),
             ]
             for label, value, required in sections:
-                if not value and not required:
+                content = _resolve_field_content(
+                    value,
+                    required=required,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                content = value if value else SECTION_PLACEHOLDER
                 parts.append(f"**{label}**")
                 parts.extend(_format_markdown_block(content))
                 parts.append("")
@@ -460,7 +492,12 @@ def _html_markdown(value: str, *, requirement: Requirement) -> str:
     return _render_markdown(content)
 
 
-def render_requirements_html(export: RequirementExport, *, title: str | None = None) -> str:
+def render_requirements_html(
+    export: RequirementExport,
+    *,
+    title: str | None = None,
+    empty_field_placeholder: str | None = None,
+) -> str:
     """Render export data as standalone HTML."""
     heading = title or "Requirements export"
     parts: list[str] = [
@@ -507,9 +544,16 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
                 ("Revision", str(req.revision)),
             ]
             for label, value in meta_fields:
-                if not value:
+                content = _resolve_field_content(
+                    value,
+                    required=False,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                parts.append(f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(value)}</dd>")
+                parts.append(
+                    f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(content)}</dd>"
+                )
             parts.append("</dl>")
 
             for label, value in (
@@ -521,9 +565,13 @@ def render_requirements_html(export: RequirementExport, *, title: str | None = N
                 ("Notes", req.notes),
             ):
                 required = label in REQUIRED_SECTION_LABELS
-                if not value and not required:
+                content = _resolve_field_content(
+                    value,
+                    required=required,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                content = value if value else SECTION_PLACEHOLDER
                 parts.append(f"<h4>{_escape_html(label)}</h4>")
                 parts.append(_html_markdown(content, requirement=req) or "<p></p>")
 
@@ -693,6 +741,7 @@ def render_requirements_docx(
     *,
     title: str | None = None,
     formula_renderer: str = "text",
+    empty_field_placeholder: str | None = None,
 ) -> bytes:
     """Render export data as a DOCX document."""
     heading = title or "Requirements export"
@@ -722,7 +771,16 @@ def render_requirements_docx(
                 ("Approved", req.approved_at or None),
                 ("Revision", str(req.revision)),
             ]
-            meta_pairs = [(label, value) for label, value in meta_fields if value]
+            meta_pairs = []
+            for label, value in meta_fields:
+                content = _resolve_field_content(
+                    value,
+                    required=False,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
+                    continue
+                meta_pairs.append((label, content))
             if meta_pairs:
                 table = document.add_table(rows=0, cols=2)
                 table.style = "Light Grid"
@@ -741,9 +799,13 @@ def render_requirements_docx(
                 ("Notes", req.notes),
             ):
                 required = label in REQUIRED_SECTION_LABELS
-                if not value and not required:
+                content = _resolve_field_content(
+                    value,
+                    required=required,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                content = value if value else SECTION_PLACEHOLDER
                 document.add_heading(label, level=3)
                 _docx_add_markdown(
                     document,
@@ -799,7 +861,12 @@ def _pdf_text(value: str) -> str:
     return xml_escape(value).replace("\n", "<br/>")
 
 
-def render_requirements_pdf(export: RequirementExport, *, title: str | None = None) -> bytes:
+def render_requirements_pdf(
+    export: RequirementExport,
+    *,
+    title: str | None = None,
+    empty_field_placeholder: str | None = None,
+) -> bytes:
     """Render export data as a PDF document."""
     buffer = BytesIO()
     heading = title or "Requirements export"
@@ -854,9 +921,14 @@ def render_requirements_pdf(export: RequirementExport, *, title: str | None = No
                 ("Revision", str(req.revision)),
             ]
             for label, value in meta_fields:
-                if not value:
+                content = _resolve_field_content(
+                    value,
+                    required=False,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                data.append([xml_escape(label), _pdf_text(value)])
+                data.append([xml_escape(label), _pdf_text(content)])
             if data:
                 table = Table(data, colWidths=[40 * mm, 120 * mm])
                 table.setStyle(
@@ -880,9 +952,13 @@ def render_requirements_pdf(export: RequirementExport, *, title: str | None = No
                 ("Notes", req.notes),
             ):
                 required = label in REQUIRED_SECTION_LABELS
-                if not value and not required:
+                content = _resolve_field_content(
+                    value,
+                    required=required,
+                    empty_field_placeholder=empty_field_placeholder,
+                )
+                if content is None:
                     continue
-                content = value if value else SECTION_PLACEHOLDER
                 story.append(Paragraph(xml_escape(label), styles["SectionHeading"]))
                 story.append(Paragraph(_pdf_text(content), styles["BodyText"]))
 

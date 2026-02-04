@@ -70,7 +70,7 @@ class ExportDialogState:
     format: str | None
     columns: list[str]
     order: list[str]
-    txt_empty_fields_placeholder: bool
+    empty_fields_placeholder: bool
     docx_formula_renderer: str | None
 
 
@@ -478,9 +478,9 @@ class ConfigManager:
             order_list: list[str] = []
         else:
             order_list = [str(item) for item in order if item]
-        txt_empty_fields_placeholder = payload.get("txt_empty_fields_placeholder")
-        if not isinstance(txt_empty_fields_placeholder, bool):
-            txt_empty_fields_placeholder = False
+        empty_fields_placeholder = payload.get("empty_fields_placeholder")
+        if not isinstance(empty_fields_placeholder, bool):
+            empty_fields_placeholder = False
         docx_formula_renderer = payload.get("docx_formula_renderer")
         if not isinstance(docx_formula_renderer, str):
             docx_formula_renderer = None
@@ -489,7 +489,7 @@ class ConfigManager:
             format=fmt_value,
             columns=columns_list,
             order=order_list,
-            txt_empty_fields_placeholder=txt_empty_fields_placeholder,
+            empty_fields_placeholder=empty_fields_placeholder,
             docx_formula_renderer=docx_formula_renderer,
         )
 
@@ -506,7 +506,7 @@ class ConfigManager:
             "format": state.format,
             "columns": list(state.columns),
             "order": list(state.order),
-            "txt_empty_fields_placeholder": state.txt_empty_fields_placeholder,
+            "empty_fields_placeholder": state.empty_fields_placeholder,
             "docx_formula_renderer": state.docx_formula_renderer,
         }
         self._raw["export_dialog_state"] = export_state

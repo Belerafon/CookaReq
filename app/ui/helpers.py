@@ -390,12 +390,16 @@ def show_help(
         title=title or _("Hint"),
     )
 
-    def _on_close(evt: wx.CloseEvent) -> None:
+    def _destroy_dialog() -> None:
         _help_dialogs.pop(key, None)
-        evt.Skip()
+        if dlg:
+            dlg.Destroy()
+
+    def _on_close(_evt: wx.CloseEvent) -> None:
+        _destroy_dialog()
 
     def _on_ok(_evt: wx.CommandEvent) -> None:
-        dlg.Close()
+        _destroy_dialog()
 
     dlg.Bind(wx.EVT_CLOSE, _on_close)
     ok_button = dlg.FindWindowById(wx.ID_OK)

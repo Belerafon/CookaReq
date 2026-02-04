@@ -8,21 +8,6 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-:: Capture commit date for version metadata
-:: Check if Git is available and get commit date
-where git >nul 2>nul
-if %ERRORLEVEL% equ 0 (
-    set "VERSION_DATE="
-    for /f "delims=" %%i in ('git -C "%~dp0" log -1 --format=%%ci 2^>nul') do set "VERSION_DATE=%%i"
-    if defined VERSION_DATE (
-        python -c "import json, pathlib; pathlib.Path('app/resources/version.json').write_text(json.dumps({'date': '%VERSION_DATE%'}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')"
-        if %ERRORLEVEL% neq 0 (
-            echo Failed to write version metadata.
-            exit /b 1
-        )
-    )
-)
-
 :: Create virtual environment if it doesn't exist
 if not exist "venv\Scripts\python.exe" (
     echo Creating virtual environment...

@@ -5,12 +5,45 @@ folder. It requires PyInstaller to be installed in the active
 environment.
 """
 
+import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import PyInstaller.__main__  # type: ignore
+
+
+def get_git_commit_date() -> str | None:
+    """Get the date of the last commit from git."""
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%ci"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def update_version_json() -> None:
+    """Update version.json with the current git commit date."""
+    root = Path(__file__).resolve().parent
+    version_file = root / "app" / "resources" / "version.json"
+    
+    commit_date = get_git_commit_date()
+    if commit_date:
+        version_file.write_text(
+            json.dumps({"date": commit_date}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Updated version.json with commit date: {commit_date}")
+    else:
+        print("Could not get git commit date, keeping existing version.json")
 
 
 def clean_build_dirs() -> None:
@@ -25,6 +58,9 @@ def clean_build_dirs() -> None:
 
 def main() -> None:
     """Build project executables using PyInstaller."""
+    # Update version.json with current git commit date
+    update_version_json()
+    
     # Clean up previous build artifacts
     clean_build_dirs()
     

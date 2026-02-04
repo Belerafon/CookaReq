@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-import os
-import subprocess
 import sys
 import threading
 from pathlib import Path
 from typing import Any
 
+from .util.system_open import open_directory
 from .util.time import utc_now_iso
 
 LOG_DIR_ENV = "COOKAREQ_LOG_DIR"
@@ -284,16 +283,7 @@ def get_log_file_paths() -> tuple[Path, Path]:
 
 def open_log_directory() -> bool:
     """Open the log directory in the system file browser."""
-    directory = get_log_directory()
-    try:  # pragma: no cover - platform-dependent side effect
-        if sys.platform.startswith("win"):
-            os.startfile(str(directory))  # type: ignore[attr-defined]
-            return True
-        if sys.platform == "darwin":
-            return subprocess.call(["open", str(directory)]) == 0
-        return subprocess.call(["xdg-open", str(directory)]) == 0
-    except Exception:  # pragma: no cover - best effort helper
-        return False
+    return open_directory(get_log_directory())
 
 
 __all__ = [

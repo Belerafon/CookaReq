@@ -232,9 +232,11 @@ so you know which modules are involved and which regressions to guard against.
   and exposes filtered views to the list panel, keeping UI updates fast.
 * **Dialogs and helpers** — confirmation flows, error dialogs and settings live
   in `app/confirm.py`, `app/ui/error_dialog.py`, `app/ui/settings_dialog.py` and
-  related modules. `LabelsDialog` coordinates label edits by capturing rename
-  propagation choices and deletion clean-up flags before the controller forwards
-  the plan to `RequirementsService.update_document_labels()`. The export dialog
+  related modules. Help popups created in `app/ui/helpers.py` are modeless and
+  explicitly destroyed on close so they can be reopened cleanly without stale
+  state. `LabelsDialog` coordinates label edits by capturing rename propagation
+  choices and deletion clean-up flags before the controller forwards the plan to
+  `RequirementsService.update_document_labels()`. The export dialog
   (`app/ui/export_dialog.py`) lets users choose columns and format before
   rendering tabular output, including a text-only option for omitting or
   labelling empty fields.

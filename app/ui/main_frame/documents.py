@@ -28,6 +28,7 @@ from ...core.requirement_text_export import render_requirement_cards_txt
 from ..export_helpers import prepare_export_destination
 from ...i18n import _
 from ...log import logger
+from ...util.system_open import open_directory
 from ..controllers import DocumentsController
 from ..export_dialog import ExportFormat, RequirementExportDialog
 from ..import_dialog import RequirementImportDialog
@@ -762,10 +763,20 @@ class MainFrameDocumentsMixin:
             wx.MessageBox(str(exc), _("Export failed"), wx.ICON_ERROR)
             return
 
-        wx.MessageBox(
-            _("Exported {count} requirement(s).").format(count=len(requirements)),
+        if wx.MessageBox(
+            _("Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?").format(
+                count=len(requirements),
+                filename=export_path.name,
+            ),
             _("Export completed"),
-        )
+            style=wx.YES_NO | wx.ICON_QUESTION,
+        ) == wx.YES:
+            if not open_directory(export_path.parent):
+                wx.MessageBox(
+                    _("Could not open export folder:\n%s") % export_path.parent,
+                    _("Export completed"),
+                    wx.ICON_WARNING,
+                )
 
     def on_manage_labels(self: MainFrame, _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""

@@ -2617,8 +2617,11 @@ msgstr "Формат экспорта"
 msgid "Export Requirements"
 msgstr "Экспорт требований"
 
-msgid "Exported {count} requirement(s)."
-msgstr "Экспортировано требований: {count}."
+msgid "Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?"
+msgstr "Экспортировано требований: {count}.\nФайл: {filename}\n\nОткрыть папку экспорта?"
+
+msgid "Could not open export folder:\n%s"
+msgstr "Не удалось открыть папку экспорта:\n%s"
 
 msgid "HTML (.html)"
 msgstr "HTML (.html)"

@@ -41,3 +41,23 @@ def test_insert_attachment_markdown_updates_statement(wx_app, tmp_path: Path) ->
         assert "Diagram" in statement
     finally:
         frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_insert_statement_snippet_appends_text(wx_app) -> None:
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        editor = EditorPanel(frame)
+        editor.fields["statement"].ChangeValue("Start ")
+        editor.fields["statement"].SetInsertionPointEnd()
+        editor._insert_statement_snippet("**Bold**")
+
+        statement = editor.fields["statement"].GetValue()
+        assert statement.endswith("**Bold**")
+    finally:
+        frame.Destroy()

@@ -73,6 +73,10 @@ class EditorPanel(wx.Panel):
         self._statement_mode: wx.Choice | None = None
         self._statement_preview: MarkdownContent | None = None
         self._insert_image_btn: wx.Button | None = None
+        self._insert_table_btn: wx.Button | None = None
+        self._insert_formula_btn: wx.Button | None = None
+        self._insert_heading_btn: wx.Button | None = None
+        self._insert_bold_btn: wx.Button | None = None
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -99,10 +103,46 @@ class EditorPanel(wx.Panel):
                 mode.Bind(wx.EVT_CHOICE, self._on_statement_mode_change)
                 row.Add(mode, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 self._statement_mode = mode
-                insert_btn = wx.Button(content, label=_("Insert Image…"))
-                insert_btn.Bind(wx.EVT_BUTTON, self._on_insert_image)
+                insert_btn = self._create_icon_button(
+                    content,
+                    art_ids=(wx.ART_FILE_OPEN, wx.ART_NORMAL_FILE),
+                    tooltip=_("Insert image"),
+                    handler=self._on_insert_image,
+                )
                 row.Add(insert_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 self._insert_image_btn = insert_btn
+                table_btn = self._create_icon_button(
+                    content,
+                    art_ids=(wx.ART_REPORT_VIEW, wx.ART_LIST_VIEW),
+                    tooltip=_("Insert table"),
+                    handler=self._on_insert_table,
+                )
+                row.Add(table_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
+                self._insert_table_btn = table_btn
+                formula_btn = self._create_icon_button(
+                    content,
+                    art_ids=(wx.ART_TIP, wx.ART_QUESTION),
+                    tooltip=_("Insert formula"),
+                    handler=self._on_insert_formula,
+                )
+                row.Add(formula_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
+                self._insert_formula_btn = formula_btn
+                heading_btn = self._create_icon_button(
+                    content,
+                    art_ids=(wx.ART_HELP_BOOK, wx.ART_INFORMATION),
+                    tooltip=_("Insert heading"),
+                    handler=self._on_insert_heading,
+                )
+                row.Add(heading_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
+                self._insert_heading_btn = heading_btn
+                bold_btn = self._create_icon_button(
+                    content,
+                    art_ids=(wx.ART_TICK_MARK, wx.ART_EXECUTABLE_FILE),
+                    tooltip=_("Insert bold text"),
+                    handler=self._on_insert_bold,
+                )
+                row.Add(bold_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
+                self._insert_bold_btn = bold_btn
             content_sizer.Add(row, 0, wx.TOP, border)
 
             style = wx.TE_MULTILINE if spec.multiline else 0
@@ -1028,6 +1068,33 @@ class EditorPanel(wx.Panel):
             del self.attachments[idx]
             self._refresh_attachments()
 
+    def _create_icon_button(
+        self,
+        parent: wx.Window,
+        *,
+        art_ids: tuple[str, ...],
+        tooltip: str,
+        handler: Callable[[wx.CommandEvent], None],
+    ) -> wx.BitmapButton:
+        icon_size = wx.Size(dip(parent, 16), dip(parent, 16))
+        bitmap = wx.NullBitmap
+        for art_id in art_ids:
+            candidate = wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, icon_size)
+            if candidate.IsOk():
+                bitmap = candidate
+                break
+        if not bitmap.IsOk():
+            bitmap = wx.ArtProvider.GetBitmap(wx.ART_MISSING_IMAGE, wx.ART_BUTTON, icon_size)
+        button = wx.BitmapButton(
+            parent,
+            bitmap=bitmap,
+            style=wx.BU_EXACTFIT | wx.BORDER_NONE,
+        )
+        button.SetToolTip(tooltip)
+        inherit_background(button, parent)
+        button.Bind(wx.EVT_BUTTON, handler)
+        return button
+
     def _on_insert_image(self, _event: wx.CommandEvent) -> None:
         service = self._service
         prefix = self._effective_prefix()
@@ -1060,6 +1127,26 @@ class EditorPanel(wx.Panel):
         self._refresh_attachments()
         alt_text = Path(path).stem or _("Image")
         self._insert_attachment_markdown(attachment["id"], alt_text)
+
+    def _on_insert_table(self, _event: wx.CommandEvent) -> None:
+        snippet = _(
+            "| Column | Value |\n"
+            "| --- | --- |\n"
+            "| Item | Description |\n"
+        )
+        self._insert_statement_snippet(snippet)
+
+    def _on_insert_formula(self, _event: wx.CommandEvent) -> None:
+        snippet = "\\(E = mc^2\\)\n\n$$E = mc^2$$"
+        self._insert_statement_snippet(snippet)
+
+    def _on_insert_heading(self, _event: wx.CommandEvent) -> None:
+        snippet = _("# Heading\n")
+        self._insert_statement_snippet(snippet)
+
+    def _on_insert_bold(self, _event: wx.CommandEvent) -> None:
+        snippet = _("**Bold text**")
+        self._insert_statement_snippet(snippet)
 
     def _on_statement_mode_change(self, _event: wx.CommandEvent) -> None:
         self._set_statement_preview_mode(self._is_statement_preview_mode())
@@ -1141,6 +1228,14 @@ class EditorPanel(wx.Panel):
             return
         safe_alt = alt_text.strip() or _("Image")
         snippet = f"![{safe_alt}](attachment:{attachment_id})"
+        self._insert_statement_snippet(snippet)
+
+    def _insert_statement_snippet(self, snippet: str) -> None:
+        statement_ctrl = self.fields.get("statement")
+        if statement_ctrl is None:
+            return
+        if not snippet:
+            return
         statement_ctrl.WriteText(snippet)
         if self._statement_preview and self._is_statement_preview_mode():
             self._update_statement_preview()

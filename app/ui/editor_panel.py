@@ -1134,11 +1134,11 @@ class EditorPanel(wx.Panel):
             "| --- | --- |\n"
             "| Item | Description |\n"
         )
-        self._insert_statement_snippet(snippet)
+        self._insert_statement_block_snippet(snippet)
 
     def _on_insert_formula(self, _event: wx.CommandEvent) -> None:
         snippet = "\\(E = mc^2\\)\n\n$$E = mc^2$$"
-        self._insert_statement_snippet(snippet)
+        self._insert_statement_block_snippet(snippet)
 
     def _on_insert_heading(self, _event: wx.CommandEvent) -> None:
         snippet = _("# Heading\n")
@@ -1237,6 +1237,24 @@ class EditorPanel(wx.Panel):
         if not snippet:
             return
         statement_ctrl.WriteText(snippet)
+        if self._statement_preview and self._is_statement_preview_mode():
+            self._update_statement_preview()
+
+    def _insert_statement_block_snippet(self, snippet: str) -> None:
+        statement_ctrl = self.fields.get("statement")
+        if statement_ctrl is None:
+            return
+        if not snippet:
+            return
+        value = statement_ctrl.GetValue() or ""
+        start, end = statement_ctrl.GetSelection()
+        if start > end:
+            start, end = end, start
+        needs_prefix = start > 0 and value[start - 1] != "\n"
+        needs_suffix = end < len(value) and value[end] != "\n"
+        prefix = "\n" if needs_prefix and not snippet.startswith("\n") else ""
+        suffix = "\n" if needs_suffix and not snippet.endswith("\n") else ""
+        statement_ctrl.WriteText(f"{prefix}{snippet}{suffix}")
         if self._statement_preview and self._is_statement_preview_mode():
             self._update_statement_preview()
 

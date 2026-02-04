@@ -1132,7 +1132,7 @@ class EditorPanel(wx.Panel):
         snippet = _(
             "| Column | Value |\n"
             "| --- | --- |\n"
-            "| Item | Description |\n"
+            "| Item | Description |"
         )
         self._insert_statement_block_snippet(snippet)
 
@@ -1250,11 +1250,32 @@ class EditorPanel(wx.Panel):
         start, end = statement_ctrl.GetSelection()
         if start > end:
             start, end = end, start
-        needs_prefix = start > 0 and value[start - 1] != "\n"
-        needs_suffix = end < len(value) and value[end] != "\n"
-        prefix = "\n" if needs_prefix and not snippet.startswith("\n") else ""
-        suffix = "\n" if needs_suffix and not snippet.endswith("\n") else ""
-        statement_ctrl.WriteText(f"{prefix}{snippet}{suffix}")
+        before = value[:start]
+        after = value[end:]
+
+        def _block_separator_before(text: str) -> str:
+            if not text:
+                return ""
+            if text.endswith("\n\n"):
+                return ""
+            if text.endswith("\n"):
+                return "\n"
+            return "\n\n"
+
+        def _block_separator_after(text: str) -> str:
+            if not text:
+                return ""
+            if text.startswith("\n\n"):
+                return ""
+            if text.startswith("\n"):
+                return "\n"
+            return "\n\n"
+
+        prefix = _block_separator_before(before)
+        suffix = _block_separator_after(after)
+        payload = f"{prefix}{snippet}{suffix}"
+        statement_ctrl.Replace(start, end, payload)
+        statement_ctrl.SetInsertionPoint(start + len(payload))
         if self._statement_preview and self._is_statement_preview_mode():
             self._update_statement_preview()
 

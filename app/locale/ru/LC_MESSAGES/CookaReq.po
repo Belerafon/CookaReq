@@ -2667,3 +2667,33 @@ msgstr "CSV (.csv)"
 
 msgid "TSV (.tsv)"
 msgstr "TSV (.tsv)"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Revision"
+msgstr "Ревизия"
+
+msgid "Statement"
+msgstr "Формулировка"
+
+msgid "Acceptance"
+msgstr "Критерии приемки"
+
+msgid "Related requirements"
+msgstr "Связанные требования"
+
+msgid "missing"
+msgstr "отсутствует"
+
+msgid "suspect"
+msgstr "подозрительная связь"
+
+msgid "Generated at"
+msgstr "Сформировано"
+
+msgid "for documents"
+msgstr "для документов"
+
+msgid "(no title)"
+msgstr "(без названия)"

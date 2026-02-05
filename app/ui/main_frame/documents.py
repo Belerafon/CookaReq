@@ -704,6 +704,7 @@ class MainFrameDocumentsMixin:
                 title=title,
                 formula_renderer=plan.docx_formula_renderer or "text",
                 empty_field_placeholder=empty_placeholder,
+                fields=plan.columns,
             )
         else:
             if plan.format == ExportFormat.HTML:
@@ -723,6 +724,7 @@ class MainFrameDocumentsMixin:
                     export,
                     title=title,
                     empty_field_placeholder=empty_placeholder,
+                    fields=plan.columns,
                 )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}

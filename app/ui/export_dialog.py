@@ -314,11 +314,7 @@ class RequirementExportDialog(wx.Dialog):
             return
         path = self.file_picker.GetPath()
         has_path = bool(path)
-        require_columns = self._current_format() in {
-            ExportFormat.TXT,
-            ExportFormat.CSV,
-            ExportFormat.TSV,
-        }
+        require_columns = True
         has_columns = bool(self._checked_fields()) if require_columns else True
         self.ok_button.Enable(has_path and has_columns)
 
@@ -332,12 +328,7 @@ class RequirementExportDialog(wx.Dialog):
         self._main_sizer.Layout()
 
     def _update_columns_visibility(self) -> None:
-        show_columns = self._current_format() in {
-            ExportFormat.TXT,
-            ExportFormat.CSV,
-            ExportFormat.TSV,
-        }
-        self._main_sizer.Show(self._columns_sizer, show_columns, recursive=True)
+        self._main_sizer.Show(self._columns_sizer, True, recursive=True)
         self._main_sizer.Layout()
 
     def _update_docx_options_visibility(self) -> None:
@@ -453,11 +444,7 @@ class RequirementExportDialog(wx.Dialog):
         if not self.file_picker.GetPath():
             wx.MessageBox(_("Select export file first."), _("Export blocked"))
             return
-        if self._current_format() in {
-            ExportFormat.TXT,
-            ExportFormat.CSV,
-            ExportFormat.TSV,
-        } and not self._checked_fields():
+        if not self._checked_fields():
             wx.MessageBox(_("Choose at least one column to export."), _("Export blocked"))
             return
         event.Skip()
@@ -468,15 +455,7 @@ class RequirementExportDialog(wx.Dialog):
         if not path:
             return None
         columns = self._checked_fields()
-        if (
-            not columns
-            and self._current_format()
-            in {
-                ExportFormat.TXT,
-                ExportFormat.CSV,
-                ExportFormat.TSV,
-            }
-        ):
+        if not columns:
             return None
         docx_renderer = None
         if self._current_format() == ExportFormat.DOCX:

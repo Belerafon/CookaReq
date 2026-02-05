@@ -28,6 +28,7 @@ import markdown
 import docx
 from docx.shared import Inches
 
+from ..i18n import _
 from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
 from .markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
 from .model import Requirement
@@ -46,22 +47,16 @@ __all__ = [
 ]
 
 
-SECTION_PLACEHOLDER = "(not provided)"
-REQUIRED_SECTION_LABELS = {"Rationale"}
-
 
 def _resolve_field_content(
     value: str | None,
     *,
-    required: bool,
     empty_field_placeholder: str | None,
 ) -> str | None:
     if value:
         return value
     if empty_field_placeholder is not None:
         return empty_field_placeholder
-    if required:
-        return SECTION_PLACEHOLDER
     return None
 
 
@@ -212,6 +207,25 @@ def build_requirement_export_from_requirements(
     )
 
 
+
+
+def _normalize_export_fields(fields: Iterable[str] | None) -> set[str] | None:
+    if fields is None:
+        return None
+    return {field for field in fields if field}
+
+
+def _should_render_field(selected_fields: set[str] | None, field: str) -> bool:
+    if selected_fields is None:
+        return True
+    return field in selected_fields
+
+
+def _requirement_heading(req: Requirement, selected_fields: set[str] | None) -> str:
+    if _should_render_field(selected_fields, "title"):
+        return f"{req.rid} — {req.title or _('(no title)')}"
+    return req.rid
+
 def _format_markdown_block(text: str) -> list[str]:
     lines = text.splitlines() or [""]
     block: list[str] = []
@@ -228,12 +242,14 @@ def render_requirements_markdown(
     *,
     title: str | None = None,
     empty_field_placeholder: str | None = None,
+    fields: Iterable[str] | None = None,
 ) -> str:
     """Render export data as Markdown."""
-    heading = title or "Requirements export"
+    selected_fields = _normalize_export_fields(fields)
+    heading = title or _('Requirements export')
     parts: list[str] = [f"# {heading}", ""]
     parts.append(
-        f"_Generated at {export.generated_at.isoformat()} for documents: {', '.join(export.selected_prefixes)}._"
+        f"_{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
     parts.append("")
 
@@ -242,55 +258,51 @@ def render_requirements_markdown(
         parts.append("")
         for view in doc.requirements:
             req = view.requirement
-            parts.append(f"### {req.rid} — {req.title or '(no title)'}")
+            parts.append(f"### {_requirement_heading(req, selected_fields)}")
             parts.append("")
-            meta_fields: Iterable[tuple[str, str | None, bool]] = [
-                ("Priority", getattr(req.priority, "value", None), True),
-                ("Owner", req.owner or None, False),
-                ("Labels", ", ".join(sorted(req.labels)) if req.labels else None, False),
-                ("Source", req.source or None, False),
-                ("Modified", req.modified_at or None, False),
-                ("Approved", req.approved_at or None, False),
+            meta_fields: Iterable[tuple[str, str, str | None, bool]] = [
+                ("type", "Type", req.type.value, True),
+                ("status", "Status", req.status.value, True),
+                ("priority", "Priority", getattr(req.priority, "value", None), True),
+                ("owner", "Owner", req.owner or None, False),
+                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None, False),
+                ("source", "Source", req.source or None, False),
+                ("modified_at", "Modified", req.modified_at or None, False),
+                ("approved_at", "Approved", req.approved_at or None, False),
+                ("revision", "Revision", str(req.revision), False),
             ]
-            parts.append(f"- **Type:** ``{req.type.value}``")
-            parts.append(f"- **Status:** ``{req.status.value}``")
-            for label, value, use_code in meta_fields:
-                content = _resolve_field_content(
-                    value,
-                    required=False,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+            for field, label, value, use_code in meta_fields:
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
                 if use_code:
-                    parts.append(f"- **{label}:** ``{content}``")
+                    parts.append(f"- **{_(label)}:** ``{content}``")
                 else:
-                    parts.append(f"- **{label}:** {content}")
-            parts.append(f"- **Revision:** {req.revision}")
+                    parts.append(f"- **{_(label)}:** {content}")
             parts.append("")
 
-            sections: list[tuple[str, str | None, bool]] = [
-                ("Statement", req.statement, False),
-                ("Acceptance", req.acceptance or "", False),
-                ("Conditions", req.conditions, False),
-                ("Rationale", req.rationale, True),
-                ("Assumptions", req.assumptions, False),
-                ("Notes", req.notes, False),
+            sections: list[tuple[str, str, str | None]] = [
+                ("statement", "Statement", req.statement),
+                ("acceptance", "Acceptance", req.acceptance or ""),
+                ("conditions", "Conditions", req.conditions),
+                ("rationale", "Rationale", req.rationale),
+                ("assumptions", "Assumptions", req.assumptions),
+                ("notes", "Notes", req.notes),
             ]
-            for label, value, required in sections:
-                content = _resolve_field_content(
-                    value,
-                    required=required,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+            for field, label, value in sections:
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
-                parts.append(f"**{label}**")
+                parts.append(f"**{_(label)}**")
                 parts.extend(_format_markdown_block(content))
                 parts.append("")
 
-            if view.links:
-                parts.append("**Related requirements**")
+            if view.links and _should_render_field(selected_fields, "links"):
+                parts.append(f"**{_('Related requirements')}**")
                 for link in view.links:
                     label = link.rid
                     if link.exists:
@@ -299,9 +311,9 @@ def render_requirements_markdown(
                     if link.title:
                         suffix.append(link.title)
                     if not link.exists:
-                        suffix.append("missing")
+                        suffix.append(_('missing'))
                     if link.suspect:
-                        suffix.append("suspect")
+                        suffix.append(_('suspect'))
                     if suffix:
                         parts.append(f"- {label} — {', '.join(suffix)}")
                     else:
@@ -497,9 +509,11 @@ def render_requirements_html(
     *,
     title: str | None = None,
     empty_field_placeholder: str | None = None,
+    fields: Iterable[str] | None = None,
 ) -> str:
     """Render export data as standalone HTML."""
-    heading = title or "Requirements export"
+    selected_fields = _normalize_export_fields(fields)
+    heading = title or _('Requirements export')
     parts: list[str] = [
         "<!DOCTYPE html>",
         "<html><head><meta charset='utf-8'>",
@@ -517,7 +531,7 @@ def render_requirements_html(
         "</style>",
         "</head><body>",
         f"<h1>{_escape_html(heading)}</h1>",
-        f"<p><em>Generated at {export.generated_at.isoformat()} for documents: {', '.join(export.selected_prefixes)}.</em></p>",
+        f"<p><em>{_escape_html(_('Generated at'))} {export.generated_at.isoformat()} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
     ]
 
     for doc in export.documents:
@@ -529,54 +543,49 @@ def render_requirements_html(
             req = view.requirement
             parts.append(f"<article class='requirement' id='{_escape_html(req.rid)}'>")
             parts.append(
-                f"<h3><span class='rid'>{_escape_html(req.rid)}</span> — {_escape_html(req.title or '(no title)')}</h3>"
+                f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
             )
             parts.append("<dl class='meta'>")
-            meta_fields: Iterable[tuple[str, str | None]] = [
-                ("Type", req.type.value),
-                ("Status", req.status.value),
-                ("Priority", getattr(req.priority, "value", None)),
-                ("Owner", req.owner or None),
-                ("Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("Source", req.source or None),
-                ("Modified", req.modified_at or None),
-                ("Approved", req.approved_at or None),
-                ("Revision", str(req.revision)),
+            meta_fields: Iterable[tuple[str, str, str | None]] = [
+                ("type", "Type", req.type.value),
+                ("status", "Status", req.status.value),
+                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("owner", "Owner", req.owner or None),
+                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
+                ("source", "Source", req.source or None),
+                ("modified_at", "Modified", req.modified_at or None),
+                ("approved_at", "Approved", req.approved_at or None),
+                ("revision", "Revision", str(req.revision)),
             ]
-            for label, value in meta_fields:
-                content = _resolve_field_content(
-                    value,
-                    required=False,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+            for field, label, value in meta_fields:
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
                 parts.append(
-                    f"<dt>{_escape_html(label)}</dt><dd>{_escape_html(content)}</dd>"
+                    f"<dt>{_escape_html(_(label))}</dt><dd>{_escape_html(content)}</dd>"
                 )
             parts.append("</dl>")
 
-            for label, value in (
-                ("Statement", req.statement),
-                ("Acceptance", req.acceptance or ""),
-                ("Conditions", req.conditions),
-                ("Rationale", req.rationale),
-                ("Assumptions", req.assumptions),
-                ("Notes", req.notes),
+            for field, label, value in (
+                ("statement", "Statement", req.statement),
+                ("acceptance", "Acceptance", req.acceptance or ""),
+                ("conditions", "Conditions", req.conditions),
+                ("rationale", "Rationale", req.rationale),
+                ("assumptions", "Assumptions", req.assumptions),
+                ("notes", "Notes", req.notes),
             ):
-                required = label in REQUIRED_SECTION_LABELS
-                content = _resolve_field_content(
-                    value,
-                    required=required,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
-                parts.append(f"<h4>{_escape_html(label)}</h4>")
+                parts.append(f"<h4>{_escape_html(_(label))}</h4>")
                 parts.append(_html_markdown(content, requirement=req) or "<p></p>")
 
-            if view.links:
-                parts.append("<h4>Related requirements</h4><ul class='links'>")
+            if view.links and _should_render_field(selected_fields, "links"):
+                parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")
                 for link in view.links:
                     label = _escape_html(link.rid)
                     title = _escape_html(link.title) if link.title else ""
@@ -596,9 +605,9 @@ def render_requirements_html(
                         if title:
                             text_parts.append(f"— {title}")
                         if not link.exists:
-                            text_parts.append("(missing)")
+                            text_parts.append(f"({_('missing')})")
                         if link.suspect:
-                            text_parts.append("(suspect)")
+                            text_parts.append(f"({_('suspect')})")
                         parts.append(f"<li><span{cls_attr}>{' '.join(text_parts)}</span></li>")
                 parts.append("</ul>")
             parts.append("</article>")
@@ -742,13 +751,15 @@ def render_requirements_docx(
     title: str | None = None,
     formula_renderer: str = "text",
     empty_field_placeholder: str | None = None,
+    fields: Iterable[str] | None = None,
 ) -> bytes:
     """Render export data as a DOCX document."""
-    heading = title or "Requirements export"
+    selected_fields = _normalize_export_fields(fields)
+    heading = title or _('Requirements export')
     document = docx.Document()
     document.add_heading(heading, level=0)
     document.add_paragraph(
-        f"Generated at {export.generated_at.isoformat()} for documents: {', '.join(export.selected_prefixes)}."
+        f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
     image_width = 5.5
 
@@ -759,25 +770,23 @@ def render_requirements_docx(
         )
         for view in doc_export.requirements:
             req = view.requirement
-            document.add_heading(f"{req.rid} — {req.title or '(no title)'}", level=2)
-            meta_fields: Iterable[tuple[str, str | None]] = [
-                ("Type", req.type.value),
-                ("Status", req.status.value),
-                ("Priority", getattr(req.priority, "value", None)),
-                ("Owner", req.owner or None),
-                ("Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("Source", req.source or None),
-                ("Modified", req.modified_at or None),
-                ("Approved", req.approved_at or None),
-                ("Revision", str(req.revision)),
+            document.add_heading(_requirement_heading(req, selected_fields), level=2)
+            meta_fields: Iterable[tuple[str, str, str | None]] = [
+                ("type", "Type", req.type.value),
+                ("status", "Status", req.status.value),
+                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("owner", "Owner", req.owner or None),
+                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
+                ("source", "Source", req.source or None),
+                ("modified_at", "Modified", req.modified_at or None),
+                ("approved_at", "Approved", req.approved_at or None),
+                ("revision", "Revision", str(req.revision)),
             ]
             meta_pairs = []
-            for label, value in meta_fields:
-                content = _resolve_field_content(
-                    value,
-                    required=False,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+            for field, label, value in meta_fields:
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
                 meta_pairs.append((label, content))
@@ -786,27 +795,24 @@ def render_requirements_docx(
                 table.style = "Light Grid"
                 for label, value in meta_pairs:
                     row = table.add_row().cells
-                    row[0].text = label
+                    row[0].text = _(label)
                     row[1].text = value
 
             attachment_map = {att.id: att.path for att in req.attachments}
-            for label, value in (
-                ("Statement", req.statement),
-                ("Acceptance", req.acceptance or ""),
-                ("Conditions", req.conditions),
-                ("Rationale", req.rationale),
-                ("Assumptions", req.assumptions),
-                ("Notes", req.notes),
+            for field, label, value in (
+                ("statement", "Statement", req.statement),
+                ("acceptance", "Acceptance", req.acceptance or ""),
+                ("conditions", "Conditions", req.conditions),
+                ("rationale", "Rationale", req.rationale),
+                ("assumptions", "Assumptions", req.assumptions),
+                ("notes", "Notes", req.notes),
             ):
-                required = label in REQUIRED_SECTION_LABELS
-                content = _resolve_field_content(
-                    value,
-                    required=required,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
-                document.add_heading(label, level=3)
+                document.add_heading(_(label), level=3)
                 _docx_add_markdown(
                     document,
                     content,
@@ -866,10 +872,12 @@ def render_requirements_pdf(
     *,
     title: str | None = None,
     empty_field_placeholder: str | None = None,
+    fields: Iterable[str] | None = None,
 ) -> bytes:
     """Render export data as a PDF document."""
+    selected_fields = _normalize_export_fields(fields)
     buffer = BytesIO()
-    heading = title or "Requirements export"
+    heading = title or _('Requirements export')
     styles = _ensure_stylesheet()
     doc = SimpleDocTemplate(
         buffer,
@@ -885,7 +893,7 @@ def render_requirements_pdf(
     story.append(
         Paragraph(
             xml_escape(
-                f"Generated at {export.generated_at.isoformat()} for documents: {', '.join(export.selected_prefixes)}."
+                f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
             ),
             styles["BodyText"],
         )
@@ -904,31 +912,29 @@ def render_requirements_pdf(
             req = view.requirement
             story.append(
                 Paragraph(
-                    f"<a name='{xml_escape(req.rid)}'/><b>{xml_escape(req.rid)}</b> — {xml_escape(req.title or '(no title)')}",
+                    f"<a name='{xml_escape(req.rid)}'/><b>{xml_escape(_requirement_heading(req, selected_fields))}</b>",
                     styles["RequirementHeading"],
                 )
             )
             data: list[list[str]] = []
-            meta_fields: Iterable[tuple[str, str | None]] = [
-                ("Type", req.type.value),
-                ("Status", req.status.value),
-                ("Priority", getattr(req.priority, "value", None)),
-                ("Owner", req.owner or None),
-                ("Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("Source", req.source or None),
-                ("Modified", req.modified_at or None),
-                ("Approved", req.approved_at or None),
-                ("Revision", str(req.revision)),
+            meta_fields: Iterable[tuple[str, str, str | None]] = [
+                ("type", "Type", req.type.value),
+                ("status", "Status", req.status.value),
+                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("owner", "Owner", req.owner or None),
+                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
+                ("source", "Source", req.source or None),
+                ("modified_at", "Modified", req.modified_at or None),
+                ("approved_at", "Approved", req.approved_at or None),
+                ("revision", "Revision", str(req.revision)),
             ]
-            for label, value in meta_fields:
-                content = _resolve_field_content(
-                    value,
-                    required=False,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+            for field, label, value in meta_fields:
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
-                data.append([xml_escape(label), _pdf_text(content)])
+                data.append([xml_escape(_(label)), _pdf_text(content)])
             if data:
                 table = Table(data, colWidths=[40 * mm, 120 * mm])
                 table.setStyle(
@@ -943,26 +949,23 @@ def render_requirements_pdf(
                 story.append(table)
                 story.append(Spacer(1, 6))
 
-            for label, value in (
-                ("Statement", req.statement),
-                ("Acceptance", req.acceptance or ""),
-                ("Conditions", req.conditions),
-                ("Rationale", req.rationale),
-                ("Assumptions", req.assumptions),
-                ("Notes", req.notes),
+            for field, label, value in (
+                ("statement", "Statement", req.statement),
+                ("acceptance", "Acceptance", req.acceptance or ""),
+                ("conditions", "Conditions", req.conditions),
+                ("rationale", "Rationale", req.rationale),
+                ("assumptions", "Assumptions", req.assumptions),
+                ("notes", "Notes", req.notes),
             ):
-                required = label in REQUIRED_SECTION_LABELS
-                content = _resolve_field_content(
-                    value,
-                    required=required,
-                    empty_field_placeholder=empty_field_placeholder,
-                )
+                if not _should_render_field(selected_fields, field):
+                    continue
+                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
-                story.append(Paragraph(xml_escape(label), styles["SectionHeading"]))
+                story.append(Paragraph(xml_escape(_(label)), styles["SectionHeading"]))
                 story.append(Paragraph(_pdf_text(content), styles["BodyText"]))
 
-            if view.links:
+            if view.links and _should_render_field(selected_fields, "links"):
                 items = []
                 for link in view.links:
                     label = xml_escape(link.rid)
@@ -971,7 +974,7 @@ def render_requirements_pdf(
                         if link.title:
                             text += f" — {xml_escape(link.title)}"
                         if link.suspect:
-                            text += " (suspect)"
+                            text += f" ({_('suspect')})"
                         items.append(
                             ListItem(
                                 Paragraph(
@@ -984,11 +987,11 @@ def render_requirements_pdf(
                         text = label
                         if link.title:
                             text += f" — {xml_escape(link.title)}"
-                        text += " (missing)"
+                        text += f" ({_('missing')})"
                         if link.suspect:
-                            text += " (suspect)"
+                            text += f" ({_('suspect')})"
                         items.append(ListItem(Paragraph(text, styles["BodyText"])))
-                story.append(Paragraph("Related requirements", styles["SectionHeading"]))
+                story.append(Paragraph(xml_escape(_('Related requirements')), styles["SectionHeading"]))
                 story.append(ListFlowable(items, bulletType="bullet"))
             story.append(Spacer(1, 12))
         story.append(Spacer(1, 12))

@@ -119,3 +119,60 @@ def test_render_requirements_html_shows_empty_fields_placeholder(tmp_path: Path)
     assert "<dt>Owner</dt><dd>(not set)</dd>" in html
     assert "<dt>Source</dt><dd>(not set)</dd>" in html
     assert "(not set)" in html
+
+
+def test_render_requirements_html_hides_empty_rationale_without_placeholder(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=5,
+        title="No rationale",
+        statement="Statement",
+        rationale="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS5",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert "(not provided)" not in html
+    assert "<h4>Rationale</h4>" not in html
+
+
+def test_render_requirements_html_respects_selected_fields(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=6,
+        title="Filtered",
+        statement="Important statement",
+        rationale="Internal rationale",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="alice",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS6",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export, fields=["title", "statement"])
+
+    assert "Important statement" in html
+    assert "Internal rationale" not in html
+    assert "<dt>Owner</dt>" not in html

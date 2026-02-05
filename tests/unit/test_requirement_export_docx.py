@@ -228,3 +228,64 @@ def test_render_requirements_docx_renders_formula_svg(tmp_path: Path) -> None:
     with ZipFile(io.BytesIO(payload)) as archive:
         media_files = [name for name in archive.namelist() if name.startswith("word/media/")]
         assert media_files
+
+
+def test_render_requirements_docx_hides_empty_rationale_without_placeholder(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=7,
+        title="No rationale",
+        statement="Statement",
+        rationale="",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS7",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export)
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "(not provided)" not in document_xml
+        assert "Rationale" not in document_xml
+
+
+def test_render_requirements_docx_respects_selected_fields(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=8,
+        title="Filtered",
+        statement="Important statement",
+        rationale="Internal rationale",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="alice",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS8",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, fields=["title", "statement"])
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "Important statement" in document_xml
+        assert "Internal rationale" not in document_xml
+        assert "Owner" not in document_xml

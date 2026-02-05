@@ -2656,11 +2656,48 @@ msgstr "Показывать незаполненные поля как {placeho
 msgid "Card options"
 msgstr "Параметры карточек"
 
+
+msgid "Card sort order"
+msgstr "Порядок сортировки карточек"
+
+msgid "Requirement number"
+msgstr "Номер требования"
+
+msgid "Label grouping"
+msgstr "Группировка по меткам"
+
+msgid "One group per label (duplicate requirement in every matched label)"
+msgstr "Одна группа на метку (требование дублируется в каждой подходящей метке)"
+
+msgid "One group per exact label set"
+msgstr "Одна группа на точный набор меток"
+
+msgid "DOCX formulas"
+msgstr "Формулы DOCX"
+
+msgid "Plain text"
+msgstr "Обычный текст"
+
+msgid "MathML (LaTeX → MathML → OMML)"
+msgstr "MathML (LaTeX → MathML → OMML)"
+
+msgid "PNG (LaTeX → PNG)"
+msgstr "PNG (LaTeX → PNG)"
+
+msgid "SVG (LaTeX → SVG → PNG)"
+msgstr "SVG (LaTeX → SVG → PNG)"
+
+msgid "Export file path"
+msgstr "Путь к файлу экспорта"
+
+msgid "Word (.docx)"
+msgstr "Word (.docx)"
+
 msgid "(not set)"
 msgstr "(не задано)"
 
-msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
-msgstr "Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все файлы|*.*"
+msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgstr "Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|DOCX файлы (*.docx)|*.docx|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все файлы|*.*"
 
 msgid "CSV (.csv)"
 msgstr "CSV (.csv)"

@@ -522,6 +522,7 @@ def _build_markdown_renderer() -> markdown.Markdown:
             "markdown.extensions.tables",
             "markdown.extensions.fenced_code",
             "markdown.extensions.sane_lists",
+            "markdown.extensions.nl2br",
         ],
         output_format="html5",
     )

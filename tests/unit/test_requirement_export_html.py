@@ -67,6 +67,32 @@ def test_render_requirements_html_renders_tables(tmp_path: Path) -> None:
     assert "<td>1</td>" in html
 
 
+def test_render_requirements_html_preserves_single_newlines(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=8,
+        title="Multiline",
+        statement="Line 1\nLine 2\nLine 3",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS8",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert "<p>Line 1<br>\nLine 2<br>\nLine 3</p>" in html
+
+
 def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

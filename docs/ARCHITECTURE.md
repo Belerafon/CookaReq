@@ -61,10 +61,16 @@ so you know which modules are involved and which regressions to guard against.
   can also render DOCX cards with embedded attachments, and the GUI export
   dialog uses the card renderer for HTML/DOCX alongside the tabular/text
   formats with a selectable DOCX formula renderer (plain text, MathML→OMML, PNG
-  fallback, or SVG→PNG fallback). The GUI export flow writes outputs into a
-  dedicated directory and copies the document `assets/` folder alongside the
-  export file, then prompts the user to open the export folder with the file
-  name shown for quick access.
+  fallback, or SVG→PNG fallback). Card exports (Markdown/HTML/DOCX/PDF) omit
+  empty section blocks by default and only render placeholders when the user
+  enables the explicit "show empty fields" option; section/meta labels are
+  passed through gettext so exported cards follow the active UI locale. The
+  export dialog keeps a single field-selection list for all formats, and the
+  selected fields are applied both to tabular exports and to card exports
+  (metadata/sections/links are filtered accordingly). The GUI export flow writes
+  outputs into a dedicated directory and copies the document `assets/` folder
+  alongside the export file, then prompts the user to open the export folder
+  with the file name shown for quick access.
 
 ## Application services and configuration context
 

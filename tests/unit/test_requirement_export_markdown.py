@@ -129,3 +129,110 @@ def test_render_requirements_markdown_localizes_field_labels_consistently(tmp_pa
     assert "**Type**" not in markdown
     assert "- **Modified:**" not in markdown
     install("CookaReq", "app/locale", ["en"])
+
+
+def test_render_requirements_markdown_groups_cards_by_labels(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    first = Requirement(
+        id=1,
+        title="Grouped A",
+        statement="A",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        labels=["api"],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    second = Requirement(
+        id=2,
+        title="Grouped B",
+        statement="B",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        labels=[],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS2",
+    )
+    save_item(doc_dir, doc, first.to_mapping())
+    save_item(doc_dir, doc, second.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    markdown = render_requirements_markdown(
+        export,
+        group_by_labels=True,
+        unlabeled_group_title="Без меток",
+    )
+
+    assert "### Labels: api" in markdown
+    assert "### Labels: Без меток" in markdown
+    assert "#### SYS1" in markdown
+    assert "#### SYS2" in markdown
+
+
+def test_render_requirements_markdown_duplicates_multi_label_requirements_in_per_label_mode(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=1,
+        title="Shared",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        labels=["API", "Backend"],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    rendered = render_requirements_markdown(export, group_by_labels=True, label_group_mode="per_label")
+
+    assert "### Labels: API" in rendered
+    assert "### Labels: Backend" in rendered
+    assert rendered.count("#### SYS1") == 2
+
+
+def test_render_requirements_markdown_places_multi_label_requirement_once_in_label_set_mode(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=1,
+        title="Shared",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        labels=["API", "Backend"],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    rendered = render_requirements_markdown(export, group_by_labels=True, label_group_mode="label_set")
+
+    assert "### Labels: API, Backend" in rendered
+    assert rendered.count("#### SYS1") == 1

@@ -74,21 +74,30 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
             empty_fields_placeholder=False,
             docx_formula_renderer=None,
             card_sort_mode="source",
+            card_label_group_mode="per_label",
         ),
     )
     try:
         wx_app.Yield()
         assert dialog._selected_card_sort_mode() == "source"
+        assert dialog._selected_card_label_group_mode() == "per_label"
+        assert not dialog.card_label_group_choice.IsEnabled()
 
         dialog.card_sort_choice.SetSelection(1)
+        dialog._on_card_sort_changed(_wx.CommandEvent())
         assert dialog._selected_card_sort_mode() == "labels"
+        assert dialog.card_label_group_choice.IsEnabled()
+        dialog.card_label_group_choice.SetSelection(1)
+        assert dialog._selected_card_label_group_mode() == "label_set"
 
         plan = dialog.get_plan()
         assert plan is not None
         assert plan.card_sort_mode == "labels"
+        assert plan.card_label_group_mode == "label_set"
 
         state = dialog.get_state()
         assert state.card_sort_mode == "labels"
+        assert state.card_label_group_mode == "label_set"
     finally:
         dialog.Destroy()
         wx_app.Yield()

@@ -33,6 +33,7 @@ class RequirementExportPlan:
     empty_fields_placeholder: bool
     docx_formula_renderer: str | None
     card_sort_mode: str
+    card_label_group_mode: str
 
 
 class RequirementExportDialog(wx.Dialog):
@@ -70,6 +71,9 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._card_sort_mode = self._coerce_card_sort_mode(
             saved_state.card_sort_mode if saved_state else None
+        )
+        self._card_label_group_mode = self._coerce_card_label_group_mode(
+            saved_state.card_label_group_mode if saved_state else None
         )
         self._txt_placeholder_label = _("(not set)")
         self._drag_start_index: int | None = None
@@ -211,6 +215,18 @@ class RequirementExportDialog(wx.Dialog):
             ],
         )
         self._apply_card_sort_choice()
+        self.card_label_group_label = wx.StaticText(
+            self.txt_options_box,
+            label=_("Label grouping"),
+        )
+        self.card_label_group_choice = wx.Choice(
+            self.txt_options_box,
+            choices=[
+                _("One group per label (duplicate requirement in every matched label)"),
+                _("One group per exact label set"),
+            ],
+        )
+        self._apply_card_label_group_choice()
 
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
@@ -240,6 +256,7 @@ class RequirementExportDialog(wx.Dialog):
         self.file_picker.Bind(wx.EVT_FILEPICKER_CHANGED, self._on_path_changed)
         self.format_choice.Bind(wx.EVT_RADIOBOX, self._on_format_changed)
         self.column_list.Bind(wx.EVT_CHECKLISTBOX, self._on_columns_changed)
+        self.card_sort_choice.Bind(wx.EVT_CHOICE, self._on_card_sort_changed)
         self.column_list.Bind(wx.EVT_LEFT_DOWN, self._on_column_left_down)
         self.column_list.Bind(wx.EVT_LEFT_UP, self._on_column_left_up)
         self.move_up_btn.Bind(wx.EVT_BUTTON, lambda _evt: self._move_column(-1))
@@ -271,6 +288,10 @@ class RequirementExportDialog(wx.Dialog):
         sort_row.Add(self.card_sort_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         sort_row.Add(self.card_sort_choice, 1, wx.EXPAND)
         txt_options_sizer.Add(sort_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        label_group_row = wx.BoxSizer(wx.HORIZONTAL)
+        label_group_row.Add(self.card_label_group_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        label_group_row.Add(self.card_label_group_choice, 1, wx.EXPAND)
+        txt_options_sizer.Add(label_group_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         main_sizer.Add(txt_options_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         docx_options_sizer = wx.StaticBoxSizer(self.docx_formula_box, wx.VERTICAL)
@@ -345,6 +366,7 @@ class RequirementExportDialog(wx.Dialog):
             ExportFormat.DOCX,
         }
         self._main_sizer.Show(self._txt_options_sizer, show_options, recursive=True)
+        self._update_label_grouping_state()
         self._main_sizer.Layout()
 
     def _update_columns_visibility(self) -> None:
@@ -379,6 +401,32 @@ class RequirementExportDialog(wx.Dialog):
         if selection == 3:
             return "title"
         return "id"
+
+
+    def _coerce_card_label_group_mode(self, value: str | None) -> str:
+        if value in {"per_label", "label_set"}:
+            return value
+        return "per_label"
+
+    def _apply_card_label_group_choice(self) -> None:
+        selection_map = {
+            "per_label": 0,
+            "label_set": 1,
+        }
+        self.card_label_group_choice.SetSelection(
+            selection_map.get(self._card_label_group_mode, 0)
+        )
+
+    def _selected_card_label_group_mode(self) -> str:
+        selection = self.card_label_group_choice.GetSelection()
+        if selection == 1:
+            return "label_set"
+        return "per_label"
+
+    def _update_label_grouping_state(self) -> None:
+        enabled = self._selected_card_sort_mode() == "labels"
+        self.card_label_group_label.Enable(enabled)
+        self.card_label_group_choice.Enable(enabled)
 
     def _apply_docx_formula_choice(self) -> None:
         choices = self.docx_formula_choice.GetStrings()
@@ -434,6 +482,9 @@ class RequirementExportDialog(wx.Dialog):
 
     def _on_columns_changed(self, _event: wx.CommandEvent) -> None:
         self._update_ok_state()
+
+    def _on_card_sort_changed(self, _event: wx.CommandEvent) -> None:
+        self._update_label_grouping_state()
 
     def _move_column(self, delta: int) -> None:
         idx = self.column_list.GetSelection()
@@ -517,6 +568,7 @@ class RequirementExportDialog(wx.Dialog):
             empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
             docx_formula_renderer=docx_renderer,
             card_sort_mode=self._selected_card_sort_mode(),
+            card_label_group_mode=self._selected_card_label_group_mode(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -539,4 +591,5 @@ class RequirementExportDialog(wx.Dialog):
             if self._current_format() == ExportFormat.DOCX
             else self._docx_formula_renderer,
             card_sort_mode=self._selected_card_sort_mode(),
+            card_label_group_mode=self._selected_card_label_group_mode(),
         )

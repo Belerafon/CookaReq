@@ -295,6 +295,51 @@ def _section_field_value(req: Requirement, field: str) -> str | None:
         return req.notes
     return None
 
+
+def _normalized_labels(req: Requirement) -> tuple[str, ...]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for raw in req.labels:
+        cleaned = raw.strip()
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        labels.append(cleaned)
+    return tuple(sorted(labels, key=str.casefold))
+
+
+def _group_requirement_views_by_labels(
+    views: Sequence[RequirementExportView],
+    *,
+    unlabeled_title: str,
+    label_group_mode: str,
+) -> list[tuple[str, list[RequirementExportView]]]:
+    groups: list[tuple[str, list[RequirementExportView]]] = []
+    lookup: dict[str, list[RequirementExportView]] = {}
+
+    def _append(group_title: str, view: RequirementExportView) -> None:
+        bucket = lookup.get(group_title)
+        if bucket is None:
+            bucket = []
+            lookup[group_title] = bucket
+            groups.append((group_title, bucket))
+        bucket.append(view)
+
+    for view in views:
+        labels = _normalized_labels(view.requirement)
+        if not labels:
+            _append(unlabeled_title, view)
+            continue
+        if label_group_mode == "label_set":
+            _append(", ".join(labels), view)
+            continue
+        for label in labels:
+            _append(label, view)
+    return groups
+
 def _format_markdown_block(text: str) -> list[str]:
     lines = text.splitlines() or [""]
     block: list[str] = []
@@ -312,6 +357,9 @@ def render_requirements_markdown(
     title: str | None = None,
     empty_field_placeholder: str | None = None,
     fields: Iterable[str] | None = None,
+    group_by_labels: bool = False,
+    unlabeled_group_title: str | None = None,
+    label_group_mode: str = "per_label",
 ) -> str:
     """Render export data as Markdown."""
     selected_fields = _normalize_export_fields(fields)
@@ -325,54 +373,68 @@ def render_requirements_markdown(
     for doc in export.documents:
         parts.append(f"## {doc.document.title} ({doc.document.prefix})")
         parts.append("")
-        for view in doc.requirements:
-            req = view.requirement
-            parts.append(f"### {_requirement_heading(req, selected_fields)}")
-            parts.append("")
-            for field, label, use_code in _EXPORT_META_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _meta_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
-                if use_code:
-                    parts.append(f"- **{_(label)}:** ``{content}``")
-                else:
-                    parts.append(f"- **{_(label)}:** {content}")
-            parts.append("")
+        if group_by_labels:
+            group_iter = _group_requirement_views_by_labels(
+                doc.requirements,
+                unlabeled_title=unlabeled_group_title or _('Without labels'),
+                label_group_mode=label_group_mode,
+            )
+        else:
+            group_iter = [("", list(doc.requirements))]
 
-            for field, label in _EXPORT_SECTION_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _section_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
-                parts.append(f"**{_(label)}**")
-                parts.extend(_format_markdown_block(content))
+        for group_title, group_views in group_iter:
+            heading_level = "###"
+            if group_by_labels:
+                parts.append(f"### {_('Labels')}: {group_title}")
                 parts.append("")
-
-            if view.links and _should_render_field(selected_fields, "links"):
-                parts.append(f"**{_('Related requirements')}**")
-                for link in view.links:
-                    label = link.rid
-                    if link.exists:
-                        label = f"[{link.rid}](#{link.rid})"
-                    suffix: list[str] = []
-                    if link.title:
-                        suffix.append(link.title)
-                    if not link.exists:
-                        suffix.append(_('missing'))
-                    if link.suspect:
-                        suffix.append(_('suspect'))
-                    if suffix:
-                        parts.append(f"- {label} — {', '.join(suffix)}")
+                heading_level = "####"
+            for view in group_views:
+                req = view.requirement
+                parts.append(f"{heading_level} {_requirement_heading(req, selected_fields)}")
+                parts.append("")
+                for field, label, use_code in _EXPORT_META_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _meta_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    if use_code:
+                        parts.append(f"- **{_(label)}:** ``{content}``")
                     else:
-                        parts.append(f"- {label}")
+                        parts.append(f"- **{_(label)}:** {content}")
                 parts.append("")
-    return "\n".join(parts).rstrip() + "\n"
 
+                for field, label in _EXPORT_SECTION_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _section_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    parts.append(f"**{_(label)}**")
+                    parts.extend(_format_markdown_block(content))
+                    parts.append("")
+
+                if view.links and _should_render_field(selected_fields, "links"):
+                    parts.append(f"**{_('Related requirements')}**")
+                    for link in view.links:
+                        label = link.rid
+                        if link.exists:
+                            label = f"[{link.rid}](#{link.rid})"
+                        suffix: list[str] = []
+                        if link.title:
+                            suffix.append(link.title)
+                        if not link.exists:
+                            suffix.append(_('missing'))
+                        if link.suspect:
+                            suffix.append(_('suspect'))
+                        if suffix:
+                            parts.append(f"- {label} — {', '.join(suffix)}")
+                        else:
+                            parts.append(f"- {label}")
+                    parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
 
 def _escape_html(text: str) -> str:
     import html
@@ -563,6 +625,9 @@ def render_requirements_html(
     title: str | None = None,
     empty_field_placeholder: str | None = None,
     fields: Iterable[str] | None = None,
+    group_by_labels: bool = False,
+    unlabeled_group_title: str | None = None,
+    label_group_mode: str = "per_label",
 ) -> str:
     """Render export data as standalone HTML."""
     selected_fields = _normalize_export_fields(fields)
@@ -592,66 +657,79 @@ def render_requirements_html(
         parts.append(
             f"<h2>{_escape_html(doc.document.title)} (<code>{_escape_html(doc.document.prefix)}</code>)</h2>"
         )
-        for view in doc.requirements:
-            req = view.requirement
-            parts.append(f"<article class='requirement' id='{_escape_html(req.rid)}'>")
-            parts.append(
-                f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
+        if group_by_labels:
+            group_iter = _group_requirement_views_by_labels(
+                doc.requirements,
+                unlabeled_title=unlabeled_group_title or _('Without labels'),
+                label_group_mode=label_group_mode,
             )
-            parts.append("<dl class='meta'>")
-            for field, label, _use_code in _EXPORT_META_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _meta_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
+        else:
+            group_iter = [("", list(doc.requirements))]
+
+        for group_title, group_views in group_iter:
+            if group_by_labels:
                 parts.append(
-                    f"<dt>{_escape_html(_(label))}</dt><dd>{_escape_html(content)}</dd>"
+                    f"<h3>{_escape_html(_('Labels'))}: {_escape_html(group_title)}</h3>"
                 )
-            parts.append("</dl>")
+            for view in group_views:
+                req = view.requirement
+                parts.append(f"<article class='requirement' id='{_escape_html(req.rid)}'>")
+                parts.append(
+                    f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
+                )
+                parts.append("<dl class='meta'>")
+                for field, label, _use_code in _EXPORT_META_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _meta_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    parts.append(
+                        f"<dt>{_escape_html(_(label))}</dt><dd>{_escape_html(content)}</dd>"
+                    )
+                parts.append("</dl>")
 
-            for field, label in _EXPORT_SECTION_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _section_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
-                parts.append(f"<h4>{_escape_html(_(label))}</h4>")
-                parts.append(_html_markdown(content, requirement=req) or "<p></p>")
+                for field, label in _EXPORT_SECTION_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _section_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    parts.append(f"<h4>{_escape_html(_(label))}</h4>")
+                    parts.append(_html_markdown(content, requirement=req) or "<p></p>")
 
-            if view.links and _should_render_field(selected_fields, "links"):
-                parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")
-                for link in view.links:
-                    label = _escape_html(link.rid)
-                    title = _escape_html(link.title) if link.title else ""
-                    classes: list[str] = []
-                    if not link.exists:
-                        classes.append("missing")
-                    if link.suspect:
-                        classes.append("suspect")
-                    cls_attr = f" class='{' '.join(classes)}'" if classes else ""
-                    if link.exists:
-                        text = label if not title else f"{label} — {title}"
-                        parts.append(
-                            f"<li><a href='#{label}'{cls_attr}>{text}</a></li>"
-                        )
-                    else:
-                        text_parts = [label]
-                        if title:
-                            text_parts.append(f"— {title}")
+                if view.links and _should_render_field(selected_fields, "links"):
+                    parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")
+                    for link in view.links:
+                        label = _escape_html(link.rid)
+                        title = _escape_html(link.title) if link.title else ""
+                        classes: list[str] = []
                         if not link.exists:
-                            text_parts.append(f"({_('missing')})")
+                            classes.append("missing")
                         if link.suspect:
-                            text_parts.append(f"({_('suspect')})")
-                        parts.append(f"<li><span{cls_attr}>{' '.join(text_parts)}</span></li>")
-                parts.append("</ul>")
-            parts.append("</article>")
+                            classes.append("suspect")
+                        cls_attr = f" class='{' '.join(classes)}'" if classes else ""
+                        if link.exists:
+                            text = label if not title else f"{label} — {title}"
+                            parts.append(
+                                f"<li><a href='#{label}'{cls_attr}>{text}</a></li>"
+                            )
+                        else:
+                            text_parts = [label]
+                            if title:
+                                text_parts.append(f"— {title}")
+                            if not link.exists:
+                                text_parts.append(f"({_('missing')})")
+                            if link.suspect:
+                                text_parts.append(f"({_('suspect')})")
+                            parts.append(f"<li><span{cls_attr}>{' '.join(text_parts)}</span></li>")
+                    parts.append("</ul>")
+                parts.append("</article>")
         parts.append("</section>")
     parts.append("</body></html>")
     return "".join(parts)
-
 
 def _iter_markdown_segments(
     text: str,
@@ -789,6 +867,9 @@ def render_requirements_docx(
     formula_renderer: str = "text",
     empty_field_placeholder: str | None = None,
     fields: Iterable[str] | None = None,
+    group_by_labels: bool = False,
+    unlabeled_group_title: str | None = None,
+    label_group_mode: str = "per_label",
 ) -> bytes:
     """Render export data as a DOCX document."""
     selected_fields = _normalize_export_fields(fields)
@@ -805,50 +886,63 @@ def render_requirements_docx(
             f"{doc_export.document.title} ({doc_export.document.prefix})",
             level=1,
         )
-        for view in doc_export.requirements:
-            req = view.requirement
-            document.add_heading(_requirement_heading(req, selected_fields), level=2)
-            meta_pairs = []
-            for field, label, _use_code in _EXPORT_META_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _meta_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
-                meta_pairs.append((label, content))
-            if meta_pairs:
-                table = document.add_table(rows=0, cols=2)
-                table.style = "Light Grid"
-                for label, value in meta_pairs:
-                    row = table.add_row().cells
-                    row[0].text = _(label)
-                    row[1].text = value
+        if group_by_labels:
+            group_iter = _group_requirement_views_by_labels(
+                doc_export.requirements,
+                unlabeled_title=unlabeled_group_title or _('Without labels'),
+                label_group_mode=label_group_mode,
+            )
+        else:
+            group_iter = [("", list(doc_export.requirements))]
 
-            attachment_map = {att.id: att.path for att in req.attachments}
-            for field, label in _EXPORT_SECTION_FIELDS:
-                if not _should_render_field(selected_fields, field):
-                    continue
-                value = _section_field_value(req, field)
-                content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
-                if content is None:
-                    continue
-                document.add_heading(_(label), level=3)
-                _docx_add_markdown(
-                    document,
-                    content,
-                    attachment_map=attachment_map,
-                    base_path=export.base_path,
-                    doc_prefix=req.doc_prefix,
-                    image_width=image_width,
-                    formula_renderer=formula_renderer,
-                )
-            document.add_paragraph("")
+        for group_title, group_views in group_iter:
+            heading_level = 2
+            if group_by_labels:
+                document.add_heading(f"{_('Labels')}: {group_title}", level=2)
+                heading_level = 3
+            for view in group_views:
+                req = view.requirement
+                document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
+                meta_pairs = []
+                for field, label, _use_code in _EXPORT_META_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _meta_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    meta_pairs.append((label, content))
+                if meta_pairs:
+                    table = document.add_table(rows=0, cols=2)
+                    table.style = "Light Grid"
+                    for label, value in meta_pairs:
+                        row = table.add_row().cells
+                        row[0].text = _(label)
+                        row[1].text = value
+
+                attachment_map = {att.id: att.path for att in req.attachments}
+                for field, label in _EXPORT_SECTION_FIELDS:
+                    if not _should_render_field(selected_fields, field):
+                        continue
+                    value = _section_field_value(req, field)
+                    content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
+                    if content is None:
+                        continue
+                    document.add_heading(_(label), level=3)
+                    _docx_add_markdown(
+                        document,
+                        content,
+                        attachment_map=attachment_map,
+                        base_path=export.base_path,
+                        doc_prefix=req.doc_prefix,
+                        image_width=image_width,
+                        formula_renderer=formula_renderer,
+                    )
+                document.add_paragraph("")
 
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
-
 
 def _ensure_stylesheet() -> StyleSheet1:
     styles = getSampleStyleSheet()

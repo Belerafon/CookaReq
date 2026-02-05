@@ -74,7 +74,11 @@ so you know which modules are involved and which regressions to guard against.
   (metadata/sections/links are filtered accordingly). For card-oriented formats
   (TXT/HTML/DOCX) the dialog also exposes sort mode selection (by requirement
   number, labels, source, or title) and applies the selected ordering before
-  rendering cards. The GUI export flow writes
+  rendering cards; when label sorting is selected, card exports can group
+  either by each individual label (a requirement with multiple labels appears in
+  multiple groups) or by the exact label set (single group per requirement),
+  plus a dedicated bucket for unlabeled requirements. Group headings are
+  rendered in HTML and DOCX outputs (plus Markdown in CLI/core usage). The GUI export flow writes
   outputs into a dedicated directory and copies the document `assets/` folder
   alongside the export file, then prompts the user to open the export folder
   with the file name shown for quick access.

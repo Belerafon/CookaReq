@@ -73,6 +73,7 @@ class ExportDialogState:
     empty_fields_placeholder: bool
     docx_formula_renderer: str | None
     card_sort_mode: str | None
+    card_label_group_mode: str | None = None
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -488,6 +489,9 @@ class ConfigManager:
         card_sort_mode = payload.get("card_sort_mode")
         if not isinstance(card_sort_mode, str):
             card_sort_mode = None
+        card_label_group_mode = payload.get("card_label_group_mode")
+        if not isinstance(card_label_group_mode, str):
+            card_label_group_mode = None
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
@@ -496,6 +500,7 @@ class ConfigManager:
             empty_fields_placeholder=empty_fields_placeholder,
             docx_formula_renderer=docx_formula_renderer,
             card_sort_mode=card_sort_mode,
+            card_label_group_mode=card_label_group_mode,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -514,6 +519,7 @@ class ConfigManager:
             "empty_fields_placeholder": state.empty_fields_placeholder,
             "docx_formula_renderer": state.docx_formula_renderer,
             "card_sort_mode": state.card_sort_mode,
+            "card_label_group_mode": state.card_label_group_mode,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

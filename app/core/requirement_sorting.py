@@ -53,4 +53,3 @@ def sort_requirements_for_cards(
     }
     key_func = key_lookup.get(sort_mode, key_by_id)
     return sorted(prepared, key=key_func)
-

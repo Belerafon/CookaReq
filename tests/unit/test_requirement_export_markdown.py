@@ -95,3 +95,37 @@ def test_render_requirements_markdown_localizes_enum_values(tmp_path: Path) -> N
     assert "- **Статус:** ``Согласовано``" in markdown
     assert "- **Приоритет исполнения:** ``Средний``" in markdown
     install("CookaReq", "app/locale", ["en"])
+
+
+def test_render_requirements_markdown_localizes_field_labels_consistently(tmp_path: Path) -> None:
+    install("CookaReq", "app/locale", ["ru"])
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=4,
+        title="Localized fields",
+        statement="Формулировка",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS4",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    markdown = render_requirements_markdown(export)
+
+    assert "- **Тип требования:** ``Требование``" in markdown
+    assert "- **Дата изменения:**" not in markdown
+    assert "**Полный текст требования**" in markdown
+    assert "**Формулировка**" not in markdown
+    assert "**Statement**" not in markdown
+    assert "**Type**" not in markdown
+    assert "- **Modified:**" not in markdown
+    install("CookaReq", "app/locale", ["en"])

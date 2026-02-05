@@ -2634,11 +2634,47 @@ msgstr "Show empty fields as {placeholder}"
 msgid "Card options"
 msgstr "Card options"
 
+msgid "Card sort order"
+msgstr "Card sort order"
+
+msgid "Requirement number"
+msgstr "Requirement number"
+
+msgid "Label grouping"
+msgstr "Label grouping"
+
+msgid "One group per label (duplicate requirement in every matched label)"
+msgstr "One group per label (duplicate requirement in every matched label)"
+
+msgid "One group per exact label set"
+msgstr "One group per exact label set"
+
+msgid "DOCX formulas"
+msgstr "DOCX formulas"
+
+msgid "Plain text"
+msgstr "Plain text"
+
+msgid "MathML (LaTeX → MathML → OMML)"
+msgstr "MathML (LaTeX → MathML → OMML)"
+
+msgid "PNG (LaTeX → PNG)"
+msgstr "PNG (LaTeX → PNG)"
+
+msgid "SVG (LaTeX → SVG → PNG)"
+msgstr "SVG (LaTeX → SVG → PNG)"
+
+msgid "Export file path"
+msgstr "Export file path"
+
+msgid "Word (.docx)"
+msgstr "Word (.docx)"
+
 msgid "(not set)"
 msgstr "(not set)"
 
-msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
-msgstr "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgstr "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
 
 msgid "CSV (.csv)"
 msgstr "CSV (.csv)"

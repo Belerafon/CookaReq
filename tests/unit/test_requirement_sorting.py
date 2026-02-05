@@ -35,7 +35,6 @@ def test_sort_requirements_for_cards_by_labels():
     ]
 
     sorted_reqs = sort_requirements_for_cards(reqs, sort_mode="labels")
-
     assert [req.id for req in sorted_reqs] == [1, 2, 3]
 
 

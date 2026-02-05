@@ -687,6 +687,8 @@ class MainFrameDocumentsMixin:
             return
         self.config.set_export_dialog_state(self.current_dir, dialog_state)
 
+        labels_grouped = plan.card_sort_mode == "labels"
+        label_group_mode = plan.card_label_group_mode
         card_export_requirements = sort_requirements_for_cards(
             requirements,
             sort_mode=plan.card_sort_mode,
@@ -711,6 +713,8 @@ class MainFrameDocumentsMixin:
                 formula_renderer=plan.docx_formula_renderer or "text",
                 empty_field_placeholder=empty_placeholder,
                 fields=plan.columns,
+                group_by_labels=labels_grouped,
+                label_group_mode=label_group_mode,
             )
         else:
             if plan.format == ExportFormat.HTML:
@@ -731,13 +735,20 @@ class MainFrameDocumentsMixin:
                     title=title,
                     empty_field_placeholder=empty_placeholder,
                     fields=plan.columns,
+                    group_by_labels=labels_grouped,
+                    label_group_mode=label_group_mode,
                 )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}
                 header_style = "fields" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "labels"
                 value_style = "raw" if plan.format in {ExportFormat.CSV, ExportFormat.TSV} else "display"
+                export_rows_source = (
+                    requirements
+                    if plan.format in {ExportFormat.CSV, ExportFormat.TSV}
+                    else card_export_requirements
+                )
                 headers, rows = build_tabular_export(
-                    requirements,
+                    export_rows_source,
                     plan.columns,
                     derived_map=derived_map,
                     header_style=header_style,

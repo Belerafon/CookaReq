@@ -235,6 +235,66 @@ def _requirement_heading(req: Requirement, selected_fields: set[str] | None) -> 
         return f"{req.rid} — {req.title or _('(no title)')}"
     return req.rid
 
+
+_EXPORT_META_FIELDS: tuple[tuple[str, str, bool], ...] = (
+    ("type", "Requirement type", True),
+    ("status", "Status", True),
+    ("priority", "Priority", True),
+    ("owner", "Owner", False),
+    ("labels", "Labels", False),
+    ("source", "Source", False),
+    ("modified_at", "Modified at", False),
+    ("approved_at", "Approved at", False),
+    ("revision", "Revision", False),
+)
+
+_EXPORT_SECTION_FIELDS: tuple[tuple[str, str], ...] = (
+    ("statement", "Requirement text"),
+    ("acceptance", "Acceptance criteria"),
+    ("conditions", "Conditions"),
+    ("rationale", "Rationale"),
+    ("assumptions", "Assumptions"),
+    ("notes", "Notes"),
+)
+
+
+def _meta_field_value(req: Requirement, field: str) -> str | None:
+    if field == "type":
+        return _localize_enum_code(req.type.value)
+    if field == "status":
+        return _localize_enum_code(req.status.value)
+    if field == "priority":
+        return _localize_enum_code(getattr(req.priority, "value", None))
+    if field == "owner":
+        return req.owner or None
+    if field == "labels":
+        return ", ".join(sorted(req.labels)) if req.labels else None
+    if field == "source":
+        return req.source or None
+    if field == "modified_at":
+        return req.modified_at or None
+    if field == "approved_at":
+        return req.approved_at or None
+    if field == "revision":
+        return str(req.revision)
+    return None
+
+
+def _section_field_value(req: Requirement, field: str) -> str | None:
+    if field == "statement":
+        return req.statement
+    if field == "acceptance":
+        return req.acceptance or ""
+    if field == "conditions":
+        return req.conditions
+    if field == "rationale":
+        return req.rationale
+    if field == "assumptions":
+        return req.assumptions
+    if field == "notes":
+        return req.notes
+    return None
+
 def _format_markdown_block(text: str) -> list[str]:
     lines = text.splitlines() or [""]
     block: list[str] = []
@@ -269,25 +329,10 @@ def render_requirements_markdown(
             req = view.requirement
             parts.append(f"### {_requirement_heading(req, selected_fields)}")
             parts.append("")
-            meta_fields: Iterable[tuple[str, str, str | None, bool]] = [
-                ("type", "Type", _localize_enum_code(req.type.value), True),
-                ("status", "Status", _localize_enum_code(req.status.value), True),
-                (
-                    "priority",
-                    "Priority",
-                    _localize_enum_code(getattr(req.priority, "value", None)),
-                    True,
-                ),
-                ("owner", "Owner", req.owner or None, False),
-                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None, False),
-                ("source", "Source", req.source or None, False),
-                ("modified_at", "Modified", req.modified_at or None, False),
-                ("approved_at", "Approved", req.approved_at or None, False),
-                ("revision", "Revision", str(req.revision), False),
-            ]
-            for field, label, value, use_code in meta_fields:
+            for field, label, use_code in _EXPORT_META_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _meta_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -297,17 +342,10 @@ def render_requirements_markdown(
                     parts.append(f"- **{_(label)}:** {content}")
             parts.append("")
 
-            sections: list[tuple[str, str, str | None]] = [
-                ("statement", "Statement", req.statement),
-                ("acceptance", "Acceptance", req.acceptance or ""),
-                ("conditions", "Conditions", req.conditions),
-                ("rationale", "Rationale", req.rationale),
-                ("assumptions", "Assumptions", req.assumptions),
-                ("notes", "Notes", req.notes),
-            ]
-            for field, label, value in sections:
+            for field, label in _EXPORT_SECTION_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _section_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -560,24 +598,10 @@ def render_requirements_html(
                 f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
             )
             parts.append("<dl class='meta'>")
-            meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", _localize_enum_code(req.type.value)),
-                ("status", "Status", _localize_enum_code(req.status.value)),
-                (
-                    "priority",
-                    "Priority",
-                    _localize_enum_code(getattr(req.priority, "value", None)),
-                ),
-                ("owner", "Owner", req.owner or None),
-                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("source", "Source", req.source or None),
-                ("modified_at", "Modified", req.modified_at or None),
-                ("approved_at", "Approved", req.approved_at or None),
-                ("revision", "Revision", str(req.revision)),
-            ]
-            for field, label, value in meta_fields:
+            for field, label, _use_code in _EXPORT_META_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _meta_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -586,16 +610,10 @@ def render_requirements_html(
                 )
             parts.append("</dl>")
 
-            for field, label, value in (
-                ("statement", "Statement", req.statement),
-                ("acceptance", "Acceptance", req.acceptance or ""),
-                ("conditions", "Conditions", req.conditions),
-                ("rationale", "Rationale", req.rationale),
-                ("assumptions", "Assumptions", req.assumptions),
-                ("notes", "Notes", req.notes),
-            ):
+            for field, label in _EXPORT_SECTION_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _section_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -789,25 +807,11 @@ def render_requirements_docx(
         for view in doc_export.requirements:
             req = view.requirement
             document.add_heading(_requirement_heading(req, selected_fields), level=2)
-            meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", _localize_enum_code(req.type.value)),
-                ("status", "Status", _localize_enum_code(req.status.value)),
-                (
-                    "priority",
-                    "Priority",
-                    _localize_enum_code(getattr(req.priority, "value", None)),
-                ),
-                ("owner", "Owner", req.owner or None),
-                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("source", "Source", req.source or None),
-                ("modified_at", "Modified", req.modified_at or None),
-                ("approved_at", "Approved", req.approved_at or None),
-                ("revision", "Revision", str(req.revision)),
-            ]
             meta_pairs = []
-            for field, label, value in meta_fields:
+            for field, label, _use_code in _EXPORT_META_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _meta_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -821,16 +825,10 @@ def render_requirements_docx(
                     row[1].text = value
 
             attachment_map = {att.id: att.path for att in req.attachments}
-            for field, label, value in (
-                ("statement", "Statement", req.statement),
-                ("acceptance", "Acceptance", req.acceptance or ""),
-                ("conditions", "Conditions", req.conditions),
-                ("rationale", "Rationale", req.rationale),
-                ("assumptions", "Assumptions", req.assumptions),
-                ("notes", "Notes", req.notes),
-            ):
+            for field, label in _EXPORT_SECTION_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _section_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -939,24 +937,10 @@ def render_requirements_pdf(
                 )
             )
             data: list[list[str]] = []
-            meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", _localize_enum_code(req.type.value)),
-                ("status", "Status", _localize_enum_code(req.status.value)),
-                (
-                    "priority",
-                    "Priority",
-                    _localize_enum_code(getattr(req.priority, "value", None)),
-                ),
-                ("owner", "Owner", req.owner or None),
-                ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
-                ("source", "Source", req.source or None),
-                ("modified_at", "Modified", req.modified_at or None),
-                ("approved_at", "Approved", req.approved_at or None),
-                ("revision", "Revision", str(req.revision)),
-            ]
-            for field, label, value in meta_fields:
+            for field, label, _use_code in _EXPORT_META_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _meta_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue
@@ -975,16 +959,10 @@ def render_requirements_pdf(
                 story.append(table)
                 story.append(Spacer(1, 6))
 
-            for field, label, value in (
-                ("statement", "Statement", req.statement),
-                ("acceptance", "Acceptance", req.acceptance or ""),
-                ("conditions", "Conditions", req.conditions),
-                ("rationale", "Rationale", req.rationale),
-                ("assumptions", "Assumptions", req.assumptions),
-                ("notes", "Notes", req.notes),
-            ):
+            for field, label in _EXPORT_SECTION_FIELDS:
                 if not _should_render_field(selected_fields, field):
                     continue
+                value = _section_field_value(req, field)
                 content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                 if content is None:
                     continue

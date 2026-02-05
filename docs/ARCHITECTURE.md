@@ -65,7 +65,9 @@ so you know which modules are involved and which regressions to guard against.
   empty section blocks by default and only render placeholders when the user
   enables the explicit "show empty fields" option; section/meta labels and
   enumerated metadata values (type/status/priority) are passed through gettext
-  so exported cards follow the active UI locale. The
+  so exported cards follow the active UI locale. Metadata and section label
+  definitions are centralized in `requirement_export.py` and reused by all card
+  renderers to keep translations synchronized across formats. The
   export dialog keeps a single field-selection list for all formats, and the
   selected fields are applied both to tabular exports and to card exports
   (metadata/sections/links are filtered accordingly). The GUI export flow writes

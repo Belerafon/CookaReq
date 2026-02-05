@@ -25,6 +25,7 @@ from ...core.requirement_export import (
     render_requirements_docx,
 )
 from ...core.requirement_text_export import render_requirement_cards_txt
+from ...core.requirement_sorting import sort_requirements_for_cards
 from ..export_helpers import prepare_export_destination
 from ...i18n import _
 from ...log import logger
@@ -686,9 +687,14 @@ class MainFrameDocumentsMixin:
             return
         self.config.set_export_dialog_state(self.current_dir, dialog_state)
 
+        card_export_requirements = sort_requirements_for_cards(
+            requirements,
+            sort_mode=plan.card_sort_mode,
+        )
+
         if plan.format == ExportFormat.DOCX:
             export = build_requirement_export_from_requirements(
-                requirements,
+                card_export_requirements,
                 self.docs_controller.documents,
                 base_path=self.current_dir,
                 prefixes=(doc.prefix,),
@@ -709,7 +715,7 @@ class MainFrameDocumentsMixin:
         else:
             if plan.format == ExportFormat.HTML:
                 export = build_requirement_export_from_requirements(
-                    requirements,
+                    card_export_requirements,
                     self.docs_controller.documents,
                     base_path=self.current_dir,
                     prefixes=(doc.prefix,),
@@ -767,7 +773,7 @@ class MainFrameDocumentsMixin:
 
         if wx.MessageBox(
             _("Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?").format(
-                count=len(requirements),
+                count=len(card_export_requirements),
                 filename=export_path.name,
             ),
             _("Export completed"),

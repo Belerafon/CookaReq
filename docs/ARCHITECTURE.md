@@ -71,7 +71,10 @@ so you know which modules are involved and which regressions to guard against.
   renderers to keep translations synchronized across formats. The
   export dialog keeps a single field-selection list for all formats, and the
   selected fields are applied both to tabular exports and to card exports
-  (metadata/sections/links are filtered accordingly). The GUI export flow writes
+  (metadata/sections/links are filtered accordingly). For card-oriented formats
+  (TXT/HTML/DOCX) the dialog also exposes sort mode selection (by requirement
+  number, labels, source, or title) and applies the selected ordering before
+  rendering cards. The GUI export flow writes
   outputs into a dedicated directory and copies the document `assets/` folder
   alongside the export file, then prompts the user to open the export folder
   with the file name shown for quick access.

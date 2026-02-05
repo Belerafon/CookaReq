@@ -32,6 +32,7 @@ class RequirementExportPlan:
     columns: list[str]
     empty_fields_placeholder: bool
     docx_formula_renderer: str | None
+    card_sort_mode: str
 
 
 class RequirementExportDialog(wx.Dialog):
@@ -66,6 +67,9 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._docx_formula_renderer = (
             saved_state.docx_formula_renderer if saved_state else None
+        )
+        self._card_sort_mode = self._coerce_card_sort_mode(
+            saved_state.card_sort_mode if saved_state else None
         )
         self._txt_placeholder_label = _("(not set)")
         self._drag_start_index: int | None = None
@@ -196,6 +200,18 @@ class RequirementExportDialog(wx.Dialog):
             ),
         )
         self.txt_empty_fields_checkbox.SetValue(self._empty_fields_placeholder)
+        self.card_sort_label = wx.StaticText(self.txt_options_box, label=_("Card sort order"))
+        self.card_sort_choice = wx.Choice(
+            self.txt_options_box,
+            choices=[
+                _("Requirement number"),
+                _("Labels"),
+                _("Source"),
+                _("Title"),
+            ],
+        )
+        self._apply_card_sort_choice()
+
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
             self.docx_formula_box,
@@ -251,6 +267,10 @@ class RequirementExportDialog(wx.Dialog):
 
         txt_options_sizer = wx.StaticBoxSizer(self.txt_options_box, wx.VERTICAL)
         txt_options_sizer.Add(self.txt_empty_fields_checkbox, 0, wx.ALL, 6)
+        sort_row = wx.BoxSizer(wx.HORIZONTAL)
+        sort_row.Add(self.card_sort_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        sort_row.Add(self.card_sort_choice, 1, wx.EXPAND)
+        txt_options_sizer.Add(sort_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         main_sizer.Add(txt_options_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         docx_options_sizer = wx.StaticBoxSizer(self.docx_formula_box, wx.VERTICAL)
@@ -335,6 +355,30 @@ class RequirementExportDialog(wx.Dialog):
         is_docx = self._current_format() == ExportFormat.DOCX
         self._main_sizer.Show(self._docx_options_sizer, is_docx, recursive=True)
         self._main_sizer.Layout()
+
+    def _coerce_card_sort_mode(self, value: str | None) -> str:
+        if value in {"id", "labels", "source", "title"}:
+            return value
+        return "id"
+
+    def _apply_card_sort_choice(self) -> None:
+        selection_map = {
+            "id": 0,
+            "labels": 1,
+            "source": 2,
+            "title": 3,
+        }
+        self.card_sort_choice.SetSelection(selection_map.get(self._card_sort_mode, 0))
+
+    def _selected_card_sort_mode(self) -> str:
+        selection = self.card_sort_choice.GetSelection()
+        if selection == 1:
+            return "labels"
+        if selection == 2:
+            return "source"
+        if selection == 3:
+            return "title"
+        return "id"
 
     def _apply_docx_formula_choice(self) -> None:
         choices = self.docx_formula_choice.GetStrings()
@@ -472,6 +516,7 @@ class RequirementExportDialog(wx.Dialog):
             columns=columns,
             empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
             docx_formula_renderer=docx_renderer,
+            card_sort_mode=self._selected_card_sort_mode(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -493,4 +538,5 @@ class RequirementExportDialog(wx.Dialog):
             )
             if self._current_format() == ExportFormat.DOCX
             else self._docx_formula_renderer,
+            card_sort_mode=self._selected_card_sort_mode(),
         )

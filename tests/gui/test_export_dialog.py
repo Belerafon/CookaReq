@@ -54,3 +54,41 @@ def test_export_dialog_text_options_visibility(wx_app):
     finally:
         dialog.Destroy()
         wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_export_dialog_card_sort_defaults_and_plan(wx_app):
+    _wx = pytest.importorskip("wx")
+    from app.config import ExportDialogState
+    from app.ui.export_dialog import RequirementExportDialog
+
+    dialog = RequirementExportDialog(
+        None,
+        available_fields=["id", "statement", "labels", "source"],
+        selected_fields=["statement"],
+        saved_state=ExportDialogState(
+            path="/tmp/export.txt",
+            format="txt",
+            columns=["title", "statement"],
+            order=["title", "statement", "id"],
+            empty_fields_placeholder=False,
+            docx_formula_renderer=None,
+            card_sort_mode="source",
+        ),
+    )
+    try:
+        wx_app.Yield()
+        assert dialog._selected_card_sort_mode() == "source"
+
+        dialog.card_sort_choice.SetSelection(1)
+        assert dialog._selected_card_sort_mode() == "labels"
+
+        plan = dialog.get_plan()
+        assert plan is not None
+        assert plan.card_sort_mode == "labels"
+
+        state = dialog.get_state()
+        assert state.card_sort_mode == "labels"
+    finally:
+        dialog.Destroy()
+        wx_app.Yield()

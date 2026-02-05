@@ -221,6 +221,15 @@ def _should_render_field(selected_fields: set[str] | None, field: str) -> bool:
     return field in selected_fields
 
 
+def _localize_enum_code(value: str | None) -> str | None:
+    if not value:
+        return value
+    msgid = value.replace("_", " ").strip().capitalize()
+    if not msgid:
+        return value
+    return _(msgid)
+
+
 def _requirement_heading(req: Requirement, selected_fields: set[str] | None) -> str:
     if _should_render_field(selected_fields, "title"):
         return f"{req.rid} — {req.title or _('(no title)')}"
@@ -261,9 +270,14 @@ def render_requirements_markdown(
             parts.append(f"### {_requirement_heading(req, selected_fields)}")
             parts.append("")
             meta_fields: Iterable[tuple[str, str, str | None, bool]] = [
-                ("type", "Type", req.type.value, True),
-                ("status", "Status", req.status.value, True),
-                ("priority", "Priority", getattr(req.priority, "value", None), True),
+                ("type", "Type", _localize_enum_code(req.type.value), True),
+                ("status", "Status", _localize_enum_code(req.status.value), True),
+                (
+                    "priority",
+                    "Priority",
+                    _localize_enum_code(getattr(req.priority, "value", None)),
+                    True,
+                ),
                 ("owner", "Owner", req.owner or None, False),
                 ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None, False),
                 ("source", "Source", req.source or None, False),
@@ -547,9 +561,13 @@ def render_requirements_html(
             )
             parts.append("<dl class='meta'>")
             meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", req.type.value),
-                ("status", "Status", req.status.value),
-                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("type", "Type", _localize_enum_code(req.type.value)),
+                ("status", "Status", _localize_enum_code(req.status.value)),
+                (
+                    "priority",
+                    "Priority",
+                    _localize_enum_code(getattr(req.priority, "value", None)),
+                ),
                 ("owner", "Owner", req.owner or None),
                 ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
                 ("source", "Source", req.source or None),
@@ -772,9 +790,13 @@ def render_requirements_docx(
             req = view.requirement
             document.add_heading(_requirement_heading(req, selected_fields), level=2)
             meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", req.type.value),
-                ("status", "Status", req.status.value),
-                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("type", "Type", _localize_enum_code(req.type.value)),
+                ("status", "Status", _localize_enum_code(req.status.value)),
+                (
+                    "priority",
+                    "Priority",
+                    _localize_enum_code(getattr(req.priority, "value", None)),
+                ),
                 ("owner", "Owner", req.owner or None),
                 ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
                 ("source", "Source", req.source or None),
@@ -918,9 +940,13 @@ def render_requirements_pdf(
             )
             data: list[list[str]] = []
             meta_fields: Iterable[tuple[str, str, str | None]] = [
-                ("type", "Type", req.type.value),
-                ("status", "Status", req.status.value),
-                ("priority", "Priority", getattr(req.priority, "value", None)),
+                ("type", "Type", _localize_enum_code(req.type.value)),
+                ("status", "Status", _localize_enum_code(req.status.value)),
+                (
+                    "priority",
+                    "Priority",
+                    _localize_enum_code(getattr(req.priority, "value", None)),
+                ),
                 ("owner", "Owner", req.owner or None),
                 ("labels", "Labels", ", ".join(sorted(req.labels)) if req.labels else None),
                 ("source", "Source", req.source or None),

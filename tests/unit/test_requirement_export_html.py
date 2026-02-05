@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.core.document_store import Document, save_document, save_item
+from app.i18n import install
 from app.core.model import Attachment, Priority, Requirement, RequirementType, Status, Verification
 from app.core.requirement_export import build_requirement_export, render_requirements_html
 
@@ -176,3 +177,32 @@ def test_render_requirements_html_respects_selected_fields(tmp_path: Path) -> No
     assert "Important statement" in html
     assert "Internal rationale" not in html
     assert "<dt>Owner</dt>" not in html
+
+
+def test_render_requirements_html_localizes_enum_values(tmp_path: Path) -> None:
+    install("CookaReq", "app/locale", ["ru"])
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=7,
+        title="Localized html",
+        statement="Statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.APPROVED,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS7",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert "<dt>Статус</dt><dd>Согласовано</dd>" in html
+    assert "<dt>Приоритет исполнения</dt><dd>Средний</dd>" in html
+    install("CookaReq", "app/locale", ["en"])

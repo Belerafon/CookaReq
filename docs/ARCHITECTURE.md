@@ -254,8 +254,9 @@ so you know which modules are involved and which regressions to guard against.
   state. `LabelsDialog` coordinates label edits by capturing rename propagation
   choices and deletion clean-up flags before the controller forwards the plan to
   `RequirementsService.update_document_labels()`. The export dialog
-  (`app/ui/export_dialog.py`) lets users choose columns and format before
-  rendering tabular output, including a text-only option for omitting or
+  (`app/ui/export_dialog.py`) lets users choose export scope (all requirements,
+  only currently visible after filters, or only selected rows), columns and
+  format before rendering output, including a text-only option for omitting or
   labelling empty fields.
 
 ## Cross-cutting infrastructure

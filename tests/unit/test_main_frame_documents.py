@@ -79,3 +79,38 @@ def test_sync_mcp_base_path_avoids_restart_when_server_idle(tmp_path):
     assert frame.mcp.start_calls == 0
     assert frame.mcp_settings.base_path == str(new_path.resolve())
     assert frame.config.updated_settings is frame.mcp_settings
+
+
+class _StubPanel:
+    def __init__(self, *, selected_ids: list[int], has_filters: bool) -> None:
+        self._selected_ids = selected_ids
+        self._has_filters = has_filters
+
+    def get_selected_ids(self) -> list[int]:
+        return list(self._selected_ids)
+
+    def has_active_filters(self) -> bool:
+        return self._has_filters
+
+
+class _ScopeFrame(MainFrameDocumentsMixin):
+    def __init__(self, *, selected_ids: list[int], has_filters: bool) -> None:
+        self.panel = _StubPanel(selected_ids=selected_ids, has_filters=has_filters)
+
+
+def test_default_export_scope_prefers_selected_over_filters() -> None:
+    frame = _ScopeFrame(selected_ids=[1, 2], has_filters=True)
+
+    assert frame._default_export_scope() == "selected"
+
+
+def test_default_export_scope_uses_visible_when_filters_active() -> None:
+    frame = _ScopeFrame(selected_ids=[1], has_filters=True)
+
+    assert frame._default_export_scope() == "visible"
+
+
+def test_default_export_scope_falls_back_to_all() -> None:
+    frame = _ScopeFrame(selected_ids=[], has_filters=False)
+
+    assert frame._default_export_scope() == "all"

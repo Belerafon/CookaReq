@@ -349,6 +349,22 @@ def _group_requirement_views_by_labels(
             _append(label, view)
     return groups
 
+
+def _collect_used_label_rows(export: RequirementExport) -> list[tuple[str, str]]:
+    label_titles: dict[str, str] = {}
+    for doc_export in export.documents:
+        for label in doc_export.document.labels.defs:
+            if label.key not in label_titles:
+                label_titles[label.key] = label.title
+    used_labels: set[str] = set()
+    for doc_export in export.documents:
+        for view in doc_export.requirements:
+            used_labels.update(_normalized_labels(view.requirement))
+    rows: list[tuple[str, str]] = []
+    for label in sorted(used_labels, key=str.casefold):
+        rows.append((label, label_titles.get(label, "")))
+    return rows
+
 def _format_markdown_table_cell(text: str) -> str:
     normalized = text.strip("\n")
     if not normalized:
@@ -375,6 +391,17 @@ def render_requirements_markdown(
         f"_{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
     parts.append("")
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            parts.append(f"## {_('Labels')}")
+            parts.append("")
+            parts.append("| | |")
+            parts.append("| --- | --- |")
+            for label, description in label_rows:
+                value = _format_markdown_table_cell(description)
+                parts.append(f"| {label} | {value} |")
+            parts.append("")
 
     for doc in export.documents:
         parts.append(f"## {doc.document.title} ({doc.document.prefix})")
@@ -675,6 +702,19 @@ def render_requirements_html(
         f"<h1>{_escape_html(heading)}</h1>",
         f"<p><em>{_escape_html(_('Generated at'))} {export.generated_at.isoformat()} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
     ]
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            parts.append(f"<h2>{_escape_html(_('Labels'))}</h2>")
+            parts.append("<table class='meta-table'><tbody>")
+            for label, description in label_rows:
+                parts.append(
+                    "<tr>"
+                    f"<td><strong>{_escape_html(label)}</strong></td>"
+                    f"<td>{_escape_html(description)}</td>"
+                    "</tr>"
+                )
+            parts.append("</tbody></table>")
 
     for doc in export.documents:
         parts.append(f"<section class='document' id='doc-{_escape_html(doc.document.prefix)}'>")
@@ -1001,6 +1041,21 @@ def render_requirements_docx(
         f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
     image_width = 5.5
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            document.add_heading(_('Labels'), level=1)
+            label_table = document.add_table(rows=0, cols=2)
+            label_table.style = "Light Grid"
+            for row_index, (label, description) in enumerate(label_rows):
+                row = label_table.add_row()
+                row.cells[0].text = label
+                row.cells[1].text = description
+                if row_index % 2 == 1:
+                    _docx_apply_row_shading(row, fill="F2F2F2")
+                else:
+                    _docx_apply_row_shading(row, fill="FFFFFF")
+            document.add_paragraph("")
 
     for doc_export in export.documents:
         document.add_heading(

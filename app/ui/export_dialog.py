@@ -10,6 +10,7 @@ from pathlib import Path
 import wx
 
 from ..config import ExportDialogState
+from ..core.requirement_export import export_card_field_order
 from ..i18n import _
 from . import locale
 
@@ -113,6 +114,11 @@ class RequirementExportDialog(wx.Dialog):
         fields = ["title", *available_fields]
         ordered: list[str] = []
         seen: set[str] = set()
+        preferred_order = export_card_field_order()
+        for field in preferred_order:
+            if field in fields and field not in seen:
+                seen.add(field)
+                ordered.append(field)
         for field in fields:
             if field in seen:
                 continue

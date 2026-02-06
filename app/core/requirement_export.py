@@ -26,6 +26,8 @@ from xml.sax.saxutils import escape as xml_escape
 
 import markdown
 import docx
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches
 
 from ..i18n import _
@@ -40,6 +42,7 @@ __all__ = [
     "RequirementExportView",
     "build_requirement_export",
     "build_requirement_export_from_requirements",
+    "export_card_field_order",
     "render_requirements_html",
     "render_requirements_markdown",
     "render_requirements_docx",
@@ -258,6 +261,12 @@ _EXPORT_SECTION_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
+def export_card_field_order() -> tuple[str, ...]:
+    meta_fields = (field for field, _label, _use_code in _EXPORT_META_FIELDS)
+    section_fields = (field for field, _label in _EXPORT_SECTION_FIELDS)
+    return ("rid", "title", *meta_fields, *section_fields)
+
+
 def _meta_field_value(req: Requirement, field: str) -> str | None:
     if field == "type":
         return _localize_enum_code(req.type.value)
@@ -340,15 +349,28 @@ def _group_requirement_views_by_labels(
             _append(label, view)
     return groups
 
-def _format_markdown_block(text: str) -> list[str]:
-    lines = text.splitlines() or [""]
-    block: list[str] = []
-    for line in lines:
-        if line:
-            block.append(f"> {line}")
-        else:
-            block.append(">")
-    return block
+
+def _collect_used_label_rows(export: RequirementExport) -> list[tuple[str, str]]:
+    label_titles: dict[str, str] = {}
+    for doc_export in export.documents:
+        for label in doc_export.document.labels.defs:
+            if label.key not in label_titles:
+                label_titles[label.key] = label.title
+    used_labels: set[str] = set()
+    for doc_export in export.documents:
+        for view in doc_export.requirements:
+            used_labels.update(_normalized_labels(view.requirement))
+    rows: list[tuple[str, str]] = []
+    for label in sorted(used_labels, key=str.casefold):
+        rows.append((label, label_titles.get(label, "")))
+    return rows
+
+def _format_markdown_table_cell(text: str) -> str:
+    normalized = text.strip("\n")
+    if not normalized:
+        return ""
+    normalized = normalized.replace("|", "\\|")
+    return "<br>".join(normalized.splitlines())
 
 
 def render_requirements_markdown(
@@ -369,6 +391,17 @@ def render_requirements_markdown(
         f"_{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
     parts.append("")
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            parts.append(f"## {_('Labels')}")
+            parts.append("")
+            parts.append("| | |")
+            parts.append("| --- | --- |")
+            for label, description in label_rows:
+                value = _format_markdown_table_cell(description)
+                parts.append(f"| {label} | {value} |")
+            parts.append("")
 
     for doc in export.documents:
         parts.append(f"## {doc.document.title} ({doc.document.prefix})")
@@ -392,6 +425,10 @@ def render_requirements_markdown(
                 req = view.requirement
                 parts.append(f"{heading_level} {_requirement_heading(req, selected_fields)}")
                 parts.append("")
+                field_rows: list[tuple[str, str, bool]] = []
+                field_rows.append((_('Requirement RID'), req.rid, False))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append((_('Title'), req.title or _('(no title)'), False))
                 for field, label, use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -399,12 +436,7 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    if use_code:
-                        parts.append(f"- **{_(label)}:** ``{content}``")
-                    else:
-                        parts.append(f"- **{_(label)}:** {content}")
-                parts.append("")
-
+                    field_rows.append((_(label), content, use_code))
                 for field, label in _EXPORT_SECTION_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -412,8 +444,16 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(f"**{_(label)}**")
-                    parts.extend(_format_markdown_block(content))
+                    field_rows.append((_(label), content, False))
+
+                if field_rows:
+                    parts.append("| |")
+                    parts.append("| --- |")
+                    for label, content, use_code in field_rows:
+                        value = _format_markdown_table_cell(content)
+                        if use_code:
+                            value = f"``{value}``"
+                        parts.append(f"| {label}: {value} |")
                     parts.append("")
 
                 if view.links and _should_render_field(selected_fields, "links"):
@@ -619,6 +659,12 @@ def _html_markdown(value: str, *, requirement: Requirement) -> str:
     return _render_markdown(content)
 
 
+def _strip_wrapping_paragraph(markup: str) -> str:
+    if markup.startswith("<p>") and markup.endswith("</p>") and markup.count("<p>") == 1:
+        return markup[3:-4]
+    return markup
+
+
 def render_requirements_html(
     export: RequirementExport,
     *,
@@ -643,14 +689,32 @@ def render_requirements_html(
         "section.document{margin-bottom:32px;}",
         "article.requirement{border:1px solid #ddd;padding:16px;margin-bottom:16px;border-radius:8px;}",
         "article.requirement h3{margin-top:0;}article.requirement p{margin:0 0 8px;}",
-        "dl.meta{display:grid;grid-template-columns:120px 1fr;gap:4px;margin:0 0 8px;}",
-        "dl.meta dt{font-weight:bold;}dl.meta dd{margin:0;}ul.links{margin:8px 0 0 16px;}",
+        "table.meta-table{width:100%;border-collapse:collapse;margin:0 0 8px;}",
+        "table.meta-table td{border:1px solid #ddd;padding:6px 8px;vertical-align:top;}",
+        "table.meta-table tr:nth-child(even){background:#f2f2f2;}",
+        "table.meta-table tr:nth-child(odd){background:#fff;}",
+        "table.meta-table p{margin:0 0 8px;}",
+        "table.meta-table .row-label{font-weight:bold;margin-bottom:4px;}",
+        "ul.links{margin:8px 0 0 16px;}",
         "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
         "</style>",
         "</head><body>",
         f"<h1>{_escape_html(heading)}</h1>",
         f"<p><em>{_escape_html(_('Generated at'))} {export.generated_at.isoformat()} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
     ]
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            parts.append(f"<h2>{_escape_html(_('Labels'))}</h2>")
+            parts.append("<table class='meta-table'><tbody>")
+            for label, description in label_rows:
+                parts.append(
+                    "<tr>"
+                    f"<td><strong>{_escape_html(label)}</strong></td>"
+                    f"<td>{_escape_html(description)}</td>"
+                    "</tr>"
+                )
+            parts.append("</tbody></table>")
 
     for doc in export.documents:
         parts.append(f"<section class='document' id='doc-{_escape_html(doc.document.prefix)}'>")
@@ -677,7 +741,12 @@ def render_requirements_html(
                 parts.append(
                     f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
                 )
-                parts.append("<dl class='meta'>")
+                field_rows: list[tuple[str, str, bool]] = []
+                field_rows.append((_('Requirement RID'), _escape_html(req.rid), True))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append(
+                        (_('Title'), _escape_html(req.title or _('(no title)')), True)
+                    )
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -685,10 +754,7 @@ def render_requirements_html(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(
-                        f"<dt>{_escape_html(_(label))}</dt><dd>{_escape_html(content)}</dd>"
-                    )
-                parts.append("</dl>")
+                    field_rows.append((_(label), _escape_html(content), True))
 
                 for field, label in _EXPORT_SECTION_FIELDS:
                     if not _should_render_field(selected_fields, field):
@@ -697,8 +763,26 @@ def render_requirements_html(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(f"<h4>{_escape_html(_(label))}</h4>")
-                    parts.append(_html_markdown(content, requirement=req) or "<p></p>")
+                    html_value = _html_markdown(content, requirement=req) or "<p></p>"
+                    field_rows.append((_(label), html_value, False))
+
+                if field_rows:
+                    parts.append("<table class='meta-table'><tbody>")
+                    for label, value, is_inline in field_rows:
+                        label_html = _escape_html(label)
+                        if is_inline:
+                            parts.append(
+                                f"<tr><td><strong>{label_html}:</strong> {value}</td></tr>"
+                            )
+                        else:
+                            cleaned_value = _strip_wrapping_paragraph(value)
+                            parts.append(
+                                "<tr><td>"
+                                f"<div class='row-label'>{label_html}:</div>"
+                                f"{cleaned_value}"
+                                "</td></tr>"
+                            )
+                    parts.append("</tbody></table>")
 
                 if view.links and _should_render_field(selected_fields, "links"):
                     parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")
@@ -756,7 +840,7 @@ def _iter_markdown_segments(
 
 
 def _docx_add_markdown(
-    doc: docx.Document,
+    doc: docx.Document | docx.table._Cell,
     text: str,
     *,
     attachment_map: dict[str, str],
@@ -764,20 +848,31 @@ def _docx_add_markdown(
     doc_prefix: str,
     image_width: float,
     formula_renderer: str,
+    start_paragraph: docx.text.paragraph.Paragraph | None = None,
 ) -> None:
     segments = _iter_markdown_segments(text, attachment_map=attachment_map)
+    first_paragraph = start_paragraph
+
+    def _next_paragraph() -> docx.text.paragraph.Paragraph:
+        nonlocal first_paragraph
+        if first_paragraph is not None:
+            paragraph = first_paragraph
+            first_paragraph = None
+            return paragraph
+        return doc.add_paragraph()
+
     for kind, payload in segments:
         if kind == "image":
             image_path = base_path / doc_prefix / payload
             if image_path.exists():
-                paragraph = doc.add_paragraph()
+                paragraph = _next_paragraph()
                 run = paragraph.add_run()
                 try:
                     run.add_picture(str(image_path), width=Inches(image_width))
                 except (OSError, ValueError):  # pragma: no cover - invalid assets
-                    doc.add_paragraph(strip_markdown(payload))
+                    _next_paragraph().add_run(strip_markdown(payload))
             else:
-                doc.add_paragraph(strip_markdown(payload))
+                _next_paragraph().add_run(strip_markdown(payload))
             continue
         lines = payload.splitlines()
         idx = 0
@@ -787,7 +882,7 @@ def _docx_add_markdown(
             if stripped.startswith("$$"):
                 if stripped.endswith("$$") and len(stripped) > 4:
                     formula = stripped[2:-2].strip()
-                    paragraph = doc.add_paragraph()
+                    paragraph = _next_paragraph()
                     _render_formula_run(
                         paragraph,
                         formula,
@@ -806,7 +901,7 @@ def _docx_add_markdown(
                         idx += 1
                     formula = "\n".join(block_lines).strip()
                     if formula:
-                        paragraph = doc.add_paragraph()
+                        paragraph = _next_paragraph()
                         _render_formula_run(
                             paragraph,
                             formula,
@@ -838,7 +933,7 @@ def _docx_add_markdown(
                             row_cells[col_idx].text = strip_markdown(cell)
                 continue
             if line.strip():
-                paragraph = doc.add_paragraph()
+                paragraph = _next_paragraph()
                 last_idx = 0
                 for match in _INLINE_FORMULA_RE.finditer(line):
                     text_segment = line[last_idx:match.start()]
@@ -856,8 +951,74 @@ def _docx_add_markdown(
                 if tail:
                     paragraph.add_run(strip_markdown(tail))
             else:
-                doc.add_paragraph("")
+                _next_paragraph()
             idx += 1
+
+
+def _docx_needs_separate_label(content: str) -> bool:
+    lines = content.splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("$$"):
+            return True
+        if "|" in line and idx + 1 < len(lines) and _TABLE_SEPARATOR_RE.match(lines[idx + 1]):
+            return True
+    return False
+
+
+def _docx_add_labeled_content(
+    container: docx.Document | docx.table._Cell,
+    label: str,
+    content: str,
+    *,
+    attachment_map: dict[str, str],
+    base_path: Path,
+    doc_prefix: str,
+    image_width: float,
+    formula_renderer: str,
+) -> None:
+    label_text = f"{_(label)}:"
+    normalized_content = content.strip("\n")
+    start_paragraph = None
+    if isinstance(container, docx.table._Cell):
+        container.text = ""
+        start_paragraph = container.paragraphs[0]
+    if _docx_needs_separate_label(normalized_content):
+        paragraph = start_paragraph or container.add_paragraph()
+        paragraph.add_run(label_text)
+        _docx_add_markdown(
+            container,
+            normalized_content,
+            attachment_map=attachment_map,
+            base_path=base_path,
+            doc_prefix=doc_prefix,
+            image_width=image_width,
+            formula_renderer=formula_renderer,
+        )
+        return
+    combined = f"{label_text} {normalized_content}"
+    _docx_add_markdown(
+        container,
+        combined,
+        attachment_map=attachment_map,
+        base_path=base_path,
+        doc_prefix=doc_prefix,
+        image_width=image_width,
+        formula_renderer=formula_renderer,
+        start_paragraph=start_paragraph,
+    )
+
+
+def _docx_apply_row_shading(row: docx.table._Row, *, fill: str) -> None:
+    for cell in row.cells:
+        cell_properties = cell._tc.get_or_add_tcPr()
+        shading = cell_properties.find(qn("w:shd"))
+        if shading is None:
+            shading = OxmlElement("w:shd")
+            cell_properties.append(shading)
+        shading.set(qn("w:val"), "clear")
+        shading.set(qn("w:color"), "auto")
+        shading.set(qn("w:fill"), fill)
 
 
 def render_requirements_docx(
@@ -880,6 +1041,21 @@ def render_requirements_docx(
         f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
     image_width = 5.5
+    if _should_render_field(selected_fields, "labels"):
+        label_rows = _collect_used_label_rows(export)
+        if label_rows:
+            document.add_heading(_('Labels'), level=1)
+            label_table = document.add_table(rows=0, cols=2)
+            label_table.style = "Light Grid"
+            for row_index, (label, description) in enumerate(label_rows):
+                row = label_table.add_row()
+                row.cells[0].text = label
+                row.cells[1].text = description
+                if row_index % 2 == 1:
+                    _docx_apply_row_shading(row, fill="F2F2F2")
+                else:
+                    _docx_apply_row_shading(row, fill="FFFFFF")
+            document.add_paragraph("")
 
     for doc_export in export.documents:
         document.add_heading(
@@ -903,7 +1079,10 @@ def render_requirements_docx(
             for view in group_views:
                 req = view.requirement
                 document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
-                meta_pairs = []
+                field_rows: list[tuple[str, str]] = []
+                field_rows.append(("Requirement RID", req.rid))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append(("Title", req.title or _('(no title)')))
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -911,14 +1090,7 @@ def render_requirements_docx(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    meta_pairs.append((label, content))
-                if meta_pairs:
-                    table = document.add_table(rows=0, cols=2)
-                    table.style = "Light Grid"
-                    for label, value in meta_pairs:
-                        row = table.add_row().cells
-                        row[0].text = _(label)
-                        row[1].text = value
+                    field_rows.append((label, content))
 
                 attachment_map = {att.id: att.path for att in req.attachments}
                 for field, label in _EXPORT_SECTION_FIELDS:
@@ -928,16 +1100,26 @@ def render_requirements_docx(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    document.add_heading(_(label), level=3)
-                    _docx_add_markdown(
-                        document,
-                        content,
-                        attachment_map=attachment_map,
-                        base_path=export.base_path,
-                        doc_prefix=req.doc_prefix,
-                        image_width=image_width,
-                        formula_renderer=formula_renderer,
-                    )
+                    field_rows.append((label, content))
+                if field_rows:
+                    table = document.add_table(rows=0, cols=1)
+                    table.style = "Light Grid"
+                    for row_index, (label, content) in enumerate(field_rows):
+                        row = table.add_row()
+                        _docx_add_labeled_content(
+                            row.cells[0],
+                            label,
+                            content,
+                            attachment_map=attachment_map,
+                            base_path=export.base_path,
+                            doc_prefix=req.doc_prefix,
+                            image_width=image_width,
+                            formula_renderer=formula_renderer,
+                        )
+                        if row_index % 2 == 1:
+                            _docx_apply_row_shading(row, fill="F2F2F2")
+                        else:
+                            _docx_apply_row_shading(row, fill="FFFFFF")
                 document.add_paragraph("")
 
     buffer = BytesIO()

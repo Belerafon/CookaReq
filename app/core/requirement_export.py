@@ -26,6 +26,8 @@ from xml.sax.saxutils import escape as xml_escape
 
 import markdown
 import docx
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches
 
 from ..i18n import _
@@ -756,7 +758,7 @@ def _iter_markdown_segments(
 
 
 def _docx_add_markdown(
-    doc: docx.Document,
+    doc: docx.Document | docx.table._Cell,
     text: str,
     *,
     attachment_map: dict[str, str],
@@ -860,6 +862,66 @@ def _docx_add_markdown(
             idx += 1
 
 
+def _docx_needs_separate_label(content: str) -> bool:
+    lines = content.splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("$$"):
+            return True
+        if "|" in line and idx + 1 < len(lines) and _TABLE_SEPARATOR_RE.match(lines[idx + 1]):
+            return True
+    return False
+
+
+def _docx_add_labeled_content(
+    container: docx.Document | docx.table._Cell,
+    label: str,
+    content: str,
+    *,
+    attachment_map: dict[str, str],
+    base_path: Path,
+    doc_prefix: str,
+    image_width: float,
+    formula_renderer: str,
+) -> None:
+    label_text = f"{_(label)}:"
+    if _docx_needs_separate_label(content):
+        paragraph = container.add_paragraph()
+        paragraph.add_run(label_text)
+        _docx_add_markdown(
+            container,
+            content,
+            attachment_map=attachment_map,
+            base_path=base_path,
+            doc_prefix=doc_prefix,
+            image_width=image_width,
+            formula_renderer=formula_renderer,
+        )
+        return
+    combined = f"{label_text} {content}"
+    _docx_add_markdown(
+        container,
+        combined,
+        attachment_map=attachment_map,
+        base_path=base_path,
+        doc_prefix=doc_prefix,
+        image_width=image_width,
+        formula_renderer=formula_renderer,
+    )
+
+
+def _docx_apply_row_shading(row: docx.table._Row, *, fill: str) -> None:
+    for cell in row.cells:
+        cell_properties = cell._tc.get_or_add_tcPr()
+        shading = cell_properties.find(qn("w:shd"))
+        if shading is None:
+            shading = OxmlElement("w:shd")
+            cell_properties.append(shading)
+        shading.set(qn("w:val"), "clear")
+        shading.set(qn("w:color"), "auto")
+        shading.set(qn("w:fill"), fill)
+
+
 def render_requirements_docx(
     export: RequirementExport,
     *,
@@ -903,7 +965,7 @@ def render_requirements_docx(
             for view in group_views:
                 req = view.requirement
                 document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
-                meta_pairs = []
+                field_rows: list[tuple[str, str]] = []
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -911,14 +973,7 @@ def render_requirements_docx(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    meta_pairs.append((label, content))
-                if meta_pairs:
-                    table = document.add_table(rows=0, cols=2)
-                    table.style = "Light Grid"
-                    for label, value in meta_pairs:
-                        row = table.add_row().cells
-                        row[0].text = _(label)
-                        row[1].text = value
+                    field_rows.append((label, content))
 
                 attachment_map = {att.id: att.path for att in req.attachments}
                 for field, label in _EXPORT_SECTION_FIELDS:
@@ -928,16 +983,26 @@ def render_requirements_docx(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    document.add_heading(_(label), level=3)
-                    _docx_add_markdown(
-                        document,
-                        content,
-                        attachment_map=attachment_map,
-                        base_path=export.base_path,
-                        doc_prefix=req.doc_prefix,
-                        image_width=image_width,
-                        formula_renderer=formula_renderer,
-                    )
+                    field_rows.append((label, content))
+                if field_rows:
+                    table = document.add_table(rows=0, cols=1)
+                    table.style = "Light Grid"
+                    for row_index, (label, content) in enumerate(field_rows):
+                        row = table.add_row()
+                        _docx_add_labeled_content(
+                            row.cells[0],
+                            label,
+                            content,
+                            attachment_map=attachment_map,
+                            base_path=export.base_path,
+                            doc_prefix=req.doc_prefix,
+                            image_width=image_width,
+                            formula_renderer=formula_renderer,
+                        )
+                        if row_index % 2 == 1:
+                            _docx_apply_row_shading(row, fill="F2F2F2")
+                        else:
+                            _docx_apply_row_shading(row, fill="FFFFFF")
                 document.add_paragraph("")
 
     buffer = BytesIO()

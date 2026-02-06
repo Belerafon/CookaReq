@@ -70,6 +70,25 @@ def test_confirm_discard_changes(monkeypatch, wx_app, tmp_path):
         frame.Destroy()
 
 
+def test_confirm_discard_changes_no_folder_loaded(monkeypatch, wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import app.ui.main_frame as main_frame_mod
+
+    frame = _create_frame(main_frame_mod, tmp_path, name="empty.ini")
+    try:
+        def _fail_prompt():
+            raise AssertionError("Prompt should not be shown without a folder")
+
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", _fail_prompt)
+
+        assert frame.current_dir is None
+        assert frame.docs_controller is None
+        assert frame._confirm_discard_changes() is True
+    finally:
+        frame.Destroy()
+
+
 def test_close_cancel_does_not_lock_shutdown(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 

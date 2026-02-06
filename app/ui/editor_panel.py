@@ -1520,6 +1520,37 @@ class EditorPanel(wx.Panel):
         """Store current state as the latest saved baseline."""
         self._saved_state = self._snapshot_state()
 
+    def has_meaningful_content(self) -> bool:
+        """Return True when editor contains user-entered content."""
+        defaults = {
+            "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
+            "status": locale.code_to_label("status", Status.DRAFT.value),
+            "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
+            "verification": locale.code_to_label(
+                "verification", Verification.NOT_DEFINED.value
+            ),
+        }
+        for name, ctrl in self.fields.items():
+            value = ctrl.GetValue().strip()
+            if not value:
+                continue
+            if name == "revision" and value == "1":
+                continue
+            return True
+        for name, choice in self.enums.items():
+            if choice.GetStringSelection() != defaults[name]:
+                return True
+        if self.attachments or self.links:
+            return True
+        if self.extra.get("labels"):
+            return True
+        if self.extra.get("notes"):
+            return True
+        dt = self.approved_picker.GetValue()
+        if dt.IsValid():
+            return True
+        return False
+
     def is_dirty(self) -> bool:
         """Return True when editor content differs from saved baseline."""
         if self._saved_state is None:

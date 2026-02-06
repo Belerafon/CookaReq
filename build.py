@@ -19,7 +19,7 @@ def get_git_commit_date() -> str | None:
     """Get the date of the last commit from git."""
     try:
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%ci"],
+            ["git", "log", "-1", "--format=%cs"],
             cwd=Path(__file__).parent,
             capture_output=True,
             text=True,

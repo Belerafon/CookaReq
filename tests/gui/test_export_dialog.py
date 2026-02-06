@@ -24,6 +24,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(1)
         dialog._update_text_options_visibility()
@@ -33,6 +34,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(2)
         dialog._update_text_options_visibility()
@@ -51,6 +53,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert dialog._selected_export_scope() == "all"
     finally:
         dialog.Destroy()
         wx_app.Yield()
@@ -75,11 +78,13 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
             docx_formula_renderer=None,
             card_sort_mode="source",
             card_label_group_mode="per_label",
+            export_scope="visible",
         ),
     )
     try:
         wx_app.Yield()
         assert dialog._selected_card_sort_mode() == "source"
+        assert dialog._selected_export_scope() == "visible"
         assert dialog._selected_card_label_group_mode() == "per_label"
         assert not dialog.card_label_group_choice.IsEnabled()
 
@@ -98,6 +103,39 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
         state = dialog.get_state()
         assert state.card_sort_mode == "labels"
         assert state.card_label_group_mode == "label_set"
+    finally:
+        dialog.Destroy()
+        wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_export_dialog_default_scope_from_context(wx_app):
+    _wx = pytest.importorskip("wx")
+    from app.ui.export_dialog import RequirementExportDialog
+
+    dialog = RequirementExportDialog(
+        None,
+        available_fields=["id", "statement"],
+        selected_fields=["statement"],
+        default_export_scope="selected",
+    )
+    try:
+        wx_app.Yield()
+        assert dialog._selected_export_scope() == "selected"
+
+        dialog.scope_choice.SetSelection(0)
+        dialog._on_scope_changed(_wx.CommandEvent())
+
+        plan = dialog.get_plan()
+        assert plan is None
+
+        dialog.file_picker.SetPath("/tmp/export.txt")
+        plan = dialog.get_plan()
+        assert plan is not None
+        assert plan.export_scope == "all"
+
+        state = dialog.get_state()
+        assert state.export_scope == "all"
     finally:
         dialog.Destroy()
         wx_app.Yield()

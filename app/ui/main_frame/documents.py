@@ -647,6 +647,15 @@ class MainFrameDocumentsMixin:
                 wx.ICON_WARNING,
             )
 
+    def _default_export_scope(self: MainFrame) -> str:
+        """Return default export scope based on current selection and filters."""
+        selected_ids = self.panel.get_selected_ids()
+        if len(selected_ids) > 1:
+            return "selected"
+        if self.panel.has_active_filters():
+            return "visible"
+        return "all"
+
     def on_export_requirements(self: MainFrame, _event: wx.Event) -> None:
         """Export requirements to a text or HTML file."""
         if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
@@ -657,8 +666,17 @@ class MainFrameDocumentsMixin:
             wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
             return
 
-        requirements = self.model.get_visible()
-        if not requirements:
+        all_requirements = self.model.get_all()
+        visible_requirements = self.model.get_visible()
+        selected_ids = self.panel.get_selected_ids()
+        selected_requirements: list = []
+        selected_lookup: set[int] = set(selected_ids)
+        if selected_lookup:
+            selected_requirements = [
+                req for req in all_requirements if int(getattr(req, "id", -1)) in selected_lookup
+            ]
+
+        if not all_requirements:
             wx.MessageBox(_("No requirements to export."), _("Export"))
             return
 
@@ -675,6 +693,7 @@ class MainFrameDocumentsMixin:
             document_label=document_label,
             default_path=default_path,
             saved_state=saved_state,
+            default_export_scope=self._default_export_scope(),
         )
         try:
             if dlg.ShowModal() != wx.ID_OK:
@@ -686,6 +705,16 @@ class MainFrameDocumentsMixin:
         if plan is None:
             return
         self.config.set_export_dialog_state(self.current_dir, dialog_state)
+
+        scope_sources = {
+            "all": all_requirements,
+            "visible": visible_requirements,
+            "selected": selected_requirements,
+        }
+        requirements = list(scope_sources.get(plan.export_scope, all_requirements))
+        if not requirements:
+            wx.MessageBox(_("No requirements to export."), _("Export"))
+            return
 
         labels_grouped = plan.card_sort_mode == "labels"
         label_group_mode = plan.card_label_group_mode

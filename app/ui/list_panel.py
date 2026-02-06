@@ -748,6 +748,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         else:  # pragma: no cover - test stub
             self.filter_summary.label = summary
 
+    def has_active_filters(self) -> bool:
+        """Return ``True`` when the list currently has any active filters."""
+        return self._has_active_filters()
+
     def _has_active_filters(self) -> bool:
         """Return ``True`` if any filters are currently applied."""
         if self.current_filters.get("query"):

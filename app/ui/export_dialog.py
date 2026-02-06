@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 from pathlib import Path
 
 import wx
@@ -34,6 +35,7 @@ class RequirementExportPlan:
     docx_formula_renderer: str | None
     card_sort_mode: str
     card_label_group_mode: str
+    export_scope: Literal["all", "visible", "selected"]
 
 
 class RequirementExportDialog(wx.Dialog):
@@ -48,6 +50,7 @@ class RequirementExportDialog(wx.Dialog):
         document_label: str | None = None,
         default_path: Path | None = None,
         saved_state: ExportDialogState | None = None,
+        default_export_scope: Literal["all", "visible", "selected"] = "all",
     ) -> None:
         title = _("Export Requirements")
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
@@ -74,6 +77,14 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._card_label_group_mode = self._coerce_card_label_group_mode(
             saved_state.card_label_group_mode if saved_state else None
+        )
+        self._default_export_scope: Literal["all", "visible", "selected"] = (
+            default_export_scope
+            if default_export_scope in {"all", "visible", "selected"}
+            else "all"
+        )
+        self._export_scope = self._coerce_export_scope(
+            saved_state.export_scope if saved_state else self._default_export_scope
         )
         self._txt_placeholder_label = _("(not set)")
         self._drag_start_index: int | None = None
@@ -188,6 +199,19 @@ class RequirementExportDialog(wx.Dialog):
             style=wx.RA_SPECIFY_ROWS,
         )
 
+        self.scope_choice = wx.RadioBox(
+            self,
+            label=_("Requirements to export"),
+            choices=[
+                _("All requirements"),
+                _("Visible requirements (respect current filter)"),
+                _("Selected requirements"),
+            ],
+            majorDimension=1,
+            style=wx.RA_SPECIFY_ROWS,
+        )
+        self._apply_export_scope_choice()
+
         self.columns_box = wx.StaticBox(self, label=_("Columns"))
         self.column_list = wx.CheckListBox(self.columns_box)
 
@@ -255,6 +279,7 @@ class RequirementExportDialog(wx.Dialog):
     def _bind_events(self) -> None:
         self.file_picker.Bind(wx.EVT_FILEPICKER_CHANGED, self._on_path_changed)
         self.format_choice.Bind(wx.EVT_RADIOBOX, self._on_format_changed)
+        self.scope_choice.Bind(wx.EVT_RADIOBOX, self._on_scope_changed)
         self.column_list.Bind(wx.EVT_CHECKLISTBOX, self._on_columns_changed)
         self.card_sort_choice.Bind(wx.EVT_CHOICE, self._on_card_sort_changed)
         self.column_list.Bind(wx.EVT_LEFT_DOWN, self._on_column_left_down)
@@ -281,6 +306,7 @@ class RequirementExportDialog(wx.Dialog):
         path_sizer.Add(self.path_display, 1, wx.EXPAND)
         main_sizer.Add(path_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         main_sizer.Add(self.format_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        main_sizer.Add(self.scope_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         txt_options_sizer = wx.StaticBoxSizer(self.txt_options_box, wx.VERTICAL)
         txt_options_sizer.Add(self.txt_empty_fields_checkbox, 0, wx.ALL, 6)
@@ -377,6 +403,27 @@ class RequirementExportDialog(wx.Dialog):
         is_docx = self._current_format() == ExportFormat.DOCX
         self._main_sizer.Show(self._docx_options_sizer, is_docx, recursive=True)
         self._main_sizer.Layout()
+
+    def _coerce_export_scope(self, value: str | None) -> Literal["all", "visible", "selected"]:
+        if value in {"all", "visible", "selected"}:
+            return value
+        return self._default_export_scope
+
+    def _apply_export_scope_choice(self) -> None:
+        selection_map = {
+            "all": 0,
+            "visible": 1,
+            "selected": 2,
+        }
+        self.scope_choice.SetSelection(selection_map.get(self._export_scope, 0))
+
+    def _selected_export_scope(self) -> Literal["all", "visible", "selected"]:
+        selection = self.scope_choice.GetSelection()
+        if selection == 1:
+            return "visible"
+        if selection == 2:
+            return "selected"
+        return "all"
 
     def _coerce_card_sort_mode(self, value: str | None) -> str:
         if value in {"id", "labels", "source", "title"}:
@@ -483,6 +530,9 @@ class RequirementExportDialog(wx.Dialog):
     def _on_columns_changed(self, _event: wx.CommandEvent) -> None:
         self._update_ok_state()
 
+    def _on_scope_changed(self, _event: wx.CommandEvent) -> None:
+        self._update_ok_state()
+
     def _on_card_sort_changed(self, _event: wx.CommandEvent) -> None:
         self._update_label_grouping_state()
 
@@ -569,6 +619,7 @@ class RequirementExportDialog(wx.Dialog):
             docx_formula_renderer=docx_renderer,
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
+            export_scope=self._selected_export_scope(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -592,4 +643,5 @@ class RequirementExportDialog(wx.Dialog):
             else self._docx_formula_renderer,
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
+            export_scope=self._selected_export_scope(),
         )

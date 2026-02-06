@@ -248,6 +248,13 @@ class MainFrameSectionsMixin:
             return True
         if not hasattr(self, "model"):
             return True
+        if (
+            getattr(self, "current_dir", None) is None
+            and getattr(self, "docs_controller", None) is None
+            and not self.model.get_all()
+            and not self.editor.has_meaningful_content()
+        ):
+            return True
         dirty = self.editor.is_dirty()
         unsaved = False
         if (
@@ -260,6 +267,8 @@ class MainFrameSectionsMixin:
             unsaved = self.model.is_unsaved(
                 req_id=self._selected_requirement_id, prefix=prefix
             )
+        if not unsaved and not self.editor.has_meaningful_content():
+            return True
         if not dirty and not unsaved:
             return True
 

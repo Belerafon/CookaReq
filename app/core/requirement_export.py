@@ -766,20 +766,31 @@ def _docx_add_markdown(
     doc_prefix: str,
     image_width: float,
     formula_renderer: str,
+    start_paragraph: docx.text.paragraph.Paragraph | None = None,
 ) -> None:
     segments = _iter_markdown_segments(text, attachment_map=attachment_map)
+    first_paragraph = start_paragraph
+
+    def _next_paragraph() -> docx.text.paragraph.Paragraph:
+        nonlocal first_paragraph
+        if first_paragraph is not None:
+            paragraph = first_paragraph
+            first_paragraph = None
+            return paragraph
+        return doc.add_paragraph()
+
     for kind, payload in segments:
         if kind == "image":
             image_path = base_path / doc_prefix / payload
             if image_path.exists():
-                paragraph = doc.add_paragraph()
+                paragraph = _next_paragraph()
                 run = paragraph.add_run()
                 try:
                     run.add_picture(str(image_path), width=Inches(image_width))
                 except (OSError, ValueError):  # pragma: no cover - invalid assets
-                    doc.add_paragraph(strip_markdown(payload))
+                    _next_paragraph().add_run(strip_markdown(payload))
             else:
-                doc.add_paragraph(strip_markdown(payload))
+                _next_paragraph().add_run(strip_markdown(payload))
             continue
         lines = payload.splitlines()
         idx = 0
@@ -789,7 +800,7 @@ def _docx_add_markdown(
             if stripped.startswith("$$"):
                 if stripped.endswith("$$") and len(stripped) > 4:
                     formula = stripped[2:-2].strip()
-                    paragraph = doc.add_paragraph()
+                    paragraph = _next_paragraph()
                     _render_formula_run(
                         paragraph,
                         formula,
@@ -808,7 +819,7 @@ def _docx_add_markdown(
                         idx += 1
                     formula = "\n".join(block_lines).strip()
                     if formula:
-                        paragraph = doc.add_paragraph()
+                        paragraph = _next_paragraph()
                         _render_formula_run(
                             paragraph,
                             formula,
@@ -840,7 +851,7 @@ def _docx_add_markdown(
                             row_cells[col_idx].text = strip_markdown(cell)
                 continue
             if line.strip():
-                paragraph = doc.add_paragraph()
+                paragraph = _next_paragraph()
                 last_idx = 0
                 for match in _INLINE_FORMULA_RE.finditer(line):
                     text_segment = line[last_idx:match.start()]
@@ -858,7 +869,7 @@ def _docx_add_markdown(
                 if tail:
                     paragraph.add_run(strip_markdown(tail))
             else:
-                doc.add_paragraph("")
+                _next_paragraph()
             idx += 1
 
 
@@ -886,8 +897,12 @@ def _docx_add_labeled_content(
 ) -> None:
     label_text = f"{_(label)}:"
     normalized_content = content.strip("\n")
+    start_paragraph = None
+    if isinstance(container, docx.table._Cell):
+        container.text = ""
+        start_paragraph = container.paragraphs[0]
     if _docx_needs_separate_label(normalized_content):
-        paragraph = container.add_paragraph()
+        paragraph = start_paragraph or container.add_paragraph()
         paragraph.add_run(label_text)
         _docx_add_markdown(
             container,
@@ -908,6 +923,7 @@ def _docx_add_labeled_content(
         doc_prefix=doc_prefix,
         image_width=image_width,
         formula_renderer=formula_renderer,
+        start_paragraph=start_paragraph,
     )
 
 

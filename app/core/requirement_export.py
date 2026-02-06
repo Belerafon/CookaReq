@@ -42,6 +42,7 @@ __all__ = [
     "RequirementExportView",
     "build_requirement_export",
     "build_requirement_export_from_requirements",
+    "export_card_field_order",
     "render_requirements_html",
     "render_requirements_markdown",
     "render_requirements_docx",
@@ -258,6 +259,12 @@ _EXPORT_SECTION_FIELDS: tuple[tuple[str, str], ...] = (
     ("assumptions", "Assumptions"),
     ("notes", "Notes"),
 )
+
+
+def export_card_field_order() -> tuple[str, ...]:
+    meta_fields = (field for field, _label, _use_code in _EXPORT_META_FIELDS)
+    section_fields = (field for field, _label in _EXPORT_SECTION_FIELDS)
+    return ("rid", "title", *meta_fields, *section_fields)
 
 
 def _meta_field_value(req: Requirement, field: str) -> str | None:

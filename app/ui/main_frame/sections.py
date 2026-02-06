@@ -250,10 +250,11 @@ class MainFrameSectionsMixin:
             return True
         if (
             getattr(self, "current_dir", None) is None
-            and getattr(self, "docs_controller", None) is None
-            and not self.model.get_all()
-            and not self.editor.has_meaningful_content()
+            or getattr(self, "docs_controller", None) is None
+            or not self.current_doc_prefix
         ):
+            return True
+        if getattr(self, "_selected_requirement_id", None) is None:
             return True
         dirty = self.editor.is_dirty()
         unsaved = False

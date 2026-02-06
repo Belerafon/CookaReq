@@ -885,12 +885,13 @@ def _docx_add_labeled_content(
     formula_renderer: str,
 ) -> None:
     label_text = f"{_(label)}:"
-    if _docx_needs_separate_label(content):
+    normalized_content = content.strip("\n")
+    if _docx_needs_separate_label(normalized_content):
         paragraph = container.add_paragraph()
         paragraph.add_run(label_text)
         _docx_add_markdown(
             container,
-            content,
+            normalized_content,
             attachment_map=attachment_map,
             base_path=base_path,
             doc_prefix=doc_prefix,
@@ -898,7 +899,7 @@ def _docx_add_labeled_content(
             formula_renderer=formula_renderer,
         )
         return
-    combined = f"{label_text} {content}"
+    combined = f"{label_text} {normalized_content}"
     _docx_add_markdown(
         container,
         combined,
@@ -966,6 +967,9 @@ def render_requirements_docx(
                 req = view.requirement
                 document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
                 field_rows: list[tuple[str, str]] = []
+                field_rows.append(("Requirement RID", req.rid))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append(("Title", req.title or _('(no title)')))
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue

@@ -342,15 +342,12 @@ def _group_requirement_views_by_labels(
             _append(label, view)
     return groups
 
-def _format_markdown_block(text: str) -> list[str]:
-    lines = text.splitlines() or [""]
-    block: list[str] = []
-    for line in lines:
-        if line:
-            block.append(f"> {line}")
-        else:
-            block.append(">")
-    return block
+def _format_markdown_table_cell(text: str) -> str:
+    normalized = text.strip("\n")
+    if not normalized:
+        return ""
+    normalized = normalized.replace("|", "\\|")
+    return "<br>".join(normalized.splitlines())
 
 
 def render_requirements_markdown(
@@ -394,6 +391,10 @@ def render_requirements_markdown(
                 req = view.requirement
                 parts.append(f"{heading_level} {_requirement_heading(req, selected_fields)}")
                 parts.append("")
+                field_rows: list[tuple[str, str, bool]] = []
+                field_rows.append((_('Requirement RID'), req.rid, False))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append((_('Title'), req.title or _('(no title)'), False))
                 for field, label, use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -401,12 +402,7 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    if use_code:
-                        parts.append(f"- **{_(label)}:** ``{content}``")
-                    else:
-                        parts.append(f"- **{_(label)}:** {content}")
-                parts.append("")
-
+                    field_rows.append((_(label), content, use_code))
                 for field, label in _EXPORT_SECTION_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -414,8 +410,16 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(f"**{_(label)}**")
-                    parts.extend(_format_markdown_block(content))
+                    field_rows.append((_(label), content, False))
+
+                if field_rows:
+                    parts.append("| |")
+                    parts.append("| --- |")
+                    for label, content, use_code in field_rows:
+                        value = _format_markdown_table_cell(content)
+                        if use_code:
+                            value = f"``{value}``"
+                        parts.append(f"| {label}: {value} |")
                     parts.append("")
 
                 if view.links and _should_render_field(selected_fields, "links"):
@@ -621,6 +625,12 @@ def _html_markdown(value: str, *, requirement: Requirement) -> str:
     return _render_markdown(content)
 
 
+def _strip_wrapping_paragraph(markup: str) -> str:
+    if markup.startswith("<p>") and markup.endswith("</p>") and markup.count("<p>") == 1:
+        return markup[3:-4]
+    return markup
+
+
 def render_requirements_html(
     export: RequirementExport,
     *,
@@ -645,8 +655,13 @@ def render_requirements_html(
         "section.document{margin-bottom:32px;}",
         "article.requirement{border:1px solid #ddd;padding:16px;margin-bottom:16px;border-radius:8px;}",
         "article.requirement h3{margin-top:0;}article.requirement p{margin:0 0 8px;}",
-        "dl.meta{display:grid;grid-template-columns:120px 1fr;gap:4px;margin:0 0 8px;}",
-        "dl.meta dt{font-weight:bold;}dl.meta dd{margin:0;}ul.links{margin:8px 0 0 16px;}",
+        "table.meta-table{width:100%;border-collapse:collapse;margin:0 0 8px;}",
+        "table.meta-table td{border:1px solid #ddd;padding:6px 8px;vertical-align:top;}",
+        "table.meta-table tr:nth-child(even){background:#f2f2f2;}",
+        "table.meta-table tr:nth-child(odd){background:#fff;}",
+        "table.meta-table p{margin:0 0 8px;}",
+        "table.meta-table .row-label{font-weight:bold;margin-bottom:4px;}",
+        "ul.links{margin:8px 0 0 16px;}",
         "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
         "</style>",
         "</head><body>",
@@ -679,7 +694,12 @@ def render_requirements_html(
                 parts.append(
                     f"<h3>{_escape_html(_requirement_heading(req, selected_fields))}</h3>"
                 )
-                parts.append("<dl class='meta'>")
+                field_rows: list[tuple[str, str, bool]] = []
+                field_rows.append((_('Requirement RID'), _escape_html(req.rid), True))
+                if _should_render_field(selected_fields, "title"):
+                    field_rows.append(
+                        (_('Title'), _escape_html(req.title or _('(no title)')), True)
+                    )
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -687,10 +707,7 @@ def render_requirements_html(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(
-                        f"<dt>{_escape_html(_(label))}</dt><dd>{_escape_html(content)}</dd>"
-                    )
-                parts.append("</dl>")
+                    field_rows.append((_(label), _escape_html(content), True))
 
                 for field, label in _EXPORT_SECTION_FIELDS:
                     if not _should_render_field(selected_fields, field):
@@ -699,8 +716,26 @@ def render_requirements_html(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    parts.append(f"<h4>{_escape_html(_(label))}</h4>")
-                    parts.append(_html_markdown(content, requirement=req) or "<p></p>")
+                    html_value = _html_markdown(content, requirement=req) or "<p></p>"
+                    field_rows.append((_(label), html_value, False))
+
+                if field_rows:
+                    parts.append("<table class='meta-table'><tbody>")
+                    for label, value, is_inline in field_rows:
+                        label_html = _escape_html(label)
+                        if is_inline:
+                            parts.append(
+                                f"<tr><td><strong>{label_html}:</strong> {value}</td></tr>"
+                            )
+                        else:
+                            cleaned_value = _strip_wrapping_paragraph(value)
+                            parts.append(
+                                "<tr><td>"
+                                f"<div class='row-label'>{label_html}:</div>"
+                                f"{cleaned_value}"
+                                "</td></tr>"
+                            )
+                    parts.append("</tbody></table>")
 
                 if view.links and _should_render_field(selected_fields, "links"):
                     parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")

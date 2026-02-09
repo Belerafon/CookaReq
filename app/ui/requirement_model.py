@@ -8,6 +8,7 @@ from enum import Enum
 
 from ..core.model import Requirement
 from ..core.search import filter_by_status, search
+from ..util.sorting import natural_sort_key
 
 
 class RequirementModel:
@@ -239,6 +240,8 @@ class RequirementModel:
                     return int(value)
                 except Exception:
                     return 0
+            if self._sort_field == "source":
+                return natural_sort_key(value)
             if self._sort_field == "labels" and isinstance(value, list):
                 return "|".join(value)
             if isinstance(value, list):

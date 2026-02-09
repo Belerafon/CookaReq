@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from .model import Requirement
+from ..util.sorting import natural_sort_key
 
 __all__ = ["sort_requirements_for_cards"]
 
@@ -39,8 +40,8 @@ def sort_requirements_for_cards(
         marker, labels_key = _labels_sort_key(requirement.labels)
         return (marker, labels_key, requirement.id)
 
-    def key_by_source(requirement: Requirement) -> tuple[str, int]:
-        return (requirement.source.strip().lower(), requirement.id)
+    def key_by_source(requirement: Requirement) -> tuple[object, int]:
+        return (natural_sort_key(requirement.source), requirement.id)
 
     def key_by_title(requirement: Requirement) -> tuple[str, int]:
         return (requirement.title.strip().lower(), requirement.id)

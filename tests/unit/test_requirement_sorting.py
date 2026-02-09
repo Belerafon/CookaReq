@@ -40,13 +40,14 @@ def test_sort_requirements_for_cards_by_labels():
 
 def test_sort_requirements_for_cards_by_source_and_title():
     reqs = [
-        _make_requirement(4, title="Gamma", source="Spec B", labels=[]),
-        _make_requirement(2, title="Alpha", source="Spec A", labels=[]),
-        _make_requirement(3, title="Beta", source="Spec A", labels=[]),
+        _make_requirement(4, title="Gamma", source="ТЗ 1.12.3", labels=[]),
+        _make_requirement(2, title="Alpha", source="ТЗ 1.2.3", labels=[]),
+        _make_requirement(5, title="Delta", source="ТЗ 1.20.3", labels=[]),
+        _make_requirement(3, title="Beta", source="ТЗ 1.2.10", labels=[]),
     ]
 
     by_source = sort_requirements_for_cards(reqs, sort_mode="source")
-    assert [req.id for req in by_source] == [2, 3, 4]
+    assert [req.id for req in by_source] == [2, 3, 4, 5]
 
     by_title = sort_requirements_for_cards(reqs, sort_mode="title")
-    assert [req.id for req in by_title] == [2, 3, 4]
+    assert [req.id for req in by_title] == [2, 3, 5, 4]

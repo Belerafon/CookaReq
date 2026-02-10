@@ -340,6 +340,10 @@ class EditorPanel(wx.Panel):
         self._content_panel.Layout()
         return super().Layout()
 
+    def _reset_scroll_position(self) -> None:
+        """Return the editor viewport to the top of the form."""
+        self._content_panel.Scroll(0, 0)
+
     # helpers -------------------------------------------------------------
     def set_service(self, service: RequirementsService | None) -> None:
         """Configure requirements service used by the editor."""
@@ -733,6 +737,7 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
+        self._reset_scroll_position()
         self.mark_clean()
 
     def load(
@@ -812,6 +817,7 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
         self._on_id_change()
+        self._reset_scroll_position()
         self.mark_clean()
 
     def clone(self, new_id: int) -> None:

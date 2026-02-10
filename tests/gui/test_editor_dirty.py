@@ -135,6 +135,49 @@ def test_editor_panel_buttons_place_cancel_after_save(wx_app):
 
 
 @pytest.mark.gui_smoke
+def test_editor_panel_load_resets_scroll_to_top(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.model import Requirement
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None, size=(480, 420))
+    try:
+        panel = EditorPanel(frame)
+        frame.Show()
+
+        first = Requirement.from_mapping(
+            {
+                "id": 100,
+                "statement": "First requirement",
+                "notes": "\n".join(f"line {idx}" for idx in range(120)),
+                "labels": ["tag-a"],
+            }
+        )
+        panel.load(first)
+        wx.Yield()
+
+        panel._content_panel.Scroll(0, 200)
+        wx.Yield()
+        assert panel._content_panel.GetViewStart()[1] > 0
+
+        second = Requirement.from_mapping(
+            {
+                "id": 101,
+                "statement": "Second requirement",
+                "labels": ["tag-b"],
+            }
+        )
+        panel.load(second)
+        wx.Yield()
+
+        assert panel._content_panel.GetViewStart()[1] == 0
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
 def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
     pytest.importorskip("wx")
     import wx

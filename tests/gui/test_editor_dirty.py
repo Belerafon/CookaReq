@@ -207,7 +207,7 @@ def test_editor_panel_compact_fields_are_inline(wx_app):
 
 
 @pytest.mark.gui_smoke
-def test_editor_panel_labels_above_source_and_acceptance_below_source(wx_app):
+def test_editor_panel_primary_and_secondary_fields_order(wx_app):
     pytest.importorskip("wx")
     import wx
 
@@ -221,13 +221,16 @@ def test_editor_panel_labels_above_source_and_acceptance_below_source(wx_app):
         panel.FitInside()
         wx.Yield()
 
-        labels_y = panel.labels_panel.GetScreenPosition().y
         statement_y = panel.fields["statement"].GetScreenPosition().y
         source_y = panel.fields["source"].GetScreenPosition().y
+        status_y = panel.enums["status"].GetScreenPosition().y
+        labels_y = panel.labels_panel.GetScreenPosition().y
+        attachments_y = panel.attachments_list.GetScreenPosition().y
         acceptance_y = panel.fields["acceptance"].GetScreenPosition().y
+        assumptions_y = panel.fields["assumptions"].GetScreenPosition().y
 
-        assert statement_y < labels_y < source_y
-        assert acceptance_y > source_y
+        assert statement_y < source_y < status_y < labels_y < attachments_y
+        assert attachments_y < acceptance_y < assumptions_y
     finally:
         frame.Destroy()
 

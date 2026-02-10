@@ -94,8 +94,11 @@ class EditorPanel(wx.Panel):
         border = dip(self, 5)
 
         compact_text_fields = {"id"}
+        text_specs = {spec.name: spec for spec in config.text_fields}
+        grid_specs = {spec.name: spec for spec in config.grid_fields}
 
-        for spec in config.text_fields:
+        def add_text_field(spec_name: str) -> None:
+            spec = text_specs[spec_name]
             label = wx.StaticText(content, label=labels[spec.name])
             help_btn = make_help_button(content, self._help_texts[spec.name])
             row = wx.BoxSizer(wx.HORIZONTAL)
@@ -179,14 +182,9 @@ class EditorPanel(wx.Panel):
                 preview.Hide()
                 self._statement_preview = preview
                 content_sizer.Add(preview, 1, wx.EXPAND | wx.TOP, border)
-                labels_sizer = self._create_labels_section(content)
-                content_sizer.Add(labels_sizer, 0, wx.EXPAND | wx.TOP, border)
 
-        grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
-        grid.AddGrowableCol(0, 1)
-        grid.AddGrowableCol(1, 1)
-
-        for spec in config.grid_fields:
+        def add_grid_field(spec_name: str) -> None:
+            spec = grid_specs[spec_name]
             container = wx.BoxSizer(wx.VERTICAL)
             label = wx.StaticText(content, label=labels[spec.name])
             help_btn = make_help_button(content, self._help_texts[spec.name])
@@ -210,10 +208,29 @@ class EditorPanel(wx.Panel):
                 row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 container.Add(row, 0, wx.EXPAND | wx.TOP, border)
+            content_sizer.Add(container, 0, wx.EXPAND)
 
-            grid.Add(container, 1, wx.EXPAND)
+        for name in ("id", "title", "statement", "conditions", "rationale"):
+            add_text_field(name)
 
-        content_sizer.Add(grid, 0, wx.EXPAND | wx.TOP, border)
+        # Notes are promoted to the primary requirement block.
+        container = wx.BoxSizer(wx.VERTICAL)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        label = wx.StaticText(content, label=_("Notes"))
+        help_btn = make_help_button(content, self._help_texts["notes"])
+        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        container.Add(row, 0, wx.TOP, border)
+        self.notes_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
+        self._bind_autosize(self.notes_ctrl)
+        container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
+        content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
+
+        add_text_field("source")
+        add_grid_field("status")
+
+        labels_sizer = self._create_labels_section(content)
+        content_sizer.Add(labels_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         # attachments section --------------------------------------------
         a_sizer = HelpStaticBox(
@@ -239,30 +256,11 @@ class EditorPanel(wx.Panel):
         a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
         content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
-        # approval date and notes ---------------------------------------
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        label = wx.StaticText(content, label=_("Approved at"))
-        help_btn = make_help_button(content, self._help_texts["approved_at"])
-        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.approved_picker = wx.adv.DatePickerCtrl(
-            content,
-            style=wx.adv.DP_ALLOWNONE,
-        )
-        row.Add(self.approved_picker, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
-        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
+        for name in ("acceptance", "assumptions"):
+            add_text_field(name)
 
-        container = wx.BoxSizer(wx.VERTICAL)
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        label = wx.StaticText(content, label=_("Notes"))
-        help_btn = make_help_button(content, self._help_texts["notes"])
-        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        container.Add(row, 0, wx.TOP, border)
-        self.notes_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
-        self._bind_autosize(self.notes_ctrl)
-        container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
-        content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
+        for name in ("modified_at", "owner", "revision"):
+            add_grid_field(name)
 
         # grouped links and metadata ------------------------------------
         links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
@@ -279,6 +277,21 @@ class EditorPanel(wx.Panel):
         links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         content_sizer.Add(links_grid, 0, wx.EXPAND | wx.TOP, border)
+
+        for name in ("type", "priority", "verification"):
+            add_grid_field(name)
+
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        label = wx.StaticText(content, label=_("Approved at"))
+        help_btn = make_help_button(content, self._help_texts["approved_at"])
+        row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.approved_picker = wx.adv.DatePickerCtrl(
+            content,
+            style=wx.adv.DP_ALLOWNONE,
+        )
+        row.Add(self.approved_picker, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
 
         self._content_panel.SetSizer(content_sizer)
         self._content_panel.SetupScrolling()

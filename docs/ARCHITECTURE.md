@@ -265,6 +265,10 @@ so you know which modules are involved and which regressions to guard against.
   only currently visible after filters, or only selected rows), columns and
   format before rendering output, including a text-only option for omitting or
   labelling empty fields.
+  `EditorPanel` keeps the requirement form in an explicit two-stage sequence: a
+  primary block (ID/title/statement/context/rationale/notes/source/status/labels
+  and attachments) followed by extended metadata (acceptance, assumptions,
+  ownership/revision links, classification enums and approval date).
 
 ## Cross-cutting infrastructure
 

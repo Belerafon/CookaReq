@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.document_store import Document, save_document, save_item
+from app.core.document_store import Document, DocumentLabels, LabelDef, save_document, save_item
 from app.i18n import install
 from app.core.model import Attachment, Priority, Requirement, RequirementType, Status, Verification
 from app.core.requirement_export import build_requirement_export, render_requirements_html
@@ -339,3 +339,36 @@ def test_render_requirements_html_places_multi_label_requirement_once_in_label_s
 
     assert "<h3>Labels: API, Backend</h3>" in rendered
     assert rendered.count("<article class='requirement' id='SYS1'>") == 1
+
+
+def test_render_requirements_html_colorizes_labels_in_legend_and_cards(tmp_path: Path) -> None:
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("API", "API label", "#123456")]),
+    )
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=1,
+        title="Shared",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        labels=["API"],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    rendered = render_requirements_html(export, colorize_label_backgrounds=True)
+
+    assert "class='label-chip'" in rendered
+    assert "background:#123456" in rendered
+    assert "<span class='label-chip' style='background:#123456" in rendered

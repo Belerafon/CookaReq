@@ -78,8 +78,10 @@ so you know which modules are involved and which regressions to guard against.
   either by each individual label (a requirement with multiple labels appears in
   multiple groups) or by the exact label set (single group per requirement),
   plus a dedicated bucket for unlabeled requirements. Group headings are
-  rendered in HTML and DOCX outputs (plus Markdown in CLI/core usage). Source
-  sorting uses a natural numeric order (например, `1.2` идет перед `1.12`) to
+  rendered in HTML and DOCX outputs (plus Markdown in CLI/core usage). The
+  dialog also lets users toggle label background coloring for HTML and DOCX
+  cards so label chips in both the legend and requirement metadata can match
+  configured document label colors. Source sorting uses a natural numeric order (например, `1.2` идет перед `1.12`) to
   match the list view behavior. The GUI export flow writes
   outputs into a dedicated directory and copies the document `assets/` folder
   alongside the export file, then prompts the user to open the export folder

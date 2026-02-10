@@ -37,6 +37,7 @@ class RequirementExportPlan:
     card_sort_mode: str
     card_label_group_mode: str
     export_scope: Literal["all", "visible", "selected"]
+    colorize_label_backgrounds: bool
 
 
 class RequirementExportDialog(wx.Dialog):
@@ -78,6 +79,9 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._card_label_group_mode = self._coerce_card_label_group_mode(
             saved_state.card_label_group_mode if saved_state else None
+        )
+        self._colorize_label_backgrounds = (
+            bool(saved_state.colorize_label_backgrounds) if saved_state else False
         )
         self._default_export_scope: Literal["all", "visible", "selected"] = (
             default_export_scope
@@ -257,6 +261,11 @@ class RequirementExportDialog(wx.Dialog):
             ],
         )
         self._apply_card_label_group_choice()
+        self.colorize_label_backgrounds_checkbox = wx.CheckBox(
+            self.txt_options_box,
+            label=_("Color label backgrounds (HTML/DOCX)"),
+        )
+        self.colorize_label_backgrounds_checkbox.SetValue(self._colorize_label_backgrounds)
 
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
@@ -324,6 +333,12 @@ class RequirementExportDialog(wx.Dialog):
         label_group_row.Add(self.card_label_group_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         label_group_row.Add(self.card_label_group_choice, 1, wx.EXPAND)
         txt_options_sizer.Add(label_group_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        txt_options_sizer.Add(
+            self.colorize_label_backgrounds_checkbox,
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            6,
+        )
         main_sizer.Add(txt_options_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         docx_options_sizer = wx.StaticBoxSizer(self.docx_formula_box, wx.VERTICAL)
@@ -399,6 +414,7 @@ class RequirementExportDialog(wx.Dialog):
         }
         self._main_sizer.Show(self._txt_options_sizer, show_options, recursive=True)
         self._update_label_grouping_state()
+        self._update_colorize_labels_state()
         self._main_sizer.Layout()
 
     def _update_columns_visibility(self) -> None:
@@ -480,6 +496,10 @@ class RequirementExportDialog(wx.Dialog):
         enabled = self._selected_card_sort_mode() == "labels"
         self.card_label_group_label.Enable(enabled)
         self.card_label_group_choice.Enable(enabled)
+
+    def _update_colorize_labels_state(self) -> None:
+        enabled = self._current_format() in {ExportFormat.HTML, ExportFormat.DOCX}
+        self.colorize_label_backgrounds_checkbox.Enable(enabled)
 
     def _apply_docx_formula_choice(self) -> None:
         choices = self.docx_formula_choice.GetStrings()
@@ -626,6 +646,7 @@ class RequirementExportDialog(wx.Dialog):
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
+            colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -650,4 +671,5 @@ class RequirementExportDialog(wx.Dialog):
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
+            colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
         )

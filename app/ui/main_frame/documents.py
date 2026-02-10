@@ -744,6 +744,7 @@ class MainFrameDocumentsMixin:
                 fields=plan.columns,
                 group_by_labels=labels_grouped,
                 label_group_mode=label_group_mode,
+                colorize_label_backgrounds=plan.colorize_label_backgrounds,
             )
         else:
             if plan.format == ExportFormat.HTML:
@@ -766,6 +767,7 @@ class MainFrameDocumentsMixin:
                     fields=plan.columns,
                     group_by_labels=labels_grouped,
                     label_group_mode=label_group_mode,
+                    colorize_label_backgrounds=plan.colorize_label_backgrounds,
                 )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}

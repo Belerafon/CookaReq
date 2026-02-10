@@ -7,7 +7,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from app.core.document_store import Document, save_document, save_item
+from app.core.document_store import Document, DocumentLabels, LabelDef, save_document, save_item
 from app.core.model import Attachment, Priority, Requirement, RequirementType, Status, Verification
 from app.core.requirement_export import build_requirement_export, render_requirements_docx
 
@@ -289,3 +289,37 @@ def test_render_requirements_docx_respects_selected_fields(tmp_path: Path) -> No
         assert "Important statement" in document_xml
         assert "Internal rationale" not in document_xml
         assert "Owner" not in document_xml
+
+
+def test_render_requirements_docx_colorizes_labels_in_legend_and_cards(tmp_path: Path) -> None:
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("API", "API label", "#123456")]),
+    )
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=9,
+        title="Colorized",
+        statement="Important statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="alice",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        labels=["API"],
+        doc_prefix="SYS",
+        rid="SYS9",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, colorize_label_backgrounds=True)
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "API" in document_xml
+        assert 'w:fill="123456"' in document_xml

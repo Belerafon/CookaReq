@@ -135,6 +135,104 @@ def test_editor_panel_buttons_place_cancel_after_save(wx_app):
 
 
 @pytest.mark.gui_smoke
+def test_editor_panel_load_resets_scroll_to_top(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.model import Requirement
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None, size=(480, 420))
+    try:
+        panel = EditorPanel(frame)
+        frame.Show()
+
+        first = Requirement.from_mapping(
+            {
+                "id": 100,
+                "statement": "First requirement",
+                "notes": "\n".join(f"line {idx}" for idx in range(120)),
+                "labels": ["tag-a"],
+            }
+        )
+        panel.load(first)
+        wx.Yield()
+
+        panel._content_panel.Scroll(0, 200)
+        wx.Yield()
+        assert panel._content_panel.GetViewStart()[1] > 0
+
+        second = Requirement.from_mapping(
+            {
+                "id": 101,
+                "statement": "Second requirement",
+                "labels": ["tag-b"],
+            }
+        )
+        panel.load(second)
+        wx.Yield()
+
+        assert panel._content_panel.GetViewStart()[1] == 0
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_editor_panel_compact_fields_are_inline(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        frame.Show()
+        wx.Yield()
+
+        inline_controls = {
+            "id": panel.fields["id"],
+            "modified_at": panel.fields["modified_at"],
+            "owner": panel.fields["owner"],
+            "revision": panel.fields["revision"],
+            "approved_at": panel.approved_picker,
+        }
+
+        for control in inline_controls.values():
+            sizer = control.GetContainingSizer()
+            assert sizer is not None
+            assert sizer.GetOrientation() == wx.HORIZONTAL
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_editor_panel_labels_above_source_and_acceptance_below_source(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None, size=(700, 900))
+    try:
+        panel = EditorPanel(frame)
+        frame.Show()
+        panel.Layout()
+        panel.FitInside()
+        wx.Yield()
+
+        labels_y = panel.labels_panel.GetScreenPosition().y
+        statement_y = panel.fields["statement"].GetScreenPosition().y
+        source_y = panel.fields["source"].GetScreenPosition().y
+        acceptance_y = panel.fields["acceptance"].GetScreenPosition().y
+
+        assert statement_y < labels_y < source_y
+        assert acceptance_y > source_y
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
 def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
     pytest.importorskip("wx")
     import wx

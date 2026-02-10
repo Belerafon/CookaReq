@@ -77,6 +77,8 @@ class EditorPanel(wx.Panel):
         self._insert_formula_btn: wx.Button | None = None
         self._insert_heading_btn: wx.Button | None = None
         self._insert_bold_btn: wx.Button | None = None
+        self._label_defs: list[LabelDef] = []
+        self._labels_allow_freeform = False
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -90,6 +92,8 @@ class EditorPanel(wx.Panel):
         content = self._content_panel
         content_sizer = wx.BoxSizer(wx.VERTICAL)
         border = dip(self, 5)
+
+        compact_text_fields = {"id"}
 
         for spec in config.text_fields:
             label = wx.StaticText(content, label=labels[spec.name])
@@ -143,8 +147,6 @@ class EditorPanel(wx.Panel):
                 )
                 row.Add(bold_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
                 self._insert_bold_btn = bold_btn
-            content_sizer.Add(row, 0, wx.TOP, border)
-
             style = wx.TE_MULTILINE if spec.multiline else 0
             ctrl = wx.TextCtrl(content, style=style)
             if spec.multiline:
@@ -152,8 +154,15 @@ class EditorPanel(wx.Panel):
             if spec.name == "statement":
                 ctrl.Bind(wx.EVT_TEXT, self._on_statement_text_change)
             self.fields[spec.name] = ctrl
-            # Multiline controls are sized manually, so the sizer receives no grow factor.
-            content_sizer.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
+
+            if spec.name in compact_text_fields:
+                row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
+            else:
+                content_sizer.Add(row, 0, wx.TOP, border)
+                # Multiline controls are sized manually, so the sizer receives no grow factor.
+                content_sizer.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
+
             if spec.hint:
                 ctrl.SetHint(_(spec.hint))
             if spec.name == "id":
@@ -170,6 +179,8 @@ class EditorPanel(wx.Panel):
                 preview.Hide()
                 self._statement_preview = preview
                 content_sizer.Add(preview, 1, wx.EXPAND | wx.TOP, border)
+                labels_sizer = self._create_labels_section(content)
+                content_sizer.Add(labels_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
         grid.AddGrowableCol(0, 1)
@@ -192,13 +203,13 @@ class EditorPanel(wx.Panel):
             else:
                 row = wx.BoxSizer(wx.HORIZONTAL)
                 row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-                row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-                container.Add(row, 0, wx.TOP, border)
                 ctrl = wx.TextCtrl(content)
                 if spec.hint:
                     ctrl.SetHint(_(spec.hint))
                 self.fields[spec.name] = ctrl
-                container.Add(ctrl, 0, wx.EXPAND | wx.TOP, border)
+                row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+                container.Add(row, 0, wx.EXPAND | wx.TOP, border)
 
             grid.Add(container, 1, wx.EXPAND)
 
@@ -229,19 +240,17 @@ class EditorPanel(wx.Panel):
         content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         # approval date and notes ---------------------------------------
-        container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(content, label=_("Approved at"))
         help_btn = make_help_button(content, self._help_texts["approved_at"])
         row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
-        container.Add(row, 0, wx.TOP, border)
         self.approved_picker = wx.adv.DatePickerCtrl(
             content,
             style=wx.adv.DP_ALLOWNONE,
         )
-        container.Add(self.approved_picker, 0, wx.TOP, border)
-        content_sizer.Add(container, 0, wx.TOP, border)
+        row.Add(self.approved_picker, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+        row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
 
         container = wx.BoxSizer(wx.VERTICAL)
         row = wx.BoxSizer(wx.HORIZONTAL)
@@ -260,30 +269,6 @@ class EditorPanel(wx.Panel):
         links_grid.AddGrowableCol(0, 1)
         links_grid.AddGrowableCol(1, 1)
         links_grid.AddGrowableRow(0, 1)
-
-        # labels section -------------------------------------------------
-        box_sizer = HelpStaticBox(
-            content,
-            _("Labels"),
-            self._help_texts["labels"],
-        )
-        box = box_sizer.GetStaticBox()
-        row = wx.BoxSizer(wx.HORIZONTAL)
-        self.labels_panel = wx.Panel(box)
-        self.labels_panel.SetBackgroundColour(box.GetBackgroundColour())
-        self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
-        # Limit the label panel height to a single line.
-        line_height = self.GetCharHeight() + 6
-        self.labels_panel.SetMinSize((-1, line_height))
-        self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
-        row.Add(self.labels_panel, 1, wx.EXPAND | wx.RIGHT, 5)
-        edit_labels_btn = wx.Button(box, label=_("Edit..."))
-        edit_labels_btn.Bind(wx.EVT_BUTTON, self._on_labels_click)
-        row.Add(edit_labels_btn, 0)
-        box_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
-        links_grid.Add(box_sizer, 0, wx.EXPAND | wx.TOP, border)
-        self._label_defs: list[LabelDef] = []
-        self._labels_allow_freeform = False
 
         # generic links section ----------------------------------------
         ln_sizer = self._create_links_section(
@@ -339,6 +324,32 @@ class EditorPanel(wx.Panel):
         """Layout both the scrollable content and the outer panel."""
         self._content_panel.Layout()
         return super().Layout()
+
+    def _create_labels_section(self, content: wx.Window) -> wx.StaticBoxSizer:
+        """Create compact labels selector section placed near requirement text."""
+        box_sizer = HelpStaticBox(
+            content,
+            _("Labels"),
+            self._help_texts["labels"],
+        )
+        box = box_sizer.GetStaticBox()
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self.labels_panel = wx.Panel(box)
+        self.labels_panel.SetBackgroundColour(box.GetBackgroundColour())
+        self.labels_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
+        line_height = self.GetCharHeight() + 6
+        self.labels_panel.SetMinSize((-1, line_height))
+        self.labels_panel.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
+        row.Add(self.labels_panel, 1, wx.EXPAND | wx.RIGHT, 5)
+        edit_labels_btn = wx.Button(box, label=_("Edit..."))
+        edit_labels_btn.Bind(wx.EVT_BUTTON, self._on_labels_click)
+        row.Add(edit_labels_btn, 0)
+        box_sizer.Add(row, 0, wx.EXPAND | wx.TOP, dip(self, 5))
+        return box_sizer
+
+    def _reset_scroll_position(self) -> None:
+        """Return the editor viewport to the top of the form."""
+        self._content_panel.Scroll(0, 0)
 
     # helpers -------------------------------------------------------------
     def set_service(self, service: RequirementsService | None) -> None:
@@ -733,6 +744,7 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
+        self._reset_scroll_position()
         self.mark_clean()
 
     def load(
@@ -812,6 +824,7 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
         self._on_id_change()
+        self._reset_scroll_position()
         self.mark_clean()
 
     def clone(self, new_id: int) -> None:

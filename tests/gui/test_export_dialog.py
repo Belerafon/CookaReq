@@ -24,6 +24,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert not dialog.colorize_label_backgrounds_checkbox.IsEnabled()
         assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(1)
@@ -34,6 +35,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
         assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(2)
@@ -44,6 +46,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert dialog.docx_formula_box.IsShown()
+        assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
 
         dialog.format_choice.SetSelection(0)
         dialog._update_text_options_visibility()
@@ -53,6 +56,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.txt_options_box.IsShown()
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
+        assert not dialog.colorize_label_backgrounds_checkbox.IsEnabled()
         assert dialog._selected_export_scope() == "all"
     finally:
         dialog.Destroy()
@@ -130,12 +134,15 @@ def test_export_dialog_default_scope_from_context(wx_app):
         assert plan is None
 
         dialog.file_picker.SetPath("/tmp/export.txt")
+        dialog.colorize_label_backgrounds_checkbox.SetValue(True)
         plan = dialog.get_plan()
         assert plan is not None
         assert plan.export_scope == "all"
+        assert plan.colorize_label_backgrounds is True
 
         state = dialog.get_state()
         assert state.export_scope == "all"
+        assert state.colorize_label_backgrounds is True
     finally:
         dialog.Destroy()
         wx_app.Yield()

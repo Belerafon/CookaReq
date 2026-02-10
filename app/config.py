@@ -75,6 +75,7 @@ class ExportDialogState:
     card_sort_mode: str | None
     card_label_group_mode: str | None = None
     export_scope: str | None = None
+    colorize_label_backgrounds: bool = False
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -496,6 +497,9 @@ class ConfigManager:
         export_scope = payload.get("export_scope")
         if not isinstance(export_scope, str):
             export_scope = None
+        colorize_label_backgrounds = payload.get("colorize_label_backgrounds")
+        if not isinstance(colorize_label_backgrounds, bool):
+            colorize_label_backgrounds = False
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
@@ -506,6 +510,7 @@ class ConfigManager:
             card_sort_mode=card_sort_mode,
             card_label_group_mode=card_label_group_mode,
             export_scope=export_scope,
+            colorize_label_backgrounds=colorize_label_backgrounds,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -526,6 +531,7 @@ class ConfigManager:
             "card_sort_mode": state.card_sort_mode,
             "card_label_group_mode": state.card_label_group_mode,
             "export_scope": state.export_scope,
+            "colorize_label_backgrounds": state.colorize_label_backgrounds,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

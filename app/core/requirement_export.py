@@ -28,11 +28,12 @@ import markdown
 import docx
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches
+from docx.shared import Inches, RGBColor
 
 from ..i18n import _
 from ..util.time import format_datetime_for_humans
 from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
+from .document_store import label_color as resolved_label_color
 from .markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
 from .model import Requirement
 
@@ -351,7 +352,16 @@ def _group_requirement_views_by_labels(
     return groups
 
 
-def _collect_used_label_rows(export: RequirementExport) -> list[tuple[str, str]]:
+def _label_palette(export: RequirementExport) -> dict[str, str]:
+    palette: dict[str, str] = {}
+    for doc_export in export.documents:
+        for label in doc_export.document.labels.defs:
+            palette[label.key.casefold()] = resolved_label_color(label)
+    return palette
+
+
+def _collect_used_label_rows(export: RequirementExport) -> list[tuple[str, str, str | None]]:
+    palette = _label_palette(export)
     label_titles: dict[str, str] = {}
     for doc_export in export.documents:
         for label in doc_export.document.labels.defs:
@@ -361,10 +371,40 @@ def _collect_used_label_rows(export: RequirementExport) -> list[tuple[str, str]]
     for doc_export in export.documents:
         for view in doc_export.requirements:
             used_labels.update(_normalized_labels(view.requirement))
-    rows: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str | None]] = []
     for label in sorted(used_labels, key=str.casefold):
-        rows.append((label, label_titles.get(label, "")))
+        rows.append((label, label_titles.get(label, ""), palette.get(label.casefold())))
     return rows
+
+
+def _normalize_hex_color(color: str | None) -> str | None:
+    if not color:
+        return None
+    value = color.strip()
+    if len(value) == 7 and value.startswith("#"):
+        digits = value[1:]
+        if all(ch in "0123456789abcdefABCDEF" for ch in digits):
+            return digits.upper()
+    return None
+
+
+def _text_color_for_background(hex_color: str) -> str:
+    red = int(hex_color[0:2], 16)
+    green = int(hex_color[2:4], 16)
+    blue = int(hex_color[4:6], 16)
+    luminance = (0.299 * red) + (0.587 * green) + (0.114 * blue)
+    return "000000" if luminance >= 150 else "FFFFFF"
+
+
+def _render_html_label_chip(label: str, color: str | None) -> str:
+    background = _normalize_hex_color(color)
+    if not background:
+        return f"<span class='label-chip'>{_escape_html(label)}</span>"
+    text_color = _text_color_for_background(background)
+    return (
+        f"<span class='label-chip' style='background:#{background};color:#{text_color};border-color:#{background};'>"
+        f"{_escape_html(label)}</span>"
+    )
 
 def _format_markdown_table_cell(text: str) -> str:
     normalized = text.strip("\n")
@@ -679,6 +719,7 @@ def render_requirements_html(
     group_by_labels: bool = False,
     unlabeled_group_title: str | None = None,
     label_group_mode: str = "per_label",
+    colorize_label_backgrounds: bool = False,
 ) -> str:
     """Render export data as standalone HTML."""
     selected_fields = _normalize_export_fields(fields)
@@ -702,6 +743,7 @@ def render_requirements_html(
         "table.meta-table .row-label{font-weight:bold;margin-bottom:4px;}",
         "ul.links{margin:8px 0 0 16px;}",
         "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
+        ".label-chip{display:inline-block;padding:2px 8px;border:1px solid #C8CDD3;border-radius:999px;font-size:0.8125rem;font-weight:600;line-height:1.2;background:#f5f6f8;color:#1f2328;margin:0 6px 4px 0;}",
         "</style>",
         "</head><body>",
         f"<h1>{_escape_html(heading)}</h1>",
@@ -712,14 +754,20 @@ def render_requirements_html(
         if label_rows:
             parts.append(f"<h2>{_escape_html(_('Labels'))}</h2>")
             parts.append("<table class='meta-table'><tbody>")
-            for label, description in label_rows:
+            for label, description, color in label_rows:
+                if colorize_label_backgrounds:
+                    label_html = _render_html_label_chip(label, color)
+                else:
+                    label_html = f"<strong>{_escape_html(label)}</strong>"
                 parts.append(
                     "<tr>"
-                    f"<td><strong>{_escape_html(label)}</strong></td>"
+                    f"<td>{label_html}</td>"
                     f"<td>{_escape_html(description)}</td>"
                     "</tr>"
                 )
             parts.append("</tbody></table>")
+
+    palette = _label_palette(export) if colorize_label_backgrounds else {}
 
     for doc in export.documents:
         parts.append(f"<section class='document' id='doc-{_escape_html(doc.document.prefix)}'>")
@@ -754,6 +802,22 @@ def render_requirements_html(
                     )
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
+                        continue
+                    if field == "labels" and colorize_label_backgrounds:
+                        labels = _normalized_labels(req)
+                        if labels:
+                            chips = "".join(
+                                _render_html_label_chip(name, palette.get(name.casefold()))
+                                for name in labels
+                            )
+                            field_rows.append((_(label), chips, False))
+                            continue
+                        content = _resolve_field_content(
+                            None,
+                            empty_field_placeholder=empty_field_placeholder,
+                        )
+                        if content is not None:
+                            field_rows.append((_(label), _escape_html(content), True))
                         continue
                     value = _meta_field_value(req, field)
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
@@ -1014,6 +1078,39 @@ def _docx_add_labeled_content(
     )
 
 
+def _docx_style_run_as_label_chip(run: docx.text.run.Run, color: str | None) -> None:
+    hex_color = _normalize_hex_color(color)
+    if not hex_color:
+        return
+    run.font.color.rgb = RGBColor.from_string(_text_color_for_background(hex_color))
+    run_properties = run._r.get_or_add_rPr()
+    shading = run_properties.find(qn("w:shd"))
+    if shading is None:
+        shading = OxmlElement("w:shd")
+        run_properties.append(shading)
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), hex_color)
+
+
+def _docx_add_label_chips_line(
+    cell: docx.table._Cell,
+    *,
+    label_text: str,
+    labels: Sequence[str],
+    palette: Mapping[str, str],
+) -> None:
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    if label_text:
+        paragraph.add_run(f"{_(label_text)}: ")
+    for index, label in enumerate(labels):
+        run = paragraph.add_run(f" {label} ")
+        _docx_style_run_as_label_chip(run, palette.get(label.casefold()))
+        if index + 1 < len(labels):
+            paragraph.add_run(" ")
+
+
 def _docx_apply_row_shading(row: docx.table._Row, *, fill: str) -> None:
     for cell in row.cells:
         cell_properties = cell._tc.get_or_add_tcPr()
@@ -1036,6 +1133,7 @@ def render_requirements_docx(
     group_by_labels: bool = False,
     unlabeled_group_title: str | None = None,
     label_group_mode: str = "per_label",
+    colorize_label_backgrounds: bool = False,
 ) -> bytes:
     """Render export data as a DOCX document."""
     selected_fields = _normalize_export_fields(fields)
@@ -1046,15 +1144,24 @@ def render_requirements_docx(
         f"{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
     image_width = 5.5
+    palette = _label_palette(export) if colorize_label_backgrounds else {}
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
         if label_rows:
             document.add_heading(_('Labels'), level=1)
             label_table = document.add_table(rows=0, cols=2)
             label_table.style = "Light Grid"
-            for row_index, (label, description) in enumerate(label_rows):
+            for row_index, (label, description, color) in enumerate(label_rows):
                 row = label_table.add_row()
-                row.cells[0].text = label
+                if colorize_label_backgrounds:
+                    _docx_add_label_chips_line(
+                        row.cells[0],
+                        label_text="",
+                        labels=[label],
+                        palette={label.casefold(): color or ""},
+                    )
+                else:
+                    row.cells[0].text = label
                 row.cells[1].text = description
                 if row_index % 2 == 1:
                     _docx_apply_row_shading(row, fill="F2F2F2")
@@ -1084,18 +1191,30 @@ def render_requirements_docx(
             for view in group_views:
                 req = view.requirement
                 document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
-                field_rows: list[tuple[str, str]] = []
-                field_rows.append(("Requirement RID", req.rid))
+                field_rows: list[tuple[str, str | None, tuple[str, ...] | None]] = []
+                field_rows.append(("Requirement RID", req.rid, None))
                 if _should_render_field(selected_fields, "title"):
-                    field_rows.append(("Title", req.title or _('(no title)')))
+                    field_rows.append(("Title", req.title or _('(no title)'), None))
                 for field, label, _use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
+                        continue
+                    if field == "labels" and colorize_label_backgrounds:
+                        labels = _normalized_labels(req)
+                        if labels:
+                            field_rows.append((label, None, labels))
+                            continue
+                        content = _resolve_field_content(
+                            None,
+                            empty_field_placeholder=empty_field_placeholder,
+                        )
+                        if content is not None:
+                            field_rows.append((label, content, None))
                         continue
                     value = _meta_field_value(req, field)
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    field_rows.append((label, content))
+                    field_rows.append((label, content, None))
 
                 attachment_map = {att.id: att.path for att in req.attachments}
                 for field, label in _EXPORT_SECTION_FIELDS:
@@ -1105,22 +1224,30 @@ def render_requirements_docx(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    field_rows.append((label, content))
+                    field_rows.append((label, content, None))
                 if field_rows:
                     table = document.add_table(rows=0, cols=1)
                     table.style = "Light Grid"
-                    for row_index, (label, content) in enumerate(field_rows):
+                    for row_index, (label, content, label_chips) in enumerate(field_rows):
                         row = table.add_row()
-                        _docx_add_labeled_content(
-                            row.cells[0],
-                            label,
-                            content,
-                            attachment_map=attachment_map,
-                            base_path=export.base_path,
-                            doc_prefix=req.doc_prefix,
-                            image_width=image_width,
-                            formula_renderer=formula_renderer,
-                        )
+                        if label_chips is not None:
+                            _docx_add_label_chips_line(
+                                row.cells[0],
+                                label_text=label,
+                                labels=label_chips,
+                                palette=palette,
+                            )
+                        else:
+                            _docx_add_labeled_content(
+                                row.cells[0],
+                                label,
+                                content,
+                                attachment_map=attachment_map,
+                                base_path=export.base_path,
+                                doc_prefix=req.doc_prefix,
+                                image_width=image_width,
+                                formula_renderer=formula_renderer,
+                            )
                         if row_index % 2 == 1:
                             _docx_apply_row_shading(row, fill="F2F2F2")
                         else:

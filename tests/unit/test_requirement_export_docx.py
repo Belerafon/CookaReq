@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -323,3 +324,58 @@ def test_render_requirements_docx_colorizes_labels_in_legend_and_cards(tmp_path:
         document_xml = archive.read("word/document.xml").decode("utf-8")
         assert "API" in document_xml
         assert 'w:fill="123456"' in document_xml
+        assert '<w:t xml:space="preserve"> API </w:t>' in document_xml
+
+
+def test_render_requirements_docx_bolds_only_field_labels(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=10,
+        title="Plain title",
+        statement="Plain statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="alice",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS10",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, fields=["title", "statement"])
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml")
+
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    root = ET.fromstring(document_xml)
+
+    title_label_bold: bool | None = None
+    title_value_bold: bool | None = None
+    statement_label_bold: bool | None = None
+    statement_value_bold: bool | None = None
+
+    for run in root.findall('.//w:r', ns):
+        text_value = ''.join(node.text or '' for node in run.findall('w:t', ns))
+        if not text_value:
+            continue
+        has_bold = run.find('w:rPr/w:b', ns) is not None
+        if text_value == 'Title:':
+            title_label_bold = has_bold
+        elif text_value == 'Plain title':
+            title_value_bold = has_bold
+        elif text_value == 'Requirement text:':
+            statement_label_bold = has_bold
+        elif text_value == 'Plain statement':
+            statement_value_bold = has_bold
+
+    assert title_label_bold is True
+    assert statement_label_bold is True
+    assert title_value_bold is False
+    assert statement_value_bold is False

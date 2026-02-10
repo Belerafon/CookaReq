@@ -81,7 +81,10 @@ so you know which modules are involved and which regressions to guard against.
   rendered in HTML and DOCX outputs (plus Markdown in CLI/core usage). The
   dialog also lets users toggle label background coloring for HTML and DOCX
   cards so label chips in both the legend and requirement metadata can match
-  configured document label colors. Source sorting uses a natural numeric order (например, `1.2` идет перед `1.12`) to
+  configured document label colors; DOCX chips use non-breaking inner spacing
+  so colored padding remains visible on both sides of the label text. DOCX
+  metadata rows explicitly bold only field labels while values remain regular
+  weight for parity with HTML cards. Source sorting uses a natural numeric order (например, `1.2` идет перед `1.12`) to
   match the list view behavior. The GUI export flow writes
   outputs into a dedicated directory and copies the document `assets/` folder
   alongside the export file, then prompts the user to open the export folder

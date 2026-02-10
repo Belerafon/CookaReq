@@ -992,7 +992,7 @@ def _docx_add_markdown(
                 if header_cells:
                     col_count = len(header_cells)
                     table = doc.add_table(rows=0, cols=col_count)
-                    table.style = "Light Grid"
+                    table.style = "Table Grid"
                     header_row = table.add_row().cells
                     for col_idx, cell in enumerate(header_cells):
                         header_row[col_idx].text = strip_markdown(cell)
@@ -1054,7 +1054,8 @@ def _docx_add_labeled_content(
         start_paragraph = container.paragraphs[0]
     if _docx_needs_separate_label(normalized_content):
         paragraph = start_paragraph or container.add_paragraph()
-        paragraph.add_run(label_text)
+        label_run = paragraph.add_run(label_text)
+        label_run.bold = True
         _docx_add_markdown(
             container,
             normalized_content,
@@ -1065,16 +1066,20 @@ def _docx_add_labeled_content(
             formula_renderer=formula_renderer,
         )
         return
-    combined = f"{label_text} {normalized_content}"
+
+    paragraph = start_paragraph or container.add_paragraph()
+    label_run = paragraph.add_run(label_text)
+    label_run.bold = True
+    paragraph.add_run(" ")
     _docx_add_markdown(
         container,
-        combined,
+        normalized_content,
         attachment_map=attachment_map,
         base_path=base_path,
         doc_prefix=doc_prefix,
         image_width=image_width,
         formula_renderer=formula_renderer,
-        start_paragraph=start_paragraph,
+        start_paragraph=paragraph,
     )
 
 
@@ -1105,7 +1110,7 @@ def _docx_add_label_chips_line(
     if label_text:
         paragraph.add_run(f"{_(label_text)}: ")
     for index, label in enumerate(labels):
-        run = paragraph.add_run(f" {label} ")
+        run = paragraph.add_run(f"\u00A0{label}\u00A0")
         _docx_style_run_as_label_chip(run, palette.get(label.casefold()))
         if index + 1 < len(labels):
             paragraph.add_run(" ")
@@ -1150,7 +1155,7 @@ def render_requirements_docx(
         if label_rows:
             document.add_heading(_('Labels'), level=1)
             label_table = document.add_table(rows=0, cols=2)
-            label_table.style = "Light Grid"
+            label_table.style = "Table Grid"
             for row_index, (label, description, color) in enumerate(label_rows):
                 row = label_table.add_row()
                 if colorize_label_backgrounds:
@@ -1227,7 +1232,7 @@ def render_requirements_docx(
                     field_rows.append((label, content, None))
                 if field_rows:
                     table = document.add_table(rows=0, cols=1)
-                    table.style = "Light Grid"
+                    table.style = "Table Grid"
                     for row_index, (label, content, label_chips) in enumerate(field_rows):
                         row = table.add_row()
                         if label_chips is not None:

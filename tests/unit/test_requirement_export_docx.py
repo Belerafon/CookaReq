@@ -327,6 +327,62 @@ def test_render_requirements_docx_colorizes_labels_in_legend_and_cards(tmp_path:
         assert '<w:t xml:space="preserve"> API </w:t>' in document_xml
 
 
+def test_render_requirements_docx_bolds_labels_field_caption_when_using_chips(tmp_path: Path) -> None:
+    doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("api", "API", "#123456")]),
+    )
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=11,
+        title="Has labels",
+        statement="Text",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="alice",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        labels=["API"],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS11",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(
+        export,
+        fields=["labels"],
+        colorize_label_backgrounds=True,
+    )
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml")
+
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    root = ET.fromstring(document_xml)
+
+    labels_caption_bold: bool | None = None
+    label_chip_bold: bool | None = None
+
+    for run in root.findall('.//w:r', ns):
+        text_value = ''.join(node.text or '' for node in run.findall('w:t', ns))
+        if not text_value:
+            continue
+        has_bold = run.find('w:rPr/w:b', ns) is not None
+        normalized = text_value.strip()
+        if normalized == 'Labels:':
+            labels_caption_bold = has_bold
+        elif normalized == 'API':
+            label_chip_bold = has_bold
+
+    assert labels_caption_bold is True
+    assert label_chip_bold is False
+
+
 def test_render_requirements_docx_bolds_only_field_labels(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

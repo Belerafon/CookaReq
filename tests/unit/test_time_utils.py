@@ -1,10 +1,11 @@
 """Tests for time utilities."""
 
+import datetime
 import re
 
 import pytest
 
-from app.util.time import local_now_str, normalize_timestamp, utc_now_iso
+from app.util.time import format_datetime_for_humans, local_now_str, normalize_timestamp, utc_now_iso
 
 pytestmark = pytest.mark.unit
 
@@ -17,6 +18,15 @@ def test_utc_now_iso_format():
 def test_local_now_str_format():
     value = local_now_str()
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", value)
+
+
+def test_format_datetime_for_humans_converts_to_local_timezone():
+    value = format_datetime_for_humans(
+        datetime.datetime(2026, 2, 10, 7, 5, 3, 1866, tzinfo=datetime.UTC)
+    )
+    assert "T" not in value
+    assert "." not in value
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2})", value)
 
 
 @pytest.mark.parametrize(

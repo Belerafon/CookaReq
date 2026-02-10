@@ -31,6 +31,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches
 
 from ..i18n import _
+from ..util.time import format_datetime_for_humans
 from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
 from .markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
 from .model import Requirement
@@ -373,6 +374,10 @@ def _format_markdown_table_cell(text: str) -> str:
     return "<br>".join(normalized.splitlines())
 
 
+def _render_generated_at(export: RequirementExport) -> str:
+    return format_datetime_for_humans(export.generated_at)
+
+
 def render_requirements_markdown(
     export: RequirementExport,
     *,
@@ -388,7 +393,7 @@ def render_requirements_markdown(
     heading = title or _('Requirements export')
     parts: list[str] = [f"# {heading}", ""]
     parts.append(
-        f"_{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
+        f"_{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
     parts.append("")
     if _should_render_field(selected_fields, "labels"):
@@ -700,7 +705,7 @@ def render_requirements_html(
         "</style>",
         "</head><body>",
         f"<h1>{_escape_html(heading)}</h1>",
-        f"<p><em>{_escape_html(_('Generated at'))} {export.generated_at.isoformat()} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
+        f"<p><em>{_escape_html(_('Generated at'))} {_render_generated_at(export)} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
     ]
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
@@ -1038,7 +1043,7 @@ def render_requirements_docx(
     document = docx.Document()
     document.add_heading(heading, level=0)
     document.add_paragraph(
-        f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
+        f"{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
     image_width = 5.5
     if _should_render_field(selected_fields, "labels"):
@@ -1190,7 +1195,7 @@ def render_requirements_pdf(
     story.append(
         Paragraph(
             xml_escape(
-                f"{_('Generated at')} {export.generated_at.isoformat()} {_('for documents')}: {', '.join(export.selected_prefixes)}."
+                f"{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}."
             ),
             styles["BodyText"],
         )

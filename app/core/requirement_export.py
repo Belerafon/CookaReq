@@ -1108,7 +1108,8 @@ def _docx_add_label_chips_line(
     cell.text = ""
     paragraph = cell.paragraphs[0]
     if label_text:
-        paragraph.add_run(f"{_(label_text)}: ")
+        label_run = paragraph.add_run(f"{_(label_text)}: ")
+        label_run.bold = True
     for index, label in enumerate(labels):
         run = paragraph.add_run(f"\u00A0{label}\u00A0")
         _docx_style_run_as_label_chip(run, palette.get(label.casefold()))

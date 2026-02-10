@@ -36,16 +36,6 @@
       ]
     },
     {
-      "name": "acceptance",
-      "control": "text",
-      "multiline": true,
-      "help": [
-        "Acceptance criteria explain how to verify that the requirement is satisfied.",
-        "They may include test scenarios, measurable thresholds or review checklists.",
-        "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance."
-      ]
-    },
-    {
       "name": "conditions",
       "control": "text",
       "multiline": true,
@@ -83,6 +73,16 @@
         "Origin of the requirement such as a customer request, regulation or design document.",
         "Recording the source explains why the requirement exists and where to look for additional context.",
         "This trace is essential when validating compliance or revisiting negotiations."
+      ]
+    },
+    {
+      "name": "acceptance",
+      "control": "text",
+      "multiline": true,
+      "help": [
+        "Acceptance criteria explain how to verify that the requirement is satisfied.",
+        "They may include test scenarios, measurable thresholds or review checklists.",
+        "Well-defined criteria let QA teams plan tests and give product owners a clear basis for acceptance."
       ]
     }
   ],

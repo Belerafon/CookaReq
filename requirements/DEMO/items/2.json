@@ -1,23 +1,29 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 2,
   "labels": [
     "software"
   ],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "links": [
+    {
+      "fingerprint": "77f1ba46e800264e56facfbd4bb2d47634d77b323c3e9b4ac10910df1ec4fb44",
+      "rid": "DEMO1"
+    }
+  ],
+  "modified_at": "2026-01-16 10:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "UX Engineer",
   "priority": "high",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo package must describe the GUI layer responsibilities, key panels and controllers, including their APIs and interactions with the agent and document_store.",
-  "status": "draft",
-  "title": "GUI responsibilities",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #02",
+  "statement": "## Demo focus\nGUI responsibilities: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **UX Engineer**\n- Requirement RID: `DEMO2`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `GUI responsibilities` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "in_review",
+  "title": "GUI responsibilities — expanded demo",
+  "type": "constraint",
+  "verification": "demonstration"
 }

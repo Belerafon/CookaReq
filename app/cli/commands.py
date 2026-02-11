@@ -424,7 +424,7 @@ def _resolve_optional_field(
 ) -> Any:
     sentinel = object()
     arg_value = getattr(args, name, sentinel)
-    if arg_value is not sentinel:
+    if arg_value not in (sentinel, None):
         return arg_value
     return base.get(name, default)
 
@@ -434,9 +434,7 @@ def _resolve_labels(
 ) -> list[str]:
     sentinel = object()
     arg_value = getattr(args, "labels", sentinel)
-    if arg_value is not sentinel:
-        if arg_value is None:
-            return list(default)
+    if arg_value not in (sentinel, None, ""):
         if isinstance(arg_value, str):
             return _split_csv(arg_value)
         if isinstance(arg_value, (list, tuple)):
@@ -647,7 +645,13 @@ def cmd_item_edit(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
     """Update an existing requirement without changing its RID."""
-    prefix, item_id = parse_rid(args.rid)
+    try:
+        prefix, item_id = parse_rid(args.rid)
+    except ValueError:
+        sys.stdout.write(
+            _("invalid requirement identifier: {rid}\n").format(rid=args.rid)
+        )
+        return
     service = _service_for(context, args.directory)
     try:
         doc = service.get_document(prefix)
@@ -771,27 +775,26 @@ def cmd_item_delete(
     sys.stdout.write(f"{canonical}\n")
 
 
-def _add_item_payload_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_item_payload_arguments(
+    parser: argparse.ArgumentParser, *, for_edit: bool = False
+) -> None:
     """Add common requirement field arguments to ``parser``."""
     parser.add_argument("--title", help=_("item title"))
     parser.add_argument("--statement", help=_("item statement"))
-    parser.add_argument(
-        "--type",
-        choices=REQ_TYPE_CHOICES,
-        default=RequirementType.REQUIREMENT.value,
-    )
-    parser.add_argument(
-        "--status", choices=STATUS_CHOICES, default=Status.DRAFT.value
-    )
+    type_default = None if for_edit else RequirementType.REQUIREMENT.value
+    status_default = None if for_edit else Status.DRAFT.value
+    priority_default = None if for_edit else Priority.MEDIUM.value
+    verification_default = None if for_edit else Verification.ANALYSIS.value
+
+    parser.add_argument("--type", choices=REQ_TYPE_CHOICES, default=type_default)
+    parser.add_argument("--status", choices=STATUS_CHOICES, default=status_default)
     parser.add_argument("--owner", default="")
-    parser.add_argument(
-        "--priority", choices=PRIORITY_CHOICES, default=Priority.MEDIUM.value
-    )
+    parser.add_argument("--priority", choices=PRIORITY_CHOICES, default=priority_default)
     parser.add_argument("--source", default="")
     parser.add_argument(
         "--verification",
         choices=VERIFICATION_CHOICES,
-        default=Verification.ANALYSIS.value,
+        default=verification_default,
     )
     parser.add_argument("--acceptance")
     parser.add_argument("--conditions")
@@ -817,13 +820,13 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     add_p = sub.add_parser("add", help=_("create new item"))
     add_p.add_argument("directory", help=_("requirements root"))
     add_p.add_argument("prefix", help=_("document prefix"))
-    _add_item_payload_arguments(add_p)
+    _add_item_payload_arguments(add_p, for_edit=False)
     add_p.set_defaults(func=cmd_item_add)
 
     edit_p = sub.add_parser("edit", help=_("edit existing item"))
     edit_p.add_argument("directory", help=_("requirements root"))
     edit_p.add_argument("rid", help=_("requirement identifier"))
-    _add_item_payload_arguments(edit_p)
+    _add_item_payload_arguments(edit_p, for_edit=True)
     edit_p.set_defaults(func=cmd_item_edit)
 
     move_p = sub.add_parser("move", help=_("move item"))

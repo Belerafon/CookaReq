@@ -1,21 +1,29 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 7,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "system"
+  ],
+  "links": [
+    {
+      "fingerprint": "5d29c04ce02a84a93f2aa205bca07a37eb29835ed61950be96e996030c99b61d",
+      "rid": "DEMO6"
+    }
+  ],
+  "modified_at": "2026-01-16 15:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "System Analyst",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "Demo materials must list auxiliary modules (settings, localisation, logging), describe usage rules, and point out potential refactoring targets.",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #07",
+  "statement": "## Demo focus\nShared services: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **System Analyst**\n- Requirement RID: `DEMO7`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Shared services` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
   "status": "draft",
-  "title": "Shared services",
-  "type": "requirement",
+  "title": "Shared services — expanded demo",
+  "type": "interface",
   "verification": "analysis"
 }

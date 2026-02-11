@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 11,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
-  "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo must document the structure of the requirements/ directory, RID file formats, naming rules, and the conflict-handling mechanism during saves.",
-  "status": "draft",
-  "title": "Requirements repository",
-  "type": "requirement",
+  "labels": [
+    "software",
+    "system"
+  ],
+  "links": [
+    {
+      "fingerprint": "215ade7ecb4965455982ecf8d3566c744d695e84792c6f6a612a8479343c1ce9",
+      "rid": "DEMO10"
+    }
+  ],
+  "modified_at": "2026-01-16 19:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Release Engineer",
+  "priority": "high",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #11",
+  "statement": "## Demo focus\nRequirements repository: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Release Engineer**\n- Requirement RID: `DEMO11`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Requirements repository` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "in_review",
+  "title": "Requirements repository — expanded demo",
+  "type": "constraint",
   "verification": "analysis"
 }

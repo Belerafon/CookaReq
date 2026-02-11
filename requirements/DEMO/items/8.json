@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 8,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "integration",
+    "test"
+  ],
+  "links": [
+    {
+      "fingerprint": "b5376452145c6a4b167eb6757bd05de8545c1205dd66046ae42802ffc90170ed",
+      "rid": "DEMO7"
+    }
+  ],
+  "modified_at": "2026-01-16 16:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "QA Engineer",
   "priority": "high",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo package must include at least three end-to-end scenarios (open project, edit requirement, generate report) with the sequence of cross-layer interactions.",
-  "status": "draft",
-  "title": "End-to-end scenarios",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #08",
+  "statement": "## Demo focus\nEnd-to-end scenarios: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **QA Engineer**\n- Requirement RID: `DEMO8`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `End-to-end scenarios` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "End-to-end scenarios — expanded demo",
+  "type": "constraint",
+  "verification": "test"
 }

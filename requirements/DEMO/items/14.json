@@ -1,21 +1,29 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 14,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "integration"
+  ],
+  "links": [
+    {
+      "fingerprint": "7dd0e5dc862b26ebd6359ef3103895936e3f08b655f51fba948cea9132a85acb",
+      "rid": "DEMO13"
+    }
+  ],
+  "modified_at": "2026-01-16 22:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "LLM Ops",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo must record agent and MCP configuration parameters, including tool error limits, LLM message formats, and .cookareq files created in the project directory.",
-  "status": "draft",
-  "title": "Agent settings",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #14",
+  "statement": "## Demo focus\nAgent settings: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **LLM Ops**\n- Requirement RID: `DEMO14`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Agent settings` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "Agent settings — expanded demo",
+  "type": "constraint",
+  "verification": "demonstration"
 }

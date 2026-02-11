@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 17,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
-  "priority": "low",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo set must include a trace matrix example with axis settings that illustrates links between layers and scenarios.",
-  "status": "draft",
-  "title": "Traceability example",
-  "type": "requirement",
-  "verification": "analysis"
+  "labels": [
+    "test",
+    "integration"
+  ],
+  "links": [
+    {
+      "fingerprint": "90b55f8e9798ff9a57f13ea089bbd929bc508d51b51bccb5a68dfbc59371242f",
+      "rid": "DEMO16"
+    }
+  ],
+  "modified_at": "2026-01-16 01:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "QA Lead",
+  "priority": "high",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #17",
+  "statement": "## Demo focus\nTraceability example: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **QA Lead**\n- Requirement RID: `DEMO17`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Traceability example` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "Traceability example — expanded demo",
+  "type": "constraint",
+  "verification": "inspection"
 }

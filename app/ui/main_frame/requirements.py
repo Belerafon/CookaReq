@@ -88,7 +88,7 @@ class MainFrameRequirementsMixin:
         self.panel.load_column_order(self.config)
         self.config.set_columns(self.selected_fields)
 
-    def on_new_requirement(self: MainFrame, _event: wx.Event) -> None:
+    def on_new_requirement(self: MainFrame, _event: wx.Event | None = None) -> None:
         """Create and persist a new requirement."""
         if not (self.docs_controller and self.current_doc_prefix):
             return

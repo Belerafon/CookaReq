@@ -247,6 +247,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_sort_changed: Callable[[int, bool], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
+        on_new_requirement: Callable[[], None] | None = None,
     ):
         """Initialize list view and controls for requirements."""
         wx.Panel.__init__(self, parent)
@@ -298,6 +299,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._on_delete_many = on_delete_many
         self._on_sort_changed = on_sort_changed
         self._on_derive = on_derive
+        self._on_new_requirement = on_new_requirement
         self.derived_map: dict[str, list[int]] = {}
         self._sort_column = -1
         self._sort_ascending = True
@@ -330,6 +332,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         on_delete: Callable[[int], None] | None = None,
         on_delete_many: Callable[[Sequence[int]], None] | None = None,
         on_derive: Callable[[int], None] | None = None,
+        on_new_requirement: Callable[[], None] | None = None,
     ) -> None:
         """Set callbacks for context menu actions."""
         if on_clone is not None:
@@ -342,6 +345,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             self._on_delete_many = on_delete_many
         if on_derive is not None:
             self._on_derive = on_derive
+        if on_new_requirement is not None:
+            self._on_new_requirement = on_new_requirement
 
     def set_documents_controller(
         self, controller: DocumentsController | None
@@ -979,6 +984,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             index, _ = self.list.HitTest(pt)
             col = None
         if index == wx.NOT_FOUND:
+            self._popup_context_menu(index, col)
             return
         self.list.Select(index)
         self._popup_context_menu(index, col)
@@ -997,14 +1003,21 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         selected_indices = self._get_selected_indices()
         if index != wx.NOT_FOUND and (not selected_indices or index not in selected_indices):
             selected_indices = [index]
+        if index == wx.NOT_FOUND:
+            selected_indices = []
         single_selection = len(selected_indices) == 1
         selected_ids = self._indices_to_ids(selected_indices)
         req_id = selected_ids[0] if selected_ids else None
         derive_item = clone_item = transfer_item = None
+        create_item = None
+        if self._on_new_requirement is not None:
+            create_item = menu.Append(wx.ID_NEW, _("&New Requirement\tCtrl+N"))
         if single_selection:
             derive_item = menu.Append(wx.ID_ANY, _("Derive"))
             clone_item = menu.Append(wx.ID_ANY, _("Clone"))
-        delete_item = menu.Append(wx.ID_ANY, _("Delete"))
+        delete_item = None
+        if selected_ids:
+            delete_item = menu.Append(wx.ID_ANY, _("Delete"))
         status_menu = None
         labels_item = None
         if selected_ids:
@@ -1036,7 +1049,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 lambda _evt, ids=tuple(selected_ids): self._on_transfer(ids),
                 transfer_item,
             )
-        if len(selected_ids) > 1:
+        if len(selected_ids) > 1 and delete_item is not None:
             if self._on_delete_many:
                 menu.Bind(
                     wx.EVT_MENU,
@@ -1049,12 +1062,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     lambda _evt, ids=tuple(selected_ids): self._invoke_delete_each(ids),
                     delete_item,
                 )
-        elif self._on_delete and req_id is not None:
+        elif self._on_delete and req_id is not None and delete_item is not None:
             menu.Bind(
                 wx.EVT_MENU,
                 lambda _evt, i=req_id: self._on_delete(i),
                 delete_item,
             )
+        if create_item is not None:
+            menu.Bind(wx.EVT_MENU, lambda _evt: self._on_new_requirement(), create_item)
         if derive_item and self._on_derive and req_id is not None:
             menu.Bind(
                 wx.EVT_MENU,

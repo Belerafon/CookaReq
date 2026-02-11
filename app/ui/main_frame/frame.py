@@ -216,6 +216,7 @@ class MainFrame(
                 on_delete_many=self.on_delete_requirements,
                 on_sort_changed=self._on_sort_changed,
                 on_derive=self.on_derive_requirement,
+                on_new_requirement=lambda: self.on_new_requirement(None),
             ),
         )
         self.panel.set_columns(self.selected_fields)
@@ -300,6 +301,7 @@ class MainFrame(
             on_delete_many=self.on_delete_requirements,
             on_sort_changed=self._on_sort_changed,
             on_derive=self.on_derive_requirement,
+            on_new_requirement=lambda: self.on_new_requirement(None),
         )
         self.panel.set_columns(self.selected_fields)
         self.panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_requirement_selected)

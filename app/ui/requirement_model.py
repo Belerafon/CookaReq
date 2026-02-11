@@ -82,10 +82,23 @@ class RequirementModel:
         if changed:
             self._refresh()
 
-    def delete(self, req_id: int) -> None:
-        """Remove requirement with ``req_id``."""
-        self._all = [r for r in self._all if r.id != req_id]
-        self._unsaved = {key for key in self._unsaved if key[1] != req_id}
+    def delete(self, req_id: int, *, doc_prefix: str | None = None) -> None:
+        """Remove requirement with ``req_id`` scoped by optional ``doc_prefix``."""
+
+        prefix = doc_prefix if doc_prefix is not None else self._active_doc_prefix
+
+        def _matches(requirement: Requirement) -> bool:
+            if requirement.id != req_id:
+                return False
+            if prefix is None:
+                return True
+            return getattr(requirement, "doc_prefix", None) == prefix
+
+        self._all = [r for r in self._all if not _matches(r)]
+        if prefix is None:
+            self._unsaved = {key for key in self._unsaved if key[1] != req_id}
+        else:
+            self._unsaved.discard((prefix, int(req_id)))
         self._refresh()
 
     def get_by_id(

@@ -205,7 +205,7 @@ class DocumentsController:
             canonical = self.service.delete_requirement(rid)
         except ValidationError as exc:
             raise ValidationError(f"{rid}: {exc}") from exc
-        self.model.delete(req_id)
+        self.model.delete(req_id, doc_prefix=prefix)
         return canonical
 
     def copy_requirement_to(

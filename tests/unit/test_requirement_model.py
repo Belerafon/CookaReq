@@ -44,3 +44,23 @@ def test_unsaved_tracking():
 
     assert model.clear_unsaved(req) is True
     assert model.is_unsaved(req) is False
+
+
+def test_delete_scoped_to_document_prefix():
+    model = RequirementModel()
+    req_primary = _req(1, Status.DRAFT)
+    req_primary.doc_prefix = "REQ"
+    req_other = _req(1, Status.APPROVED)
+    req_other.doc_prefix = "ALT"
+    model.set_requirements([req_primary, req_other])
+
+    model.mark_unsaved(req_primary)
+    model.mark_unsaved(req_other)
+
+    model.delete(1, doc_prefix="REQ")
+
+    remaining = model.get_all()
+    assert len(remaining) == 1
+    assert remaining[0].doc_prefix == "ALT"
+    assert model.is_unsaved(req_id=1, prefix="REQ") is False
+    assert model.is_unsaved(req_id=1, prefix="ALT") is True

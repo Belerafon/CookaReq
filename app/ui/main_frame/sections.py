@@ -186,6 +186,7 @@ class MainFrameSectionsMixin:
         if not getattr(self, "editor", None):
             return
         self.editor.new_requirement()
+        self.editor.set_requirement_selected(False)
         if self._is_editor_visible():
             self._show_editor_panel()
         else:

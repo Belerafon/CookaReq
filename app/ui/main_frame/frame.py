@@ -330,6 +330,9 @@ class MainFrame(
         else:
             self._hide_editor_panel()
 
+        if self._selected_requirement_id is None:
+            self.editor.set_requirement_selected(False)
+
         self._apply_editor_visibility(persist=False)
 
         if hasattr(self, "agent_panel"):

@@ -329,6 +329,9 @@ so you know which modules are involved and which regressions to guard against.
 6. Unsaved edits are tracked in `RequirementModel` so the list panel can render
    a visual marker (a leading `*` in the Title/ID columns) and the main frame
    can offer Save/Keep/Cancel choices when navigating away from dirty entries.
+7. When no requirement is selected, `MainFrame._clear_editor_panel()` resets the
+   form and explicitly disables editor controls (`EditorPanel.set_requirement_selected(False)`)
+   so users cannot modify a blank placeholder as if it were an active record.
 
 ### Agent and MCP interaction
 1. `AgentChatPanel` gathers the current context and invokes

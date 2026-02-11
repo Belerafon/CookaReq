@@ -101,12 +101,14 @@ def test_clone_creates_new_requirement(wx_app, tmp_path):
 
     try:
         wx_app.Yield()
+        assert frame.editor.save_btn.IsEnabled() is False
         frame.on_clone_requirement(1)
         wx_app.Yield()
 
         assert frame._selected_requirement_id == 2
         assert frame.editor.fields["id"].GetValue() == "2"
         assert frame.editor.IsShown()
+        assert frame.editor.save_btn.IsEnabled() is True
 
         clone = frame.model.get_by_id(2)
         assert clone is not None
@@ -187,6 +189,7 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
         assert frame.panel.list.GetItemCount() == 1
         assert frame._selected_requirement_id is None
         assert frame.editor.IsShown()
+        assert frame.editor.save_btn.IsEnabled() is False
         assert frame.editor.fields["id"].GetValue() == ""
         assert frame.editor.fields["title"].GetValue() == ""
         assert "message" in captured

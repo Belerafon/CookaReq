@@ -199,9 +199,11 @@ so you know which modules are involved and which regressions to guard against.
   `ThreadPoolExecutor`). The panel relies on the structured payloads from
   `app/agent/run_contract.py` instead of heuristically merging raw tool
   dictionaries.
-  * History persistence lives in `HistoryStore` (SQLite); after users delete all
-    conversations the panel triggers a database compaction (`VACUUM`) so the
-    on-disk file shrinks immediately instead of keeping freed pages.
+  * History persistence lives in `HistoryStore` (SQLite); read-only checks avoid
+    creating project-local `.cookareq/agent_chats.sqlite` files until the user
+    actually writes chat data, and after users delete all conversations the
+    panel triggers a database compaction (`VACUUM`) so the on-disk file shrinks
+    immediately instead of keeping freed pages.
   * `ChatEntry` maintains a small per-entry view cache with JSON-safe payloads
     and normalised display text so transcript rebuilds reuse expensive
     transformations (`normalize_for_display`, deep `make_json_safe` walks)

@@ -80,6 +80,8 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def load(self) -> tuple[list[ChatConversation], str | None]:
         """Load conversations and the active conversation id."""
+        if not self._path.exists():
+            return [], None
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -93,6 +95,8 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def load_entries(self, conversation_id: str) -> list[ChatEntry]:
         """Return entries belonging to *conversation_id*."""
+        if not self._path.exists():
+            return []
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -187,6 +191,8 @@ class HistoryStore:
         self, conversation_ids: Sequence[str] | None = None
     ) -> set[str]:
         """Return identifiers of conversations that store at least one entry."""
+        if not self._path.exists():
+            return set()
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)
@@ -276,6 +282,8 @@ class HistoryStore:
     # ------------------------------------------------------------------
     def has_conversations(self) -> bool:
         """Return ``True`` when at least one conversation exists on disk."""
+        if not self._path.exists():
+            return False
         try:
             with self._connect() as conn:
                 self._ensure_schema(conn)

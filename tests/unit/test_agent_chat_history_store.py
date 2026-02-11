@@ -90,6 +90,21 @@ def test_has_conversations_detects_existing_payload(
     assert store.has_conversations() is True
 
 
+def test_read_operations_do_not_create_history_database(tmp_path: Path) -> None:
+    history_path = tmp_path / "missing" / "agent_chats.sqlite"
+    store = HistoryStore(history_path)
+
+    conversations, active_id = store.load()
+
+    assert conversations == []
+    assert active_id is None
+    assert store.load_entries("missing-conversation") == []
+    assert store.conversations_with_entries() == set()
+    assert store.has_conversations() is False
+    assert history_path.exists() is False
+    assert history_path.parent.exists() is False
+
+
 def test_set_path_persists_existing_payload(
     tmp_path: Path, sample_conversation: ChatConversation
 ) -> None:

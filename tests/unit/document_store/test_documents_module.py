@@ -154,8 +154,9 @@ def test_diagnose_requirements_root_suggests_parent_for_document_directory(tmp_p
     hint = diagnose_requirements_root(doc_dir)
 
     assert hint is not None
-    assert "single document" in hint
-    assert str(doc_dir.parent) in hint
+    assert "single document" in hint.lower()
+    assert doc_dir.parent.name in hint
+    assert str(doc_dir.parent) not in hint
 
 
 def test_diagnose_requirements_root_suggests_child_when_level_is_too_high(tmp_path: Path) -> None:
@@ -167,8 +168,44 @@ def test_diagnose_requirements_root_suggests_child_when_level_is_too_high(tmp_pa
     hint = diagnose_requirements_root(tmp_path)
 
     assert hint is not None
-    assert "one level above" in hint
-    assert str(requirements_root) in hint
+    assert "one level above" in hint.lower()
+    assert requirements_root.name in hint
+    assert str(requirements_root) not in hint
+
+
+def test_diagnose_requirements_root_detects_internal_cookareq_folder(tmp_path: Path) -> None:
+    doc_dir = tmp_path / "SYS"
+    doc_dir.mkdir()
+    (doc_dir / "document.json").write_text('{"title": "System"}', encoding="utf-8")
+
+    internal_dir = tmp_path / ".cookareq"
+    internal_dir.mkdir()
+
+    hint = diagnose_requirements_root(internal_dir)
+
+    assert hint is not None
+    assert "internal CookaReq data" in hint
+    assert "parent folder" in hint
+    assert str(internal_dir) not in hint
+
+
+@pytest.mark.parametrize("nested_name", ["items", "assets"])
+def test_diagnose_requirements_root_detects_document_subfolders(
+    tmp_path: Path, nested_name: str
+) -> None:
+    doc_dir = tmp_path / "SYS"
+    doc_dir.mkdir()
+    (doc_dir / "document.json").write_text('{"title": "System"}', encoding="utf-8")
+    (doc_dir / "items").mkdir()
+    nested_dir = doc_dir / nested_name
+    nested_dir.mkdir(exist_ok=True)
+
+    hint = diagnose_requirements_root(nested_dir)
+
+    assert hint is not None
+    assert f'"{nested_name}" subfolder' in hint
+    assert "open requirements root" in hint.lower()
+    assert str(nested_dir) not in hint
 
 
 def test_diagnose_requirements_root_accepts_valid_root(tmp_path: Path) -> None:

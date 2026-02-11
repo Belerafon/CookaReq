@@ -2,15 +2,32 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from collections.abc import Mapping
+from pathlib import Path
 
+from ...i18n import _
 from .types import Document, LabelDef, ValidationError
 
 
 def _is_document_directory(path: Path) -> bool:
     """Return ``True`` when ``path`` looks like a single document directory."""
     return (path / "document.json").is_file() and (path / "items").is_dir()
+
+
+def _contains_document_children(path: Path) -> bool:
+    """Return ``True`` when ``path`` directly contains document directories."""
+    children = [child for child in path.iterdir() if child.is_dir()]
+    return any((child / "document.json").is_file() for child in children)
+
+
+def _format_hint_path(path: Path, *, max_parts: int = 3) -> str:
+    """Return compact path representation suited for message-box hints."""
+    parts = [part for part in path.parts if part not in ("/", "")]
+    if not parts:
+        return path.anchor or str(path)
+    if len(parts) <= max_parts:
+        return str(path)
+    return f"…/{'/'.join(parts[-max_parts:])}"
 
 
 def diagnose_requirements_root(root: str | Path) -> str | None:
@@ -25,10 +42,34 @@ def diagnose_requirements_root(root: str | Path) -> str | None:
     if not root_path.is_dir():
         return None
 
+    if root_path.name in {"items", "assets"} and _is_document_directory(root_path.parent):
+        return _(
+            "Selected folder "
+            '"{selected}" is the "{nested}" subfolder of document "{document}"; '
+            'open requirements root "{target}".'
+        ).format(
+            selected=_format_hint_path(root_path),
+            nested=root_path.name,
+            document=root_path.parent.name,
+            target=_format_hint_path(root_path.parent.parent),
+        )
+
+    if root_path.name == ".cookareq" and _contains_document_children(root_path.parent):
+        return _(
+            'Selected folder "{selected}" stores internal CookaReq data; '
+            'open parent folder "{target}".'
+        ).format(
+            selected=_format_hint_path(root_path),
+            target=_format_hint_path(root_path.parent),
+        )
+
     if _is_document_directory(root_path):
-        return (
-            f"selected folder '{root_path}' looks like a single document; "
-            f"open parent folder '{root_path.parent}'"
+        return _(
+            'Selected folder "{selected}" looks like a single document; '
+            'open parent folder "{target}".'
+        ).format(
+            selected=_format_hint_path(root_path),
+            target=_format_hint_path(root_path.parent),
         )
 
     children = [child for child in root_path.iterdir() if child.is_dir()]
@@ -42,16 +83,16 @@ def diagnose_requirements_root(root: str | Path) -> str | None:
 
     if len(descendants) == 1:
         candidate = descendants[0]
-        return (
-            f"selected folder '{root_path}' is one level above requirements root; "
-            f"open '{candidate}'"
-        )
+        return _(
+            'Selected folder "{selected}" is one level above requirements root; '
+            'open "{target}".'
+        ).format(selected=_format_hint_path(root_path), target=_format_hint_path(candidate))
     if len(descendants) > 1:
         options = ", ".join(f"'{path.name}'" for path in sorted(descendants))
-        return (
-            f"selected folder '{root_path}' is above several requirement roots ({options}); "
-            "open the exact folder that directly contains document directories"
-        )
+        return _(
+            'Selected folder "{selected}" is above several requirement roots ({options}); '
+            "open the exact folder that directly contains document directories."
+        ).format(selected=_format_hint_path(root_path), options=options)
     return None
 
 def is_new_requirements_directory(root: str | Path) -> bool:

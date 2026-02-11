@@ -40,6 +40,16 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
     from .frame import MainFrame
 
 
+def _format_display_path(path: Path, *, max_parts: int = 3) -> str:
+    """Return compact path text for UI messages."""
+    parts = [part for part in path.parts if part not in ("/", "")]
+    if not parts:
+        return path.anchor or str(path)
+    if len(parts) <= max_parts:
+        return str(path)
+    return f"…/{'/'.join(parts[-max_parts:])}"
+
+
 class MainFrameDocumentsMixin:
     """Encapsulate document-related handlers and helpers."""
 
@@ -227,8 +237,8 @@ class MainFrameDocumentsMixin:
     def _show_directory_error(self: MainFrame, path: Path, error: Exception) -> None:
         """Display error message for a failed directory load."""
         message = _(
-            "Failed to load requirements folder \"{path}\": {error}"
-        ).format(path=path, error=error)
+            "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
+        ).format(path=_format_display_path(path), error=error)
         wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
 
     def _show_new_directory_notice(self: MainFrame, path: Path) -> None:

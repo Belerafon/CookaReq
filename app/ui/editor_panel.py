@@ -79,6 +79,7 @@ class EditorPanel(wx.Panel):
         self._insert_bold_btn: wx.Button | None = None
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
+        self._requirement_selected = True
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -326,6 +327,13 @@ class EditorPanel(wx.Panel):
         self._refresh_labels_display()
         self._refresh_attachments()
         self.mark_clean()
+
+    def set_requirement_selected(self, selected: bool) -> None:
+        """Toggle edit controls based on whether a requirement is selected."""
+        self._requirement_selected = bool(selected)
+        self._content_panel.Enable(self._requirement_selected)
+        self.save_btn.Enable(self._requirement_selected)
+        self.cancel_btn.Enable(self._requirement_selected)
 
     def FitInside(self) -> None:  # noqa: N802 - wxWidgets API casing
         """Recalculate the scrollable area of the editor form."""
@@ -839,6 +847,7 @@ class EditorPanel(wx.Panel):
         self._on_id_change()
         self._reset_scroll_position()
         self.mark_clean()
+        self.set_requirement_selected(True)
 
     def clone(self, new_id: int) -> None:
         """Copy current requirement into a new one with ``new_id``."""

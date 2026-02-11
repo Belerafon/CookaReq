@@ -683,6 +683,71 @@ def test_list_panel_context_menu_via_event(monkeypatch, wx_app):
     frame.Destroy()
 
 
+def test_list_panel_context_menu_event_after_right_click_is_ignored(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["revision"])
+    panel.set_requirements([_req(1, "T", revision=1)])
+
+    calls: list[tuple[int, int | None]] = []
+
+    def fake_popup(index: int, col: int | None) -> None:
+        calls.append((index, col))
+
+    monkeypatch.setattr(panel, "_popup_context_menu", fake_popup)
+    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (0, 0, -1))
+    monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
+
+    right_click_event = wx.ListEvent(wx.wxEVT_LIST_ITEM_RIGHT_CLICK, panel.list.GetId())
+    right_click_event.SetEventObject(panel.list)
+    right_click_event.SetIndex(0)
+    right_click_event.m_pointDrag = wx.Point(1, 1)
+    panel._on_right_click(right_click_event)
+
+    context_event = wx.ContextMenuEvent(wx.EVT_CONTEXT_MENU.typeId, panel.list.GetId())
+    context_event.SetPosition(wx.Point(1, 1))
+    context_event.SetEventObject(panel.list)
+    panel._on_context_menu(context_event)
+
+    assert len(calls) == 1
+    assert calls[0][0] == 0
+    frame.Destroy()
+
+
+def test_list_panel_context_menu_does_not_change_selection(monkeypatch, wx_app):
+    wx = pytest.importorskip("wx")
+    import app.ui.list_panel as list_panel
+
+    importlib.reload(list_panel)
+    frame = wx.Frame(None)
+    from app.ui.requirement_model import RequirementModel
+
+    panel = list_panel.ListPanel(frame, model=RequirementModel())
+    panel.set_columns(["title"])
+    panel.set_requirements([_req(1, "A"), _req(2, "B")])
+    panel.list.SetItemState(0, wx.LIST_STATE_SELECTED, wx.LIST_STATE_SELECTED)
+
+    monkeypatch.setattr(panel, "_popup_context_menu", lambda _index, _col: None)
+    monkeypatch.setattr(panel.list, "HitTestSubItem", lambda pt: (1, 0, -1))
+    monkeypatch.setattr(panel.list, "ScreenToClient", lambda pt: pt)
+
+    evt = wx.ContextMenuEvent(wx.EVT_CONTEXT_MENU.typeId, panel.list.GetId())
+    evt.SetPosition(wx.Point(1, 1))
+    evt.SetEventObject(panel.list)
+    panel._on_context_menu(evt)
+
+    selected = panel.list.GetFirstSelected()
+    assert selected == 0
+    assert panel.list.GetItemData(selected) == 1
+    frame.Destroy()
+
+
 def test_list_panel_context_menu_on_blank_space_shows_global_actions(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel

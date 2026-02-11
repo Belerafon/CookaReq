@@ -2734,3 +2734,15 @@ msgstr "для документов"
 
 msgid "(no title)"
 msgstr "(без названия)"
+
+msgid "Unsaved changes"
+msgstr "Несохранённые изменения"
+
+msgid "Save unsaved changes?"
+msgstr "Сохранить несохранённые изменения?"
+
+msgid "Save unsaved changes for {requirement}?"
+msgstr "Сохранить несохранённые изменения для {requirement}?"
+
+msgid "Keep without saving"
+msgstr "Оставить без сохранения"

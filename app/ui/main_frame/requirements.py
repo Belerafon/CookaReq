@@ -123,34 +123,8 @@ class MainFrameRequirementsMixin:
             modified_at="",
             revision=1,
         )
-        try:
-            self.docs_controller.add_requirement(self.current_doc_prefix, clone)
-        except (
-            DocumentNotFoundError,
-            RequirementIDCollisionError,
-            ValidationError,
-        ) as exc:
-            message = _("{action} failed for {rid}: {error}").format(
-                action=_("Clone"),
-                rid=f"{self.current_doc_prefix}{clone.id}",
-                error=str(exc),
-            )
-            logger.warning("%s", message)
-            wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
+        if not self._persist_new_requirement(clone, action_label=_("Clone")):
             return
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.exception("Clone failed for %s", f"{self.current_doc_prefix}{clone.id}")
-            wx.MessageBox(
-                _("{action} failed: {error}").format(
-                    action=_("Clone"),
-                    error=str(exc),
-                ),
-                _("Error"),
-                wx.ICON_ERROR,
-            )
-            return
-        if hasattr(self.model, "mark_unsaved"):
-            self.model.mark_unsaved(clone)
         self._selected_requirement_id = new_id
         self.panel.refresh(select_id=new_id)
         self.editor.load(clone, path=None, mtime=None)

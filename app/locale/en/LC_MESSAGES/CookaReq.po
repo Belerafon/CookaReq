@@ -2681,3 +2681,15 @@ msgstr "CSV (.csv)"
 
 msgid "TSV (.tsv)"
 msgstr "TSV (.tsv)"
+
+msgid "Unsaved changes"
+msgstr "Unsaved changes"
+
+msgid "Save unsaved changes?"
+msgstr "Save unsaved changes?"
+
+msgid "Save unsaved changes for {requirement}?"
+msgstr "Save unsaved changes for {requirement}?"
+
+msgid "Keep without saving"
+msgstr "Keep without saving"

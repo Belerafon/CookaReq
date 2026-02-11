@@ -16,6 +16,8 @@ from .types import (
 from .documents import (
     collect_label_defs,
     collect_labels,
+    diagnose_requirements_root,
+    is_new_requirements_directory,
     is_ancestor,
     label_color,
     load_document,
@@ -65,6 +67,8 @@ __all__ = [
     "RequirementPage",
     "collect_label_defs",
     "collect_labels",
+    "diagnose_requirements_root",
+    "is_new_requirements_directory",
     "is_ancestor",
     "label_color",
     "load_document",

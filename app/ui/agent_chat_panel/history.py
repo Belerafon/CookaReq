@@ -6,11 +6,25 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 import logging
 
+from ...core.document_store.documents import load_documents
 from ..chat_entry import ChatConversation
 from .history_store import HistoryStore
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_project_local_history_path(path: Path) -> bool:
+    return path.name == "agent_chats.sqlite" and path.parent.name == ".cookareq"
+
+
+def _requirements_root_has_documents(path: Path) -> bool:
+    if not _is_project_local_history_path(path):
+        return True
+    requirements_root = path.parent.parent
+    if not requirements_root.is_dir():
+        return False
+    return bool(load_documents(requirements_root))
 
 
 class AgentChatHistory:
@@ -90,6 +104,12 @@ class AgentChatHistory:
     # ------------------------------------------------------------------
     def persist_active_selection(self) -> None:
         """Persist the currently selected conversation id."""
+        if (
+            not self._store.path.exists()
+            and not self.has_persistable_conversations()
+            and not _requirements_root_has_documents(self._store.path)
+        ):
+            return
         try:
             self._store.save_active_id(self._active_id)
         except Exception:  # pragma: no cover - defensive logging
@@ -120,6 +140,14 @@ class AgentChatHistory:
         """Persist current state to disk logging failures defensively."""
         if not self._dirty_conversations and not self._structure_dirty:
             return
+        if (
+            not self._store.path.exists()
+            and not self.has_persistable_conversations()
+            and not _requirements_root_has_documents(self._store.path)
+        ):
+            self._dirty_conversations.clear()
+            self._structure_dirty = False
+            return
         try:
             dirty = set(self._dirty_conversations)
             self._store.save(
@@ -149,7 +177,11 @@ class AgentChatHistory:
             persist_existing = self.has_persistable_conversations()
             if persist_existing:
                 target_store = HistoryStore(path)
-                if target_store.path == self._store.path or target_store.has_conversations():
+                if (
+                    target_store.path == self._store.path
+                    or target_store.has_conversations()
+                    or not _requirements_root_has_documents(target_store.path)
+                ):
                     persist_existing = False
 
         conversations: Iterable[ChatConversation] | None = (

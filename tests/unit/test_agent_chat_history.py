@@ -170,6 +170,39 @@ def test_switch_path_does_not_override_existing_target(tmp_path):
     assert active_id == existing.conversation_id
 
 
+def test_switch_path_skips_migration_for_empty_requirements_directory(tmp_path):
+    source = tmp_path / "global.sqlite"
+    history = AgentChatHistory(history_path=source, on_active_changed=None)
+    populated = _conversation_with_entry("Global")
+    history.set_conversations([populated])
+    history.set_active_id(populated.conversation_id)
+    history.save()
+
+    wrong_root = tmp_path / "wrong"
+    wrong_root.mkdir()
+    wrong_path = wrong_root / ".cookareq" / "agent_chats.sqlite"
+
+    changed = history.set_path(wrong_path, persist_existing=True)
+
+    assert changed is True
+    assert not wrong_path.exists()
+
+
+def test_save_skips_creating_history_for_empty_requirements_directory(tmp_path):
+    wrong_root = tmp_path / "wrong"
+    wrong_root.mkdir()
+    history_path = wrong_root / ".cookareq" / "agent_chats.sqlite"
+
+    history = AgentChatHistory(history_path=history_path, on_active_changed=None)
+    draft = ChatConversation.new()
+    history.set_conversations([draft])
+    history.set_active_id(draft.conversation_id)
+
+    history.save()
+
+    assert not history_path.exists()
+
+
 def test_prune_empty_conversations_skips_materialisation(monkeypatch, tmp_path):
     history_path = tmp_path / "history.sqlite"
     seed = AgentChatHistory(history_path=history_path, on_active_changed=None)
@@ -211,5 +244,4 @@ class _StubSession:
 
     def set_history_path(self, path, *, persist_existing: bool) -> bool:  # type: ignore[override]
         return self.history.set_path(path, persist_existing=persist_existing)
-
 

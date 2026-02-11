@@ -79,9 +79,24 @@ def save_agent_project_settings(path: Path, settings: AgentProjectSettings) -> N
     tmp_path.replace(path)
 
 
+def should_persist_agent_project_settings(
+    path: Path, settings: AgentProjectSettings
+) -> bool:
+    """Return ``True`` when settings should be written to *path*.
+
+    We avoid creating a project-local ``.cookareq`` directory when the panel
+    still holds default settings and no file exists yet. Existing files are
+    always rewritten so users can reset custom values back to defaults.
+    """
+
+    if settings.normalized() != AgentProjectSettings():
+        return True
+    return path.exists()
+
+
 __all__ = [
     "AgentProjectSettings",
     "load_agent_project_settings",
     "save_agent_project_settings",
+    "should_persist_agent_project_settings",
 ]
-

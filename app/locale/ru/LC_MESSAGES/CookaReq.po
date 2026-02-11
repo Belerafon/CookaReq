@@ -884,26 +884,25 @@ msgid ""
 "constraint it imposes. This wording becomes the authoritative baseline for "
 "implementation and contractual obligations. Detailed phrasing here prevents "
 "ambiguity during design and review. Keep each statement testable and "
-"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when possible"
-"\" without clear criteria. Prefer one requirement per statement to avoid "
-"splitting obligations across multiple thoughts. Markdown is supported: "
-"lists, tables, and emphasis can improve readability without changing the "
-"core meaning. Reference images as attachments with ![Description]"
-"(attachment:<id>). Inline formula notation can be written as \\(v = s/t\\) "
-"or $$E = mc^2$$."
+"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when "
+"possible\" without clear criteria. Prefer one requirement per statement to "
+"avoid splitting obligations across multiple thoughts. Markdown is supported:"
+" lists, tables, and emphasis can improve readability without changing the "
+"core meaning. Reference images as attachments with "
+"![Description](attachment:<id>). Inline formula notation can be written as "
+"\\(v = s/t\\) or $$E = mc^2$$."
 msgstr ""
 "Полный текст требования, описывающий, что должна делать система или какое "
 "ограничение накладывается. Именно эта формулировка становится официальной "
 "базой для реализации и контрактных обязательств. Детальное описание здесь "
 "предотвращает двусмысленность при проектировании и рецензировании. Делайте "
-"каждую формулировку проверяемой и однозначной; избегайте размытых "
-"уточнений вроде «по мере необходимости» или «когда возможно» без чётких "
-"критериев. Предпочитайте одно требование на формулировку, чтобы не "
-"смешивать несколько обязательств в одном тексте. Поддерживается Markdown: "
-"списки, таблицы и выделение повышают читаемость без изменения сути. "
-"Изображения добавляйте как вложения по ссылкам ![Описание]"
-"(attachment:<id>). Встроенные формулы можно писать как \\(v = s/t\\) или "
-"$$E = mc^2$$."
+"каждую формулировку проверяемой и однозначной; избегайте размытых уточнений "
+"вроде «по мере необходимости» или «когда возможно» без чётких критериев. "
+"Предпочитайте одно требование на формулировку, чтобы не смешивать несколько "
+"обязательств в одном тексте. Поддерживается Markdown: списки, таблицы и "
+"выделение повышают читаемость без изменения сути. Изображения добавляйте как"
+" вложения по ссылкам ![Описание](attachment:<id>). Встроенные формулы можно "
+"писать как \\(v = s/t\\) или $$E = mc^2$$."
 
 msgid ""
 "Acceptance criteria explain how to verify that the requirement is satisfied."
@@ -2617,11 +2616,23 @@ msgstr "Формат экспорта"
 msgid "Export Requirements"
 msgstr "Экспорт требований"
 
-msgid "Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?"
-msgstr "Экспортировано требований: {count}.\nФайл: {filename}\n\nОткрыть папку экспорта?"
+msgid ""
+"Exported {count} requirement(s).\n"
+"File: {filename}\n"
+"\n"
+"Open export folder?"
+msgstr ""
+"Экспортировано требований: {count}.\n"
+"Файл: {filename}\n"
+"\n"
+"Открыть папку экспорта?"
 
-msgid "Could not open export folder:\n%s"
-msgstr "Не удалось открыть папку экспорта:\n%s"
+msgid ""
+"Could not open export folder:\n"
+"%s"
+msgstr ""
+"Не удалось открыть папку экспорта:\n"
+"%s"
 
 msgid "HTML (.html)"
 msgstr "HTML (.html)"
@@ -2656,7 +2667,6 @@ msgstr "Показывать незаполненные поля как {placeho
 msgid "Card options"
 msgstr "Параметры карточек"
 
-
 msgid "Card sort order"
 msgstr "Порядок сортировки карточек"
 
@@ -2667,7 +2677,8 @@ msgid "Label grouping"
 msgstr "Группировка по меткам"
 
 msgid "One group per label (duplicate requirement in every matched label)"
-msgstr "Одна группа на метку (требование дублируется в каждой подходящей метке)"
+msgstr ""
+"Одна группа на метку (требование дублируется в каждой подходящей метке)"
 
 msgid "One group per exact label set"
 msgstr "Одна группа на точный набор меток"
@@ -2696,8 +2707,14 @@ msgstr "Word (.docx)"
 msgid "(not set)"
 msgstr "(не задано)"
 
-msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
-msgstr "Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|DOCX файлы (*.docx)|*.docx|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все файлы|*.*"
+msgid ""
+"Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files "
+"(*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All "
+"files|*.*"
+msgstr ""
+"Текстовые файлы (*.txt)|*.txt|HTML файлы (*.html)|*.html|DOCX файлы "
+"(*.docx)|*.docx|CSV файлы (*.csv)|*.csv|TSV файлы (*.tsv)|*.tsv|Все "
+"файлы|*.*"
 
 msgid "CSV (.csv)"
 msgstr "CSV (.csv)"
@@ -2746,3 +2763,123 @@ msgstr "Сохранить несохранённые изменения для 
 
 msgid "Keep without saving"
 msgstr "Оставить без сохранения"
+
+msgid "(empty event log)"
+msgstr "(журнал событий пуст)"
+
+msgid "Agent (step {step}): tool call {index}: {tool} — {status}"
+msgstr "Агент (шаг {step}): вызов инструмента {index}: {tool} — {status}"
+
+msgid "All requirements"
+msgstr "Все требования"
+
+msgid "Attachment: {name}"
+msgstr "Вложение: {name}"
+
+msgid "Color label backgrounds (HTML/DOCX)"
+msgstr "Окрашивать фон меток (HTML/DOCX)"
+
+msgid "Delete attachment"
+msgstr "Удалить вложение"
+
+msgid ""
+"Delete attachment file?\n"
+"{path}"
+msgstr ""
+"Удалить файл вложения?\n"
+"{path}"
+
+msgid "Event ({kind}):"
+msgstr "Событие ({kind}):"
+
+msgid ""
+"Failed to delete attachment file:\n"
+"{path}"
+msgstr ""
+"Не удалось удалить файл вложения:\n"
+"{path}"
+
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Information"
+msgstr "Информация"
+
+msgid "Model reasoning (step {index})"
+msgstr "Рассуждение модели (шаг {index})"
+
+msgid ""
+"Opened folder \"{path}\". No requirement documents were found. This looks "
+"like a new directory; create a document to start."
+msgstr ""
+"Открыта папка \"{path}\". Документы требований не найдены. Похоже, это новый"
+" каталог; создайте документ, чтобы начать."
+
+msgid "Preview:"
+msgstr "Предпросмотр:"
+
+msgid "Requirements to export"
+msgstr "Требования для экспорта"
+
+msgid "Select a document before adding attachments."
+msgstr "Выберите документ перед добавлением вложений."
+
+msgid "Select image"
+msgstr "Выберите изображение"
+
+msgid "Selected requirements"
+msgstr "Выбранные требования"
+
+msgid "Size: {size} • Tokens: {tokens}"
+msgstr "Размер: {size} • Токены: {tokens}"
+
+msgid "Skip"
+msgstr "Пропустить"
+
+msgid "Visible requirements (respect current filter)"
+msgstr "Видимые требования (с учетом текущего фильтра)"
+
+msgid "Without labels"
+msgstr "Без меток"
+
+msgid "[{code}]"
+msgstr "[{code}]"
+
+msgid "[{code}] {message}"
+msgstr "[{code}] {message}"
+
+msgid "attachment id is required"
+msgstr "необходим id вложения"
+
+msgid "attachment path is required"
+msgstr "необходим путь вложения"
+
+msgid "attachments must be a list of objects"
+msgstr "attachments должен быть списком объектов"
+
+msgid "conversation={cid}"
+msgstr "conversation={cid}"
+
+msgid "entry={idx}"
+msgstr "entry={idx}"
+
+msgid "stage={stage}"
+msgstr "stage={stage}"
+
+msgid "timestamp={timestamp}"
+msgstr "timestamp={timestamp}"
+
+msgid "{action} failed for {rid}: {error}"
+msgstr "{action} завершилось ошибкой для {rid}: {error}"
+
+msgid "{action} failed: {error}"
+msgstr "{action} завершилось ошибкой: {error}"
+
+msgid ""
+"| Column | Value |\n"
+"| --- | --- |\n"
+"| Item | Description |"
+msgstr ""
+"| Колонка | Значение |\n"
+"| --- | --- |\n"
+"| Элемент | Описание |"

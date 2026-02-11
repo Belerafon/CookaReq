@@ -877,25 +877,25 @@ msgid ""
 "constraint it imposes. This wording becomes the authoritative baseline for "
 "implementation and contractual obligations. Detailed phrasing here prevents "
 "ambiguity during design and review. Keep each statement testable and "
-"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when possible"
-"\" without clear criteria. Prefer one requirement per statement to avoid "
-"splitting obligations across multiple thoughts. Markdown is supported: "
-"lists, tables, and emphasis can improve readability without changing the "
-"core meaning. Reference images as attachments with ![Description]"
-"(attachment:<id>). Inline formula notation can be written as \\(v = s/t\\) "
-"or $$E = mc^2$$."
+"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when "
+"possible\" without clear criteria. Prefer one requirement per statement to "
+"avoid splitting obligations across multiple thoughts. Markdown is supported:"
+" lists, tables, and emphasis can improve readability without changing the "
+"core meaning. Reference images as attachments with "
+"![Description](attachment:<id>). Inline formula notation can be written as "
+"\\(v = s/t\\) or $$E = mc^2$$."
 msgstr ""
 "The full requirement statement describing what the system must do or the "
 "constraint it imposes. This wording becomes the authoritative baseline for "
 "implementation and contractual obligations. Detailed phrasing here prevents "
 "ambiguity during design and review. Keep each statement testable and "
-"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when possible"
-"\" without clear criteria. Prefer one requirement per statement to avoid "
-"splitting obligations across multiple thoughts. Markdown is supported: "
-"lists, tables, and emphasis can improve readability without changing the "
-"core meaning. Reference images as attachments with ![Description]"
-"(attachment:<id>). Inline formula notation can be written as \\(v = s/t\\) "
-"or $$E = mc^2$$."
+"unambiguous; avoid vague qualifiers such as \"as needed\" or \"when "
+"possible\" without clear criteria. Prefer one requirement per statement to "
+"avoid splitting obligations across multiple thoughts. Markdown is supported:"
+" lists, tables, and emphasis can improve readability without changing the "
+"core meaning. Reference images as attachments with "
+"![Description](attachment:<id>). Inline formula notation can be written as "
+"\\(v = s/t\\) or $$E = mc^2$$."
 
 msgid ""
 "Acceptance criteria explain how to verify that the requirement is satisfied."
@@ -2595,11 +2595,23 @@ msgstr "Export format"
 msgid "Export Requirements"
 msgstr "Export Requirements"
 
-msgid "Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?"
-msgstr "Exported {count} requirement(s).\nFile: {filename}\n\nOpen export folder?"
+msgid ""
+"Exported {count} requirement(s).\n"
+"File: {filename}\n"
+"\n"
+"Open export folder?"
+msgstr ""
+"Exported {count} requirement(s).\n"
+"File: {filename}\n"
+"\n"
+"Open export folder?"
 
-msgid "Could not open export folder:\n%s"
-msgstr "Could not open export folder:\n%s"
+msgid ""
+"Could not open export folder:\n"
+"%s"
+msgstr ""
+"Could not open export folder:\n"
+"%s"
 
 msgid "HTML (.html)"
 msgstr "HTML (.html)"
@@ -2673,8 +2685,14 @@ msgstr "Word (.docx)"
 msgid "(not set)"
 msgstr "(not set)"
 
-msgid "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
-msgstr "Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files (*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All files|*.*"
+msgid ""
+"Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files "
+"(*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All "
+"files|*.*"
+msgstr ""
+"Text files (*.txt)|*.txt|HTML files (*.html)|*.html|DOCX files "
+"(*.docx)|*.docx|CSV files (*.csv)|*.csv|TSV files (*.tsv)|*.tsv|All "
+"files|*.*"
 
 msgid "CSV (.csv)"
 msgstr "CSV (.csv)"
@@ -2693,3 +2711,153 @@ msgstr "Save unsaved changes for {requirement}?"
 
 msgid "Keep without saving"
 msgstr "Keep without saving"
+
+msgid "(empty event log)"
+msgstr "(empty event log)"
+
+msgid "(no title)"
+msgstr "(no title)"
+
+msgid "Acceptance"
+msgstr "Acceptance"
+
+msgid "Agent (step {step}): tool call {index}: {tool} — {status}"
+msgstr "Agent (step {step}): tool call {index}: {tool} — {status}"
+
+msgid "All requirements"
+msgstr "All requirements"
+
+msgid "Attachment: {name}"
+msgstr "Attachment: {name}"
+
+msgid "Color label backgrounds (HTML/DOCX)"
+msgstr "Color label backgrounds (HTML/DOCX)"
+
+msgid "Delete attachment"
+msgstr "Delete attachment"
+
+msgid ""
+"Delete attachment file?\n"
+"{path}"
+msgstr ""
+"Delete attachment file?\n"
+"{path}"
+
+msgid "Event ({kind}):"
+msgstr "Event ({kind}):"
+
+msgid ""
+"Failed to delete attachment file:\n"
+"{path}"
+msgstr ""
+"Failed to delete attachment file:\n"
+"{path}"
+
+msgid "Generated at"
+msgstr "Generated at"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Information"
+msgstr "Information"
+
+msgid "Model reasoning (step {index})"
+msgstr "Model reasoning (step {index})"
+
+msgid ""
+"Opened folder \"{path}\". No requirement documents were found. This looks "
+"like a new directory; create a document to start."
+msgstr ""
+"Opened folder \"{path}\". No requirement documents were found. This looks "
+"like a new directory; create a document to start."
+
+msgid "Preview:"
+msgstr "Preview:"
+
+msgid "Related requirements"
+msgstr "Related requirements"
+
+msgid "Requirements to export"
+msgstr "Requirements to export"
+
+msgid "Revision"
+msgstr "Revision"
+
+msgid "Select a document before adding attachments."
+msgstr "Select a document before adding attachments."
+
+msgid "Select image"
+msgstr "Select image"
+
+msgid "Selected requirements"
+msgstr "Selected requirements"
+
+msgid "Size: {size} • Tokens: {tokens}"
+msgstr "Size: {size} • Tokens: {tokens}"
+
+msgid "Skip"
+msgstr "Skip"
+
+msgid "Statement"
+msgstr "Statement"
+
+msgid "Type"
+msgstr "Type"
+
+msgid "Visible requirements (respect current filter)"
+msgstr "Visible requirements (respect current filter)"
+
+msgid "Without labels"
+msgstr "Without labels"
+
+msgid "[{code}]"
+msgstr "[{code}]"
+
+msgid "[{code}] {message}"
+msgstr "[{code}] {message}"
+
+msgid "attachment id is required"
+msgstr "attachment id is required"
+
+msgid "attachment path is required"
+msgstr "attachment path is required"
+
+msgid "attachments must be a list of objects"
+msgstr "attachments must be a list of objects"
+
+msgid "conversation={cid}"
+msgstr "conversation={cid}"
+
+msgid "entry={idx}"
+msgstr "entry={idx}"
+
+msgid "for documents"
+msgstr "for documents"
+
+msgid "missing"
+msgstr "missing"
+
+msgid "stage={stage}"
+msgstr "stage={stage}"
+
+msgid "suspect"
+msgstr "suspect"
+
+msgid "timestamp={timestamp}"
+msgstr "timestamp={timestamp}"
+
+msgid "{action} failed for {rid}: {error}"
+msgstr "{action} failed for {rid}: {error}"
+
+msgid "{action} failed: {error}"
+msgstr "{action} failed: {error}"
+
+msgid ""
+"| Column | Value |\n"
+"| --- | --- |\n"
+"| Item | Description |"
+msgstr ""
+"| Column | Value |\n"
+"| --- | --- |\n"
+"| Item | Description |"

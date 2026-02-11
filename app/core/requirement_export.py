@@ -264,6 +264,7 @@ _EXPORT_SECTION_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def export_card_field_order() -> tuple[str, ...]:
+    """Return field identifiers in the order used by card-like exports."""
     meta_fields = (field for field, _label, _use_code in _EXPORT_META_FIELDS)
     section_fields = (field for field, _label in _EXPORT_SECTION_FIELDS)
     return ("rid", "title", *meta_fields, *section_fields)
@@ -443,7 +444,7 @@ def render_requirements_markdown(
             parts.append("")
             parts.append("| | |")
             parts.append("| --- | --- |")
-            for label, description in label_rows:
+            for label, description, _color in label_rows:
                 value = _format_markdown_table_cell(description)
                 parts.append(f"| {label} | {value} |")
             parts.append("")
@@ -470,10 +471,10 @@ def render_requirements_markdown(
                 req = view.requirement
                 parts.append(f"{heading_level} {_requirement_heading(req, selected_fields)}")
                 parts.append("")
-                field_rows: list[tuple[str, str, bool]] = []
-                field_rows.append((_('Requirement RID'), req.rid, False))
+                meta_rows: list[tuple[str, str, bool]] = []
+                meta_rows.append((_('Requirement RID'), req.rid, False))
                 if _should_render_field(selected_fields, "title"):
-                    field_rows.append((_('Title'), req.title or _('(no title)'), False))
+                    meta_rows.append((_('Title'), req.title or _('(no title)'), False))
                 for field, label, use_code in _EXPORT_META_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -481,7 +482,9 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    field_rows.append((_(label), content, use_code))
+                    meta_rows.append((_(label), content, use_code))
+
+                section_rows: list[tuple[str, str]] = []
                 for field, label in _EXPORT_SECTION_FIELDS:
                     if not _should_render_field(selected_fields, field):
                         continue
@@ -489,16 +492,20 @@ def render_requirements_markdown(
                     content = _resolve_field_content(value, empty_field_placeholder=empty_field_placeholder)
                     if content is None:
                         continue
-                    field_rows.append((_(label), content, False))
+                    section_rows.append((_(label), content))
 
-                if field_rows:
-                    parts.append("| |")
-                    parts.append("| --- |")
-                    for label, content, use_code in field_rows:
-                        value = _format_markdown_table_cell(content)
-                        if use_code:
-                            value = f"``{value}``"
-                        parts.append(f"| {label}: {value} |")
+                for label, content, use_code in meta_rows:
+                    value = _format_markdown_table_cell(content)
+                    if use_code:
+                        value = f"``{value}``"
+                    parts.append(f"- **{label}:** {value}")
+                if meta_rows:
+                    parts.append("")
+
+                for label, content in section_rows:
+                    parts.append(f"**{label}**")
+                    parts.append("")
+                    parts.append(content)
                     parts.append("")
 
                 if view.links and _should_render_field(selected_fields, "links"):
@@ -704,12 +711,6 @@ def _html_markdown(value: str, *, requirement: Requirement) -> str:
     return _render_markdown(content)
 
 
-def _strip_wrapping_paragraph(markup: str) -> str:
-    if markup.startswith("<p>") and markup.endswith("</p>") and markup.count("<p>") == 1:
-        return markup[3:-4]
-    return markup
-
-
 def render_requirements_html(
     export: RequirementExport,
     *,
@@ -741,6 +742,9 @@ def render_requirements_html(
         "table.meta-table tr:nth-child(odd){background:#fff;}",
         "table.meta-table p{margin:0 0 8px;}",
         "table.meta-table .row-label{font-weight:bold;margin-bottom:4px;}",
+        "dl.meta-list{margin:0 0 8px;padding:0;}",
+        "dl.meta-list dt{font-weight:bold;margin:0;}",
+        "dl.meta-list dd{margin:0 0 8px 0;}",
         "ul.links{margin:8px 0 0 16px;}",
         "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
         ".label-chip{display:inline-block;padding:2px 8px;border:1px solid #C8CDD3;border-radius:999px;font-size:0.8125rem;font-weight:600;line-height:1.2;background:#f5f6f8;color:#1f2328;margin:0 6px 4px 0;}",
@@ -836,22 +840,15 @@ def render_requirements_html(
                     field_rows.append((_(label), html_value, False))
 
                 if field_rows:
-                    parts.append("<table class='meta-table'><tbody>")
+                    parts.append("<dl class='meta-list'>")
                     for label, value, is_inline in field_rows:
                         label_html = _escape_html(label)
+                        parts.append(f"<dt>{label_html}</dt>")
                         if is_inline:
-                            parts.append(
-                                f"<tr><td><strong>{label_html}:</strong> {value}</td></tr>"
-                            )
+                            parts.append(f"<dd>{value}</dd>")
                         else:
-                            cleaned_value = _strip_wrapping_paragraph(value)
-                            parts.append(
-                                "<tr><td>"
-                                f"<div class='row-label'>{label_html}:</div>"
-                                f"{cleaned_value}"
-                                "</td></tr>"
-                            )
-                    parts.append("</tbody></table>")
+                            parts.append(f"<dd>{value}</dd>")
+                    parts.append("</dl>")
 
                 if view.links and _should_render_field(selected_fields, "links"):
                     parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")

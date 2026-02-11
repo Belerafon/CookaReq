@@ -751,7 +751,7 @@ class MainFrameAgentMixin:
         removed_selection = False
         for req_id in removed_ids:
             try:
-                self.model.delete(req_id)
+                self.model.delete(req_id, doc_prefix=current_prefix)
             except Exception:  # pragma: no cover - defensive
                 logger.exception("Failed to remove requirement id %s", req_id)
                 continue

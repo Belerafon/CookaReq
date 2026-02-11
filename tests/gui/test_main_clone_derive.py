@@ -197,6 +197,30 @@ def test_delete_many_removes_requirements(monkeypatch, wx_app, tmp_path):
         frame.Destroy()
 
 
+def test_delete_unsaved_new_requirement(monkeypatch, wx_app, tmp_path):
+    frame = _prepare_frame(tmp_path)
+    import app.ui.main_frame as main_frame_mod
+
+    try:
+        monkeypatch.setattr(main_frame_mod, "confirm", lambda _message: True)
+        wx_app.Yield()
+
+        frame.on_new_requirement()
+        wx_app.Yield()
+
+        unsaved = frame.model.get_by_id(2)
+        assert unsaved is not None
+        assert frame.model.is_unsaved(unsaved) is True
+
+        frame.on_delete_requirements([2])
+        wx_app.Yield()
+
+        assert frame.model.get_by_id(2) is None
+        assert frame.panel.list.GetItemCount() == 1
+        assert frame._selected_requirement_id is None
+    finally:
+        frame.Destroy()
+
 def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path):
     frame = _prepare_frame(tmp_path)
     import app.ui.main_frame.requirements as requirements_mod

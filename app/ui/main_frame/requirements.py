@@ -47,7 +47,7 @@ class MainFrameRequirementsMixin:
             RequirementIDCollisionError,
             ValidationError,
         ) as exc:
-            self.model.delete(requirement.id)
+            self.model.delete(requirement.id, doc_prefix=prefix)
             message = _("{action} failed for {rid}: {error}").format(
                 action=action_label,
                 rid=requirement.rid or f"{prefix}{requirement.id}",
@@ -57,7 +57,7 @@ class MainFrameRequirementsMixin:
             wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
             return False
         except Exception as exc:  # pragma: no cover - defensive guard
-            self.model.delete(requirement.id)
+            self.model.delete(requirement.id, doc_prefix=prefix)
             logger.exception(
                 "%s failed for %s",
                 action_label,
@@ -301,11 +301,22 @@ class MainFrameRequirementsMixin:
         deleted_any = False
         revision_errors: list[str] = []
         for req_id in unique_ids:
+            requirement = self.model.get_by_id(
+                req_id, doc_prefix=self.current_doc_prefix
+            )
+            unsaved_only = bool(
+                requirement is not None
+                and hasattr(self.model, "is_unsaved")
+                and self.model.is_unsaved(requirement)
+            )
             try:
                 self.docs_controller.delete_requirement(
                     self.current_doc_prefix, req_id
                 )
             except RequirementNotFoundError:
+                if unsaved_only:
+                    self.model.delete(req_id, doc_prefix=self.current_doc_prefix)
+                    deleted_any = True
                 continue
             except ValidationError as exc:
                 doc = self.docs_controller.documents.get(self.current_doc_prefix)

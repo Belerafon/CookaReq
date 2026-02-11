@@ -310,7 +310,7 @@ msgstr "Язык"
 
 # CLI strings
 msgid "CookaReq CLI"
-msgstr "CookaReq CLI"
+msgstr "CLI CookaReq"
 
 msgid "list requirements"
 msgstr "перечислить требования"
@@ -2702,7 +2702,7 @@ msgid "Export file path"
 msgstr "Путь к файлу экспорта"
 
 msgid "Word (.docx)"
-msgstr "Word (.docx)"
+msgstr "Документ Word (.docx)"
 
 msgid "(not set)"
 msgstr "(не задано)"
@@ -2717,10 +2717,10 @@ msgstr ""
 "файлы|*.*"
 
 msgid "CSV (.csv)"
-msgstr "CSV (.csv)"
+msgstr "Таблица CSV (.csv)"
 
 msgid "TSV (.tsv)"
-msgstr "TSV (.tsv)"
+msgstr "Таблица TSV (.tsv)"
 
 msgid "Type"
 msgstr "Тип"

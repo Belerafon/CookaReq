@@ -306,6 +306,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
         self._context_menu_open = False
+        self._ignore_next_context_menu = False
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
@@ -960,6 +961,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 self._reset_context_menu_flag()
 
     def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
+        self._ignore_next_context_menu = True
         x, y = event.GetPoint()
         if hasattr(self.list, "HitTestSubItem"):
             _, _, col = self.list.HitTestSubItem((x, y))
@@ -972,6 +974,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self,
         event: ContextMenuEvent,
     ) -> None:  # pragma: no cover - GUI event
+        if self._ignore_next_context_menu:
+            self._ignore_next_context_menu = False
+            return
         pos = event.GetPosition()
         if pos == wx.DefaultPosition:
             pos = wx.GetMousePosition()
@@ -986,7 +991,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if index == wx.NOT_FOUND:
             self._popup_context_menu(index, col)
             return
-        self.list.Select(index)
         self._popup_context_menu(index, col)
 
     def _field_from_column(self, col: int | None) -> str | None:

@@ -223,9 +223,25 @@ class MainFrameSectionsMixin:
 
     def _prompt_unsaved_changes(self: MainFrame) -> str:
         """Prompt for how to handle unsaved changes."""
+        requirement_summary: str | None = None
+        selected_id = getattr(self, "_selected_requirement_id", None)
+        prefix = getattr(self, "current_doc_prefix", None)
+        if selected_id is not None and prefix and hasattr(self, "model"):
+            requirement = self.model.get_by_id(selected_id, doc_prefix=prefix)
+            if requirement is not None:
+                format_summary = getattr(self, "_format_requirement_summary", None)
+                if callable(format_summary):
+                    requirement_summary = format_summary(requirement)
+                if requirement_summary is None:
+                    requirement_summary = requirement.rid or f"{prefix}{selected_id}"
+        message = _("Save unsaved changes?")
+        if requirement_summary:
+            message = _("Save unsaved changes for {requirement}?").format(
+                requirement=requirement_summary
+            )
         dlg = wx.MessageDialog(
             self,
-            _("Save unsaved changes?"),
+            message,
             _("Unsaved changes"),
             style=wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
         )

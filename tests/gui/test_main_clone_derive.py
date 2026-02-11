@@ -120,6 +120,36 @@ def test_clone_creates_new_requirement(wx_app, tmp_path):
         selected = frame.panel.list.GetFirstSelected()
         assert selected != wx.NOT_FOUND
         assert frame.panel.list.GetItemData(selected) == 2
+        assert frame.model.is_unsaved(clone) is False
+    finally:
+        frame.Destroy()
+
+
+def test_clone_does_not_trigger_unsaved_prompt_when_switching(monkeypatch, wx_app, tmp_path):
+    frame = _prepare_frame(tmp_path, extra_requirements=[_req(2, "Second")])
+
+    try:
+        prompts: list[str] = []
+
+        def _capture_prompt() -> str:
+            prompts.append("shown")
+            return "cancel"
+
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", _capture_prompt)
+        wx_app.Yield()
+
+        frame.on_clone_requirement(1)
+        wx_app.Yield()
+
+        frame.panel.focus_requirement(1)
+        selected = frame.panel.list.GetFirstSelected()
+        assert selected != wx.NOT_FOUND
+        evt = wx.ListEvent(wx.wxEVT_LIST_ITEM_SELECTED, frame.panel.list.GetId())
+        evt.SetEventObject(frame.panel.list)
+        evt.SetIndex(selected)
+        frame.on_requirement_selected(evt)
+
+        assert prompts == []
     finally:
         frame.Destroy()
 

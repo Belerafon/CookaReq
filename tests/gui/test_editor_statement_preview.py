@@ -33,6 +33,7 @@ def test_statement_preview_toggle_renders_markdown(wx_app, tmp_path: Path) -> No
         preview = editor._statement_preview
         assert preview is not None
         assert preview.IsShown()
+        assert preview.GetBackgroundColour() == wx.WHITE
         plain = preview.GetPlainText()
         assert "Hello" in plain
         assert "World" in plain

@@ -175,7 +175,7 @@ class EditorPanel(wx.Panel):
                     content,
                     markdown="",
                     foreground_colour=content.GetForegroundColour(),
-                    background_colour=content.GetBackgroundColour(),
+                    background_colour=wx.WHITE,
                     render_math=True,
                 )
                 preview.SetMinSize(wx.Size(-1, dip(self, 160)))

@@ -91,7 +91,10 @@ class MarkdownTheme:
     background: wx.Colour
 
     def table_border(self) -> wx.Colour:
-        return _mix_colour(self.foreground, self.background, 0.7)
+        return _mix_colour(self.foreground, self.background, 0.5)
+
+    def table_header_background(self) -> wx.Colour:
+        return _mix_colour(self.background, self.foreground, 0.12)
 
     def subtle_background(self) -> wx.Colour:
         return _mix_colour(self.background, self.foreground, 0.08)
@@ -316,6 +319,7 @@ class MarkdownView(html.HtmlWindow):
         foreground_hex = _colour_to_hex(self._theme.foreground)
         background_hex = _colour_to_hex(self._theme.background)
         table_border_hex = _colour_to_hex(self._theme.table_border())
+        table_header_hex = _colour_to_hex(self._theme.table_header_background())
         subtle_hex = _colour_to_hex(self._theme.subtle_background())
         contrast = _estimate_contrast(self._theme.background)
 
@@ -357,10 +361,10 @@ class MarkdownView(html.HtmlWindow):
             f" border: 1px solid {table_border_hex};"
             " padding: 4px 6px;"
             " text-align: left;"
-            " vertical-align: top;"
+            " vertical-align: middle;"
             "}"
             "thead tr {"
-            f" background-color: {subtle_hex};"
+            f" background-color: {table_header_hex};"
             " font-weight: bold;"
             "}"
             "code {"

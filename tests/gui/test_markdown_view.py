@@ -37,5 +37,7 @@ def test_markdown_view_sets_html_body_attributes(wx_app):
         assert f'text="{foreground_hex}"' in html
         assert f"background-color: {background_hex};" in html
         assert f"color: {foreground_hex};" in html
+        assert "vertical-align: middle;" in html
+        assert "thead tr {" in html
     finally:
         frame.Destroy()

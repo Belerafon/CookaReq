@@ -4,6 +4,7 @@ from app.ui.agent_chat_panel.project_settings import (
     AgentProjectSettings,
     load_agent_project_settings,
     save_agent_project_settings,
+    should_persist_agent_project_settings,
 )
 
 
@@ -57,3 +58,43 @@ def test_agent_project_settings_handles_unicode_paths(tmp_path):
 
     loaded = load_agent_project_settings(settings_path)
     assert loaded.documents_path == "../документы/Рабочие материалы"
+
+
+def test_should_persist_agent_project_settings_skips_new_default_file(tmp_path):
+    settings_path = tmp_path / ".cookareq" / "agent_settings.json"
+
+    assert (
+        should_persist_agent_project_settings(
+            settings_path,
+            AgentProjectSettings(),
+        )
+        is False
+    )
+
+
+def test_should_persist_agent_project_settings_keeps_reset_for_existing_file(tmp_path):
+    settings_path = tmp_path / "agent_settings.json"
+    save_agent_project_settings(
+        settings_path,
+        AgentProjectSettings(custom_system_prompt="custom"),
+    )
+
+    assert (
+        should_persist_agent_project_settings(
+            settings_path,
+            AgentProjectSettings(),
+        )
+        is True
+    )
+
+
+def test_should_persist_agent_project_settings_persists_custom_values(tmp_path):
+    settings_path = tmp_path / ".cookareq" / "agent_settings.json"
+
+    assert (
+        should_persist_agent_project_settings(
+            settings_path,
+            AgentProjectSettings(documents_path="docs"),
+        )
+        is True
+    )

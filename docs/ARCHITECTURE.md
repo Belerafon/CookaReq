@@ -201,8 +201,13 @@ so you know which modules are involved and which regressions to guard against.
   dictionaries.
   * History persistence lives in `HistoryStore` (SQLite); read-only checks avoid
     creating project-local `.cookareq/agent_chats.sqlite` files until the user
-    actually writes chat data, and after users delete all conversations the
-    panel triggers a database compaction (`VACUUM`) so the on-disk file shrinks
+    actually writes chat data. Switching context to a directory without any
+    requirement documents does not migrate existing conversations there and does
+    not bootstrap a fresh history file from a draft-only state. Project
+    settings follow the same rule: switching away from an accidentally opened
+    empty folder does not create `.cookareq/agent_settings.json` unless the
+    user changed settings. After users delete all conversations the panel
+    triggers a database compaction (`VACUUM`) so the on-disk file shrinks
     immediately instead of keeping freed pages.
   * `ChatEntry` maintains a small per-entry view cache with JSON-safe payloads
     and normalised display text so transcript rebuilds reuse expensive

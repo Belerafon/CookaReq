@@ -85,6 +85,7 @@ from .project_settings import (
     AgentProjectSettings,
     load_agent_project_settings,
     save_agent_project_settings,
+    should_persist_agent_project_settings,
 )
 from .layout import AgentChatLayoutBuilder
 from .layout_builder import AgentChatPanelLayoutBuilder
@@ -3635,6 +3636,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         self._update_project_settings_ui()
 
     def _save_project_settings(self) -> None:
+        if not should_persist_agent_project_settings(
+            self._settings_path, self._project_settings
+        ):
+            return
         try:
             save_agent_project_settings(self._settings_path, self._project_settings)
         except Exception:  # pragma: no cover - defensive logging

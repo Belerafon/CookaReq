@@ -70,3 +70,24 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_contex
     finally:
         frame.Destroy()
         wx_app.Yield()
+
+
+def test_switching_from_empty_directory_does_not_create_local_cookareq(
+    tmp_path, wx_app, gui_context
+):
+    wrong_repository = tmp_path / "wrong"
+    wrong_repository.mkdir()
+    repository = _copy_sample_repository(tmp_path)
+    frame = _create_main_frame(tmp_path, gui_context)
+    try:
+        wx_app.Yield()
+        frame._load_directory(wrong_repository)
+        wx_app.Yield()
+        assert not (wrong_repository / ".cookareq").exists()
+
+        frame._load_directory(repository)
+        wx_app.Yield()
+        assert not (wrong_repository / ".cookareq").exists()
+    finally:
+        frame.Destroy()
+        wx_app.Yield()

@@ -49,6 +49,30 @@ def _apply_item_selection(list_ctrl: wx.ListCtrl, index: int, selected: bool) ->
             list_ctrl.Focus(index)
 
 
+def _post_list_item_selected(list_ctrl: wx.ListCtrl, index: int) -> None:
+    """Post a synthetic list-item-selected event for ``index`` when available."""
+    if index < 0:
+        return
+    list_id = getattr(list_ctrl, "GetId", None)
+    if not callable(list_id):
+        return
+    event_type = getattr(wx, "wxEVT_LIST_ITEM_SELECTED", None)
+    event_cls = getattr(wx, "ListEvent", None)
+    post_event = getattr(wx, "PostEvent", None)
+    if event_type is None or event_cls is None or post_event is None:
+        return
+    try:
+        event = event_cls(event_type, list_id())
+    except Exception:
+        return
+    event.SetEventObject(list_ctrl)
+    set_index = getattr(event, "SetIndex", None)
+    if callable(set_index):
+        with suppress(Exception):
+            set_index(index)
+    post_event(list_ctrl, event)
+
+
 class RequirementsListCtrl(wx.ListCtrl):
     """List control with marquee selection starting from any cell."""
 
@@ -62,11 +86,52 @@ class RequirementsListCtrl(wx.ListCtrl):
         self._marquee_overlay: wx.Overlay | None = None
         self._marquee_base: set[int] = set()
         self._marquee_additive = False
+        self._selection_event_blocker: wx.EvtHandler | None = None
+        self._bulk_selection_changed = False
         self.Bind(wx.EVT_LEFT_DOWN, self._on_left_down)
         self.Bind(wx.EVT_LEFT_UP, self._on_left_up)
         self.Bind(wx.EVT_MOTION, self._on_mouse_move)
         self.Bind(wx.EVT_LEAVE_WINDOW, self._on_mouse_leave)
         self.Bind(wx.EVT_KILL_FOCUS, self._on_mouse_leave)
+
+    def _begin_bulk_selection(self) -> None:
+        if self._selection_event_blocker is not None:
+            self._bulk_selection_changed = False
+            return
+        evt_handler_cls = getattr(wx, "EvtHandler", None)
+        if evt_handler_cls is None:
+            self._selection_event_blocker = None
+            self._bulk_selection_changed = False
+            return
+        blocker = evt_handler_cls()
+
+        def _block(event: wx.Event) -> None:
+            event.StopPropagation()
+
+        try:
+            blocker.Bind(wx.EVT_LIST_ITEM_SELECTED, _block)
+            blocker.Bind(wx.EVT_LIST_ITEM_DESELECTED, _block)
+            self.PushEventHandler(blocker)
+        except Exception:
+            self._selection_event_blocker = None
+            self._bulk_selection_changed = False
+            return
+        self._selection_event_blocker = blocker
+        self._bulk_selection_changed = False
+
+    def _finish_bulk_selection(self) -> None:
+        blocker = self._selection_event_blocker
+        self._selection_event_blocker = None
+        changed = self._bulk_selection_changed
+        self._bulk_selection_changed = False
+        if blocker is not None:
+            with suppress(Exception):
+                self.PopEventHandler(True)
+        if not changed:
+            return
+        selected = self._selected_indices()
+        if len(selected) == 1:
+            _post_list_item_selected(self, selected[0])
 
     def _selected_indices(self) -> list[int]:
         indices: list[int] = []
@@ -140,12 +205,15 @@ class RequirementsListCtrl(wx.ListCtrl):
             if should_select == is_selected:
                 continue
             _apply_item_selection(self, idx, should_select)
+            if self._selection_event_blocker is not None:
+                self._bulk_selection_changed = True
         if indices:
             focus_idx = min(indices)
             with suppress(Exception):
                 self.Focus(focus_idx)
 
     def _start_marquee(self) -> None:
+        self._begin_bulk_selection()
         self._marquee_active = True
         if not self._marquee_additive:
             for idx in list(self._marquee_base):
@@ -163,6 +231,7 @@ class RequirementsListCtrl(wx.ListCtrl):
         if self.HasCapture():  # pragma: no cover - defensive
             with suppress(Exception):
                 self.ReleaseMouse()
+        self._finish_bulk_selection()
 
     def _on_left_down(self, event: wx.MouseEvent) -> None:
         self._marquee_origin = event.GetPosition()
@@ -1157,43 +1226,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def _post_selection_event(self, index: int) -> None:
         """Notify listeners about a selection change for ``index``."""
-
-        if index < 0:
-            return
-        list_id = getattr(self.list, "GetId", None)
-        if not callable(list_id):
-            return
-        event_type = getattr(wx, "wxEVT_LIST_ITEM_SELECTED", None)
-        event_cls = getattr(wx, "ListEvent", None)
-        post_event = getattr(wx, "PostEvent", None)
-        if event_type is None or event_cls is None or post_event is None:
-            return
-        try:
-            event = event_cls(event_type, list_id())
-        except Exception:
-            return
-        event.SetEventObject(self.list)
-        set_index = getattr(event, "SetIndex", None)
-        if callable(set_index):
-            try:
-                set_index(index)
-            except Exception:
-                pass
-        else:  # pragma: no cover - compatibility with exotic backends
-            try:
-                event.m_itemIndex = index
-            except Exception:
-                pass
-        get_item = getattr(self.list, "GetItem", None)
-        if callable(get_item):
-            with suppress(Exception):
-                item = get_item(index)
-                set_item = getattr(event, "SetItem", None)
-                if callable(set_item):
-                    set_item(item)
-                else:  # pragma: no cover - compatibility with exotic backends
-                    event.m_item = item
-        post_event(self.list, event)
+        _post_list_item_selected(self.list, index)
 
     def _select_all_requirements(self) -> None:
         try:

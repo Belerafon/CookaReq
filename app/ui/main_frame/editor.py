@@ -21,19 +21,36 @@ class MainFrameEditorMixin:
 
     editor: EditorPanel
 
-    def on_requirement_selected(self: MainFrame, event: wx.ListEvent) -> None:
-        """Load requirement into editor when selected in list."""
-        index = event.GetIndex()
+    def _has_multiple_selected_requirements(self: MainFrame) -> bool:
+        """Return ``True`` when requirements list currently contains multi-selection."""
+        panel = getattr(self, "panel", None)
+        if panel is None or not hasattr(panel, "get_selected_ids"):
+            return False
+        try:
+            return len(panel.get_selected_ids()) > 2
+        except Exception:
+            return False
+
+    def _is_requirement_index_selected(self: MainFrame, index: int) -> bool:
+        """Return ``True`` if list row ``index`` remains selected."""
+        if index < 0:
+            return False
+        list_ctrl = getattr(getattr(self, "panel", None), "list", None)
+        if list_ctrl is None or not hasattr(list_ctrl, "GetItemState"):
+            return False
+        selected_flag = getattr(wx, "LIST_STATE_SELECTED", 0x0002)
+        try:
+            state = list_ctrl.GetItemState(index, selected_flag)
+        except Exception:
+            return False
+        return bool(state & selected_flag)
+
+    def _load_requirement_from_list_index(self: MainFrame, index: int) -> None:
+        """Load requirement for list row ``index`` into the editor."""
         if index == wx.NOT_FOUND:
             return
         req_id = self.panel.list.GetItemData(index)
         if req_id == self._selected_requirement_id:
-            return
-        if not self._confirm_discard_changes():
-            if hasattr(event, "Veto"):
-                can_veto = getattr(event, "CanVeto", None)
-                if can_veto is None or can_veto():
-                    event.Veto()
             return
         req = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if req:
@@ -42,6 +59,32 @@ class MainFrameEditorMixin:
             if self._is_editor_visible():
                 self._show_editor_panel()
                 self.splitter.UpdateSize()
+
+    def _apply_deferred_requirement_selection(self: MainFrame, index: int) -> None:
+        """Re-check selection state after UI events settle."""
+        if not self._is_requirement_index_selected(index):
+            return
+        if self._is_editor_visible() and self._has_multiple_selected_requirements():
+            return
+        if not self._confirm_discard_changes():
+            return
+        self._load_requirement_from_list_index(index)
+
+    def on_requirement_selected(self: MainFrame, event: wx.ListEvent) -> None:
+        """Load requirement into editor when selected in list."""
+        index = event.GetIndex()
+        if index == wx.NOT_FOUND:
+            return
+        if self._is_editor_visible() and self._has_multiple_selected_requirements():
+            wx.CallAfter(self._apply_deferred_requirement_selection, index)
+            return
+        if not self._confirm_discard_changes():
+            if hasattr(event, "Veto"):
+                can_veto = getattr(event, "CanVeto", None)
+                if can_veto is None or can_veto():
+                    event.Veto()
+            return
+        self._load_requirement_from_list_index(index)
 
     def on_requirement_activated(self: MainFrame, event: wx.ListEvent) -> None:
         """Open requirement in a detached editor when activated."""

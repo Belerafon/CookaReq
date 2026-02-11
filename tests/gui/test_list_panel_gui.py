@@ -349,6 +349,14 @@ def test_marquee_selection_starts_from_cell(wx_app):
     frame.GetSizer().Add(panel, 1, wx.EXPAND)
     panel.set_requirements([_req(i, f"Req {i}") for i in range(1, 6)])
 
+    selection_events: list[int] = []
+
+    def _capture_selected(event: wx.ListEvent) -> None:
+        selection_events.append(event.GetIndex())
+        event.Skip()
+
+    panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, _capture_selected)
+
     frame.SetSize((600, 400))
     frame.Show()
     panel.list.SetFocus()
@@ -376,6 +384,7 @@ def test_marquee_selection_starts_from_cell(wx_app):
     _flush_events(wx, count=6)
 
     assert panel.get_selected_ids() == [1, 2, 3]
+    assert len(selection_events) <= 1
 
     frame.Destroy()
 

@@ -387,6 +387,107 @@ def test_requirement_selection_keeps_unsaved(monkeypatch, wx_app, tmp_path):
         frame.Destroy()
 
 
+def test_requirement_multiselect_does_not_reload_editor(wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import wx
+
+    import app.ui.main_frame as main_frame_mod
+    from app.core.document_store import Document
+    from app.core.model import (
+        Priority,
+        Requirement,
+        RequirementType,
+        Status,
+        Verification,
+    )
+    from app.ui.list_panel import _apply_item_selection
+
+    frame = _create_frame(main_frame_mod, tmp_path, name="req_multiselect.ini")
+    try:
+        doc = Document(prefix="DOC", title="Doc")
+        docs = {"DOC": doc}
+        frame.doc_tree.set_documents(docs)
+
+        class DummyController:
+            def __init__(self) -> None:
+                self.documents = docs
+
+            def load_items(self, prefix: str) -> dict:
+                return {}
+
+            def collect_labels(self, prefix: str) -> tuple[list, bool]:
+                return ([], False)
+
+        frame.docs_controller = DummyController()
+        frame.current_dir = tmp_path
+
+        reqs = [
+            Requirement(
+                id=1,
+                title="Req 1",
+                statement="Statement 1",
+                type=RequirementType.REQUIREMENT,
+                status=Status.DRAFT,
+                owner="Owner",
+                priority=Priority.MEDIUM,
+                source="Source",
+                verification=Verification.ANALYSIS,
+                doc_prefix="DOC",
+            ),
+            Requirement(
+                id=2,
+                title="Req 2",
+                statement="Statement 2",
+                type=RequirementType.REQUIREMENT,
+                status=Status.DRAFT,
+                owner="Owner",
+                priority=Priority.MEDIUM,
+                source="Source",
+                verification=Verification.ANALYSIS,
+                doc_prefix="DOC",
+            ),
+            Requirement(
+                id=3,
+                title="Req 3",
+                statement="Statement 3",
+                type=RequirementType.REQUIREMENT,
+                status=Status.DRAFT,
+                owner="Owner",
+                priority=Priority.MEDIUM,
+                source="Source",
+                verification=Verification.ANALYSIS,
+                doc_prefix="DOC",
+            ),
+        ]
+        frame.model.set_requirements(reqs)
+
+        doc_item = frame.doc_tree._node_for_prefix["DOC"]
+        frame.doc_tree.tree.SelectItem(doc_item)
+        wx.YieldIfNeeded()
+
+        frame.panel.list.Select(0)
+        wx.YieldIfNeeded()
+
+        assert frame._selected_requirement_id == 1
+        assert frame.editor.fields["title"].GetValue() == "Req 1"
+
+        _apply_item_selection(frame.panel.list, 1, True)
+        _apply_item_selection(frame.panel.list, 2, True)
+        wx.YieldIfNeeded()
+        assert frame.panel.get_selected_ids() == [1, 2, 3]
+
+        event = wx.ListEvent(wx.wxEVT_LIST_ITEM_SELECTED, frame.panel.list.GetId())
+        event.SetEventObject(frame.panel.list)
+        event.SetIndex(2)
+        frame.on_requirement_selected(event)
+
+        assert frame._selected_requirement_id == 1
+        assert frame.editor.fields["title"].GetValue() == "Req 1"
+    finally:
+        frame.Destroy()
+
+
 def test_close_requests_exit_main_loop(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 

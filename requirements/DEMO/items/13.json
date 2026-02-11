@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 13,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "system",
+    "software"
+  ],
+  "links": [
+    {
+      "fingerprint": "172724467a0bede65c6a091a2bb9a22100729c4a544bc299321c4e900c9834ef",
+      "rid": "DEMO12"
+    }
+  ],
+  "modified_at": "2026-01-16 21:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "DevOps Engineer",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "Demo materials must describe application configuration sources, priority rules, and sensitive parameters such as LLM keys and project paths.",
-  "status": "draft",
-  "title": "Application configuration",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #13",
+  "statement": "## Demo focus\nApplication configuration: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **DevOps Engineer**\n- Requirement RID: `DEMO13`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Application configuration` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "Application configuration — expanded demo",
+  "type": "interface",
+  "verification": "inspection"
 }

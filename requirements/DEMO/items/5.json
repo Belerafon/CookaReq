@@ -1,24 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 5,
   "labels": [
-    "software",
+    "integration",
     "test"
   ],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "links": [
+    {
+      "fingerprint": "f9eaf8b675d2902311dea4d510f099229ca2f51812351b7abc8c0094d4c27944",
+      "rid": "DEMO4"
+    }
+  ],
+  "modified_at": "2026-01-16 13:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Platform Engineer",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo documentation must enumerate registered MCP tools, their contracts, lifecycles, and error logging strategies.",
-  "status": "draft",
-  "title": "MCP tools",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #05",
+  "statement": "## Demo focus\nMCP tools: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Platform Engineer**\n- Requirement RID: `DEMO5`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `MCP tools` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "MCP tools — expanded demo",
+  "type": "constraint",
+  "verification": "inspection"
 }

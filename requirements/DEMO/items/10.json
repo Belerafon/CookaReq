@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 10,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "system",
+    "integration"
+  ],
+  "links": [
+    {
+      "fingerprint": "5420353b12acc475c49974d99e676d2811b7b78a523bb13d2e61e19f33450416",
+      "rid": "DEMO9"
+    }
+  ],
+  "modified_at": "2026-01-16 18:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Solution Architect",
   "priority": "high",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "Demo documentation must describe the system context with actors, external dependencies, and data-exchange constraints, highlighting differences between the GUI and CLI.",
-  "status": "draft",
-  "title": "System context",
-  "type": "requirement",
-  "verification": "analysis"
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #10",
+  "statement": "## Demo focus\nSystem context: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Solution Architect**\n- Requirement RID: `DEMO10`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `System context` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "System context — expanded demo",
+  "type": "interface",
+  "verification": "demonstration"
 }

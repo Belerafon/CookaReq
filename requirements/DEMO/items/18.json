@@ -1,21 +1,29 @@
 {
-  "acceptance": null,
-  "approved_at": null,
-  "assumptions": "",
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "approved_at": "2026-01-16 03:30:00",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 18,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
-  "priority": "low",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo must clarify which localisation resources ship for the GUI and CLI and how the en and ru languages are supported.",
-  "status": "draft",
-  "title": "Demo localisation",
+  "labels": [
+    "software"
+  ],
+  "links": [
+    {
+      "fingerprint": "131cf87f72157a8bc8fc1af82d1e7cf78c3129dd007b02e1484df46b8b708392",
+      "rid": "DEMO17"
+    }
+  ],
+  "modified_at": "2026-01-16 02:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Localization Engineer",
+  "priority": "medium",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #18",
+  "statement": "## Demo focus\nDemo localisation: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Localization Engineer**\n- Requirement RID: `DEMO18`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Demo localisation` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "needs_clarification",
+  "title": "Demo localisation — expanded demo",
   "type": "requirement",
-  "verification": "analysis"
+  "verification": "demonstration"
 }

@@ -1,21 +1,29 @@
 {
-  "acceptance": null,
-  "approved_at": null,
-  "assumptions": "",
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "approved_at": "2026-01-16 21:30:00",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 12,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "software"
+  ],
+  "links": [
+    {
+      "fingerprint": "9314f0de6747ec6350fa8961d5947a6e2ee21f2980a0c13a329f5c4833469add",
+      "rid": "DEMO11"
+    }
+  ],
+  "modified_at": "2026-01-16 20:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Domain Analyst",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo description must list key requirement models and their invariants, linking them to the UI and MCP tools.",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #12",
+  "statement": "## Demo focus\nDomain models: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Domain Analyst**\n- Requirement RID: `DEMO12`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Domain models` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
   "status": "draft",
-  "title": "Domain models",
+  "title": "Domain models — expanded demo",
   "type": "requirement",
-  "verification": "analysis"
+  "verification": "test"
 }

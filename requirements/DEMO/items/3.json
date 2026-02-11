@@ -1,23 +1,30 @@
 {
-  "acceptance": null,
-  "approved_at": null,
-  "assumptions": "",
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "approved_at": "2026-01-16 12:30:00",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 3,
   "labels": [
-    "hardware"
+    "hardware",
+    "software"
   ],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
-  "priority": "high",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "Demo artifacts must detail the requirement models, document_store services, revision rules, and filesystem dependencies while highlighting extension points for new document types.",
+  "links": [
+    {
+      "fingerprint": "bea6c9c161a29ba8c5032b6ade5e6f4d0e6fcc896f163a07f99929c6665164b4",
+      "rid": "DEMO2"
+    }
+  ],
+  "modified_at": "2026-01-16 11:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Backend Engineer",
+  "priority": "medium",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #03",
+  "statement": "## Demo focus\nCore and storage overview: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Backend Engineer**\n- Requirement RID: `DEMO3`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Core and storage overview` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
   "status": "draft",
-  "title": "Core and storage overview",
+  "title": "Core and storage overview — expanded demo",
   "type": "requirement",
   "verification": "analysis"
 }

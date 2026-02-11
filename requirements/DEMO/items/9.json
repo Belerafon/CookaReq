@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
-  "approved_at": null,
-  "assumptions": "",
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "approved_at": "2026-01-16 18:30:00",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 9,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "system",
+    "test"
+  ],
+  "links": [
+    {
+      "fingerprint": "4e1f37fbe8bab04aa0dc90ea4b3a07347993feb0d56dcd57eb5dee257fbab5fb",
+      "rid": "DEMO8"
+    }
+  ],
+  "modified_at": "2026-01-16 17:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Project Manager",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo description must include a risk and task table for the architecture, including automation ideas and control checks.",
-  "status": "draft",
-  "title": "Risks and tasks",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #09",
+  "statement": "## Demo focus\nRisks and tasks: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Project Manager**\n- Requirement RID: `DEMO9`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Risks and tasks` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "needs_clarification",
+  "title": "Risks and tasks — expanded demo",
   "type": "requirement",
-  "verification": "analysis"
+  "verification": "inspection"
 }

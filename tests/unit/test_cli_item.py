@@ -98,6 +98,124 @@ def test_item_edit_updates_fields(tmp_path, capsys, cli_context):
 
 
 @pytest.mark.unit
+def test_item_edit_rejects_invalid_rid(tmp_path, capsys, cli_context):
+    edit_args = argparse.Namespace(directory=str(tmp_path), rid="SYS-0001")
+
+    commands.cmd_item_edit(edit_args, cli_context)
+
+    assert "invalid requirement identifier" in capsys.readouterr().out
+
+
+@pytest.mark.unit
+def test_item_edit_preserves_labels_when_cli_labels_not_set(tmp_path, capsys, cli_context):
+    doc = Document(
+        prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
+    )
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Login",
+        statement="Initial",
+        labels="seed",
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        status=Status.APPROVED.value,
+    )
+    commands.cmd_item_edit(edit_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["labels"] == ["seed"]
+
+
+@pytest.mark.unit
+def test_item_edit_preserves_optional_fields_when_not_passed(tmp_path, capsys, cli_context):
+    doc = Document(
+        prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
+    )
+    save_document(tmp_path / "SYS", doc)
+
+    add_base = {
+        "acceptance": "Must keep value",
+        "approved_at": "2024-03-02T00:00:00Z",
+        "labels": ["seed"],
+    }
+    add_base_path = tmp_path / "seed_optional.json"
+    add_base_path.write_text(json.dumps(add_base), encoding="utf-8")
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        data=str(add_base_path),
+        title="Login",
+        statement="Initial",
+        labels=None,
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        status=Status.APPROVED.value,
+    )
+    commands.cmd_item_edit(edit_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["acceptance"] == "Must keep value"
+    assert data["approved_at"] == "2024-03-02 00:00:00"
+
+
+@pytest.mark.unit
+def test_item_edit_preserves_enum_fields_when_not_passed(tmp_path, capsys, cli_context):
+    doc = Document(
+        prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
+    )
+    save_document(tmp_path / "SYS", doc)
+
+    add_base = {
+        "status": Status.IN_REVIEW.value,
+        "type": RequirementType.INTERFACE.value,
+        "priority": Priority.HIGH.value,
+        "verification": Verification.TEST.value,
+    }
+    add_base_path = tmp_path / "seed_enum.json"
+    add_base_path.write_text(json.dumps(add_base), encoding="utf-8")
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        data=str(add_base_path),
+        title="Login",
+        statement="Initial",
+        labels=None,
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(directory=str(tmp_path), rid=rid, statement="Updated")
+    commands.cmd_item_edit(edit_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["status"] == Status.IN_REVIEW.value
+    assert data["type"] == RequirementType.INTERFACE.value
+    assert data["priority"] == Priority.HIGH.value
+    assert data["verification"] == Verification.TEST.value
+
+
+@pytest.mark.unit
 def test_item_move_merges_sources(tmp_path, capsys, cli_context):
     doc_sys = Document(
         prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)

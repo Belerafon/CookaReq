@@ -1,23 +1,30 @@
 {
-  "acceptance": null,
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
   "approved_at": null,
-  "assumptions": "",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 4,
   "labels": [
+    "integration",
     "test"
   ],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
-  "priority": "high",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo description must document the LocalAgent architecture, interactions with MCP and the document_store, step limits, error handling, and risks of long-running operations.",
-  "status": "draft",
-  "title": "Agent and LLM flows",
-  "type": "requirement",
-  "verification": "analysis"
+  "links": [
+    {
+      "fingerprint": "c2b26963d1c8802a0f32a57f6f1c431b0a3f8f932ae90480b9f71d87afbcce22",
+      "rid": "DEMO3"
+    }
+  ],
+  "modified_at": "2026-01-16 12:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "AI Integrator",
+  "priority": "medium",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #04",
+  "statement": "## Demo focus\nAgent and LLM flows: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **AI Integrator**\n- Requirement RID: `DEMO4`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Agent and LLM flows` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "approved",
+  "title": "Agent and LLM flows — expanded demo",
+  "type": "interface",
+  "verification": "test"
 }

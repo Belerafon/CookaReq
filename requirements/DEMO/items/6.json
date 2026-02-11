@@ -1,21 +1,30 @@
 {
-  "acceptance": null,
-  "approved_at": null,
-  "assumptions": "",
+  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "approved_at": "2026-01-16 15:30:00",
+  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
   "attachments": [],
-  "conditions": "",
+  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
   "id": 6,
-  "labels": [],
-  "modified_at": "",
-  "notes": "",
-  "owner": "",
+  "labels": [
+    "software",
+    "test"
+  ],
+  "links": [
+    {
+      "fingerprint": "eeefc07dce0228e0f06b7cfb8047bffd007bad4fe1d9f6d509662f5494aa9e6c",
+      "rid": "DEMO5"
+    }
+  ],
+  "modified_at": "2026-01-16 14:00:00",
+  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
+  "owner": "Tech Writer",
   "priority": "medium",
-  "rationale": "",
-  "revision": 1,
-  "source": "",
-  "statement": "The demo must contain a CLI section showing how commands reuse the core, which subcommands are available, and what configuration is required for headless execution.",
-  "status": "draft",
-  "title": "CLI in the demo",
+  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "revision": 2,
+  "source": "DEMO workshop backlog item #06",
+  "statement": "## Demo focus\nCLI in the demo: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Tech Writer**\n- Requirement RID: `DEMO6`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `CLI in the demo` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "status": "in_review",
+  "title": "CLI in the demo — expanded demo",
   "type": "requirement",
-  "verification": "analysis"
+  "verification": "demonstration"
 }

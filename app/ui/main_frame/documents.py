@@ -167,6 +167,7 @@ class MainFrameDocumentsMixin:
         service = factory(path)
         controller = DocumentsController(service, self.model)
         try:
+            service.validate_root_layout()
             docs = controller.load_documents()
         except ValidationError as exc:
             logger.error(
@@ -213,6 +214,8 @@ class MainFrameDocumentsMixin:
             self.editor.update_labels_list([])
             self.panel.update_labels_list([], False)
             self.config.clear_last_document(path)
+            if service.is_new_requirements_directory():
+                self._show_new_directory_notice(path)
         if hasattr(self, "navigation"):
             self.navigation.set_manage_labels_enabled(has_docs)
         self._update_requirements_label()
@@ -227,6 +230,14 @@ class MainFrameDocumentsMixin:
             "Failed to load requirements folder \"{path}\": {error}"
         ).format(path=path, error=error)
         wx.MessageBox(message, _("Error"), wx.ICON_ERROR)
+
+    def _show_new_directory_notice(self: MainFrame, path: Path) -> None:
+        """Inform user that an opened folder does not contain requirements yet."""
+        message = _(
+            'Opened folder "{path}". No requirement documents were found. '
+            "This looks like a new directory; create a document to start."
+        ).format(path=path)
+        wx.MessageBox(message, _("Information"), wx.ICON_INFORMATION)
 
     def _refresh_documents(
         self: MainFrame,

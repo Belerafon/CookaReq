@@ -7,6 +7,72 @@ from collections.abc import Mapping
 
 from .types import Document, LabelDef, ValidationError
 
+
+def _is_document_directory(path: Path) -> bool:
+    """Return ``True`` when ``path`` looks like a single document directory."""
+    return (path / "document.json").is_file() and (path / "items").is_dir()
+
+
+def diagnose_requirements_root(root: str | Path) -> str | None:
+    """Return a human-friendly hint when ``root`` likely points to a wrong level.
+
+    The expected root layout stores documents directly under ``root`` where each
+    child contains ``document.json`` and an ``items`` directory. The helper only
+    performs shallow checks so it can run quickly during folder selection.
+    """
+
+    root_path = Path(root)
+    if not root_path.is_dir():
+        return None
+
+    if _is_document_directory(root_path):
+        return (
+            f"selected folder '{root_path}' looks like a single document; "
+            f"open parent folder '{root_path.parent}'"
+        )
+
+    children = [child for child in root_path.iterdir() if child.is_dir()]
+    if any((child / "document.json").is_file() for child in children):
+        return None
+
+    descendants: list[Path] = []
+    for child in children:
+        if any((nested / "document.json").is_file() for nested in child.iterdir() if nested.is_dir()):
+            descendants.append(child)
+
+    if len(descendants) == 1:
+        candidate = descendants[0]
+        return (
+            f"selected folder '{root_path}' is one level above requirements root; "
+            f"open '{candidate}'"
+        )
+    if len(descendants) > 1:
+        options = ", ".join(f"'{path.name}'" for path in sorted(descendants))
+        return (
+            f"selected folder '{root_path}' is above several requirement roots ({options}); "
+            "open the exact folder that directly contains document directories"
+        )
+    return None
+
+def is_new_requirements_directory(root: str | Path) -> bool:
+    """Return ``True`` when ``root`` looks like a fresh directory without documents."""
+
+    root_path = Path(root)
+    if not root_path.is_dir():
+        return False
+    if _is_document_directory(root_path):
+        return False
+    children = [child for child in root_path.iterdir() if child.is_dir()]
+    if any((child / "document.json").is_file() for child in children):
+        return False
+    if any(
+        any((nested / "document.json").is_file() for nested in child.iterdir() if nested.is_dir())
+        for child in children
+    ):
+        return False
+    return True
+
+
 def _read_json(path: Path) -> dict:
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)

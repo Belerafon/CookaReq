@@ -88,6 +88,16 @@ class RequirementsService:
         docs = self._ensure_documents(refresh=refresh)
         return dict(docs)
 
+    def validate_root_layout(self) -> None:
+        """Raise :class:`ValidationError` when ``root`` likely points to wrong level."""
+        hint = doc_store.diagnose_requirements_root(self.root)
+        if hint:
+            raise ValidationError(hint)
+
+    def is_new_requirements_directory(self) -> bool:
+        """Return ``True`` when root has no documents and looks newly created."""
+        return doc_store.is_new_requirements_directory(self.root)
+
     def get_document(self, prefix: str) -> Document:
         """Return document ``prefix`` loading it from disk when necessary."""
         docs = self._ensure_documents()

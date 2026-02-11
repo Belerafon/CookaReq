@@ -111,7 +111,13 @@ so you know which modules are involved and which regressions to guard against.
   (`add_label_definition()`, `update_label_definition()`,
   `remove_label_definition()`) power the MCP tools and GUI, ensuring that
   document metadata and requirement payloads stay in sync when keys change or
-  disappear. `copy_requirement()` duplicates a requirement into another
+  disappear. During folder opening the service also performs a lightweight root
+  layout diagnostic and reports actionable hints when the user selects a
+  document directory itself (should open one level above) or a directory one
+  level above the actual requirements root (should open one level below). If
+  the selected root has no requirement documents at all, the GUI keeps it open
+  and shows an informational notice that this is a new empty directory.
+  `copy_requirement()` duplicates a requirement into another
   document, resetting the revision counter (unless explicitly overridden) and
   promoting any missing label definitions in the destination so the copy can be
   persisted without manual metadata curation. Attachment helpers copy uploaded

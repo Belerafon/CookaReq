@@ -2883,3 +2883,21 @@ msgstr ""
 "| Колонка | Значение |\n"
 "| --- | --- |\n"
 "| Элемент | Описание |"
+
+msgid "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
+msgstr "Не удалось загрузить папку требований.\nВыбранная папка: {path}\nПодробности: {error}"
+
+msgid "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
+msgstr "Вы выбрали подпапку \"{nested}\" документа \"{document}\" (\"{selected}\"); откройте корневую папку требований \"{target}\"."
+
+msgid "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
+msgstr "Выбранная папка \"{selected}\" содержит служебные данные CookaReq; откройте родительскую папку \"{target}\"."
+
+msgid "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
+msgstr "Выбранная папка \"{selected}\" похожа на папку одного документа; откройте родительскую папку \"{target}\"."
+
+msgid "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
+msgstr "Выбранная папка \"{selected}\" на уровень выше корня требований; откройте \"{target}\"."
+
+msgid "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."
+msgstr "Выбранная папка \"{selected}\" находится выше нескольких корней требований ({options}); откройте точную папку, которая непосредственно содержит директории документов."

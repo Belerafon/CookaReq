@@ -2861,3 +2861,21 @@ msgstr ""
 "| Column | Value |\n"
 "| --- | --- |\n"
 "| Item | Description |"
+
+msgid "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
+msgstr "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
+
+msgid "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
+msgstr "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
+
+msgid "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
+msgstr "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
+
+msgid "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
+msgstr "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
+
+msgid "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
+msgstr "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
+
+msgid "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."
+msgstr "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."

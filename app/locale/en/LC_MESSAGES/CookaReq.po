@@ -1952,6 +1952,9 @@ msgstr "Pending"
 msgid "Preview"
 msgstr "Preview"
 
+msgid "View"
+msgstr "View"
+
 msgid "Insert image"
 msgstr "Insert image"
 

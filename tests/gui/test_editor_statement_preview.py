@@ -28,6 +28,10 @@ def test_statement_preview_toggle_renders_markdown(wx_app, tmp_path: Path) -> No
         editor.set_document("SYS")
         editor.fields["statement"].ChangeValue("Hello **World**")
 
+        mode = editor._statement_mode
+        assert mode is not None
+        assert mode.GetString(1) == "View"
+
         editor._set_statement_preview_mode(True)
 
         preview = editor._statement_preview

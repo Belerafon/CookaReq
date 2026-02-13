@@ -38,7 +38,7 @@ def test_markdown_view_sets_html_body_attributes(wx_app):
         assert f"background-color: {background_hex};" in html
         assert f"color: {foreground_hex};" in html
         assert "vertical-align: middle;" in html
-        assert "thead tr {" in html
+        assert "th {" in html
     finally:
         frame.Destroy()
 
@@ -64,5 +64,7 @@ def test_markdown_view_injects_table_compatibility_attributes(wx_app):
         assert 'border="1"' in html
         assert 'bordercolor="#' in html
         assert '<th bgcolor="#' in html
+        assert '<td valign="middle" align="left">V</td>' in html
+        assert 'font-weight: bold;' in html
     finally:
         frame.Destroy()

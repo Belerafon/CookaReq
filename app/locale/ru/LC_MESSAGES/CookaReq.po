@@ -1969,6 +1969,9 @@ msgstr "В ожидании"
 msgid "Preview"
 msgstr "Просмотр"
 
+msgid "View"
+msgstr "Просмотр"
+
 msgid "Insert image"
 msgstr "Вставить изображение"
 

@@ -187,7 +187,10 @@ so you know which modules are involved and which regressions to guard against.
     destination document.
   * `editor_panel.py` manages requirement editing and metadata updates,
     including a Markdown preview mode that renders statements with attachment
-    links resolved to the document-local `assets/` directory. Statement preview
+    links resolved to the document-local `assets/` directory. Text controls in
+    this panel use a custom per-field undo/redo history capped at 10 steps so
+    Ctrl+Z/Ctrl+Y behave consistently across autosizing and preview hooks.
+    Statement preview
     uses a dedicated white canvas so rendered Markdown tables remain readable,
     with explicit cell borders, a tinted header row, and vertical centering for
     table cell content. Because `wx.html.HtmlWindow` supports CSS only

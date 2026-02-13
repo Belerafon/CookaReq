@@ -535,7 +535,7 @@ def _escape_html(text: str) -> str:
 
 
 _ATTACHMENT_LINK_RE = re.compile(r"!\[([^\]]*)\]\(attachment:([^)]+)\)")
-_INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)")
+_INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)|(?<!\\)\$(?!\$)(.+?)(?<!\\)\$")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
 
 
@@ -603,6 +603,15 @@ def _render_formula_run(
             run.add_picture(BytesIO(image_bytes))
             return
     paragraph.add_run(formula)
+
+
+def _looks_like_inline_formula(candidate: str) -> bool:
+    stripped = candidate.strip()
+    if not stripped:
+        return False
+    return any(ch.isalpha() for ch in stripped) or any(
+        token in stripped for token in ("\\", "^", "_", "{", "}", "=", "+", "-", "*", "/")
+    )
 
 
 def _latex_to_png(latex: str) -> bytes | None:
@@ -1005,13 +1014,15 @@ def _docx_add_markdown(
                     text_segment = line[last_idx:match.start()]
                     if text_segment:
                         paragraph.add_run(strip_markdown(text_segment))
-                    formula = match.group(1).strip()
-                    if formula:
+                    formula = (match.group(1) or match.group(2) or "").strip()
+                    if formula and _looks_like_inline_formula(formula):
                         _render_formula_run(
                             paragraph,
                             formula,
                             formula_renderer=formula_renderer,
                         )
+                    elif match.group(0):
+                        paragraph.add_run(strip_markdown(match.group(0)))
                     last_idx = match.end()
                 tail = line[last_idx:]
                 if tail:

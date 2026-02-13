@@ -100,7 +100,7 @@ def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
     requirement = Requirement(
         id=3,
         title="Formula requirement",
-        statement="Inline \\(E = mc^2\\) and block:\n$$\\frac{a}{b}$$",
+        statement="Inline $E = mc^2$ and block:\n$$\\frac{a}{b}$$",
         type=RequirementType.REQUIREMENT,
         status=Status.DRAFT,
         owner="owner",
@@ -117,7 +117,7 @@ def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
     html = render_requirements_html(export)
 
     assert "<math" in html
-    assert "\\(E = mc^2\\)" not in html
+    assert "$E = mc^2$" not in html
 
 
 def test_render_requirements_html_shows_empty_fields_placeholder(tmp_path: Path) -> None:

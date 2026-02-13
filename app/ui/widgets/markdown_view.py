@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import re
 
 import markdown
 import wx
@@ -73,6 +74,42 @@ def _render_markdown(markdown_text: str, *, allow_html: bool, render_math: bool)
     )
     markup = renderer.convert(prepared)
     return sanitize_html(markup)
+
+
+def _wx_html_table_compatibility_markup(
+    body_html: str,
+    *,
+    border_hex: str,
+    header_hex: str,
+) -> str:
+    """Inject legacy table attributes for wx HTML compatibility."""
+
+    if "<table" not in body_html:
+        return body_html
+
+    table_pattern = re.compile(r"<table(\s[^>]*)?>", re.IGNORECASE)
+    th_pattern = re.compile(r"<th(\s[^>]*)?>", re.IGNORECASE)
+
+    def _table_repl(match: re.Match[str]) -> str:
+        attributes = (match.group(1) or "").strip()
+        if "border=" in attributes.lower():
+            return match.group(0)
+        suffix = f" {attributes}" if attributes else ""
+        return (
+            "<table"
+            f' border="1" cellspacing="0" cellpadding="6" bordercolor="{border_hex}"'
+            f"{suffix}>"
+        )
+
+    def _th_repl(match: re.Match[str]) -> str:
+        attributes = (match.group(1) or "").strip()
+        if "bgcolor=" in attributes.lower():
+            return match.group(0)
+        suffix = f" {attributes}" if attributes else ""
+        return f'<th bgcolor="{header_hex}"{suffix}>'
+
+    body_html = table_pattern.sub(_table_repl, body_html)
+    return th_pattern.sub(_th_repl, body_html)
 
 
 def _estimate_contrast(background: wx.Colour) -> str:
@@ -336,6 +373,11 @@ class MarkdownView(html.HtmlWindow):
             f" vlink=\"{foreground_hex}\""
             f" alink=\"{foreground_hex}\""
         )
+        compatible_body_html = _wx_html_table_compatibility_markup(
+            body_html,
+            border_hex=table_border_hex,
+            header_hex=table_header_hex,
+        )
 
         return (
             "<!DOCTYPE html>"
@@ -404,7 +446,7 @@ class MarkdownView(html.HtmlWindow):
             "</style>"
             "</head>"
             f"<body{body_attributes}>"
-            f"{body_html}"
+            f"{compatible_body_html}"
             "</body>"
             "</html>"
         )

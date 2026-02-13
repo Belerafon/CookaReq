@@ -1967,7 +1967,7 @@ msgid "Pending"
 msgstr "В ожидании"
 
 msgid "Preview"
-msgstr "Предпросмотр"
+msgstr "Просмотр"
 
 msgid "Insert image"
 msgstr "Вставить изображение"

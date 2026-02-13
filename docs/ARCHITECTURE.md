@@ -190,7 +190,10 @@ so you know which modules are involved and which regressions to guard against.
     links resolved to the document-local `assets/` directory. Statement preview
     uses a dedicated white canvas so rendered Markdown tables remain readable,
     with explicit cell borders, a tinted header row, and vertical centering for
-    table cell content.
+    table cell content. Because `wx.html.HtmlWindow` supports CSS only
+    partially, the renderer also injects legacy table attributes (`border`,
+    `bordercolor`, `bgcolor`) so borders and headers stay visible on all
+    supported platforms.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is
   still executing; the panel surfaces the pending message in a cancellable

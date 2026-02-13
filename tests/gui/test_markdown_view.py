@@ -41,3 +41,28 @@ def test_markdown_view_sets_html_body_attributes(wx_app):
         assert "thead tr {" in html
     finally:
         frame.Destroy()
+
+
+def test_markdown_view_injects_table_compatibility_attributes(wx_app):
+    wx = pytest.importorskip("wx")
+
+    background = wx.Colour(255, 255, 255)
+    foreground = wx.Colour(20, 20, 20)
+
+    frame = wx.Frame(None)
+    try:
+        from app.ui.widgets.markdown_view import MarkdownView
+
+        view = MarkdownView(
+            frame,
+            foreground_colour=foreground,
+            background_colour=background,
+        )
+
+        html = view._wrap_html("<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>V</td></tr></tbody></table>")
+
+        assert 'border="1"' in html
+        assert 'bordercolor="#' in html
+        assert '<th bgcolor="#' in html
+    finally:
+        frame.Destroy()

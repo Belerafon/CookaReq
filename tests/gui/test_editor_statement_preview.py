@@ -46,6 +46,32 @@ def test_statement_preview_toggle_renders_markdown(wx_app, tmp_path: Path) -> No
 
 
 @pytest.mark.gui_smoke
+def test_statement_preview_renders_single_dollar_formula(wx_app, tmp_path: Path) -> None:
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        editor = EditorPanel(frame)
+        service = RequirementsService(tmp_path)
+        service.save_document(Document(prefix="SYS", title="System"))
+        editor.set_service(service)
+        editor.set_document("SYS")
+        editor.fields["statement"].ChangeValue("Energy: $E = mc^2$")
+
+        editor._set_statement_preview_mode(True)
+
+        preview = editor._statement_preview
+        assert preview is not None
+        plain = preview.GetPlainText()
+        assert "E = mc^2" in plain
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
 def test_statement_preview_rewrites_attachment_links(wx_app, tmp_path: Path) -> None:
     pytest.importorskip("wx")
     import wx

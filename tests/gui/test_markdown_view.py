@@ -68,3 +68,12 @@ def test_markdown_view_injects_table_compatibility_attributes(wx_app):
         assert 'font-weight: bold;' in html
     finally:
         frame.Destroy()
+
+
+def test_markdown_view_render_markdown_supports_single_dollar_formulas() -> None:
+    from app.ui.widgets.markdown_view import _render_markdown
+
+    rendered = _render_markdown("Energy: $E = mc^2$", allow_html=True, render_math=True)
+
+    assert "<math" in rendered
+    assert "$E = mc^2$" not in rendered

@@ -172,6 +172,35 @@ def test_render_requirements_docx_renders_formula_omml(tmp_path: Path) -> None:
         assert "<m:oMath" in document_xml
 
 
+def test_render_requirements_docx_renders_single_dollar_formula_in_text_mode(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=44,
+        title="Formula requirement",
+        statement="Energy $E = mc^2$",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS44",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="text")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "E = mc^2" in document_xml
+        assert "$E = mc^2$" not in document_xml
+
+
 def test_render_requirements_docx_renders_formula_png(tmp_path: Path) -> None:
     pytest.importorskip("matplotlib")
     doc = Document(prefix="SYS", title="System")

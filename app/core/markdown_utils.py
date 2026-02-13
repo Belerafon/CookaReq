@@ -27,6 +27,7 @@ _HTML_ATTR_RE = re.compile(
 )
 _SCHEME_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9+.\-]*):")
 _INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)")
+_INLINE_DOLLAR_FORMULA_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$")
 
 MAX_STATEMENT_LENGTH = 50_000
 
@@ -387,6 +388,14 @@ def _convert_latex_to_mathml(latex: str, *, display: str) -> str | None:
 
 
 def _replace_inline_math(text: str) -> str:
+    def _looks_like_formula(candidate: str) -> bool:
+        stripped = candidate.strip()
+        if not stripped:
+            return False
+        return any(ch.isalpha() for ch in stripped) or any(
+            token in stripped for token in ("\\", "^", "_", "{", "}", "=", "+", "-", "*", "/")
+        )
+
     parts = text.split("`")
     for idx, part in enumerate(parts):
         if idx % 2:
@@ -399,13 +408,21 @@ def _replace_inline_math(text: str) -> str:
             mathml = _convert_latex_to_mathml(latex, display="inline")
             return mathml or match.group(0)
 
-        parts[idx] = _INLINE_FORMULA_RE.sub(_inline_repl, part)
+        def _inline_dollar_repl(match: re.Match[str]) -> str:
+            latex = match.group(1).strip()
+            if not _looks_like_formula(latex):
+                return match.group(0)
+            mathml = _convert_latex_to_mathml(latex, display="inline")
+            return mathml or match.group(0)
+
+        converted = _INLINE_FORMULA_RE.sub(_inline_repl, part)
+        parts[idx] = _INLINE_DOLLAR_FORMULA_RE.sub(_inline_dollar_repl, converted)
     return "`".join(parts)
 
 
 def convert_markdown_math(value: str) -> str:
     """Replace LaTeX-style math markers with MathML where possible."""
-    if not value or ("\\(" not in value and "$$" not in value):
+    if not value or ("\\(" not in value and "$$" not in value and "$" not in value):
         return value
     lines = value.splitlines()
     output: list[str] = []

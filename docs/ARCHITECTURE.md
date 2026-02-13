@@ -57,8 +57,8 @@ so you know which modules are involved and which regressions to guard against.
   plain-text card exports used by the GUI export dialog and renders Markdown
   tables as ASCII grids for readability. The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert
-  LaTeX-style formulas into MathML, and resolve attachment links to the stored
-  asset paths. The same export pipeline
+  LaTeX-style formulas (`\(...\)`, `$...$`, and `$$...$$`) into MathML, and
+  resolve attachment links to the stored asset paths. The same export pipeline
   can also render DOCX cards with embedded attachments, and the GUI export
   dialog uses the card renderer for HTML/DOCX alongside the tabular/text
   formats with a selectable DOCX formula renderer (plain text, MathML→OMML, PNG

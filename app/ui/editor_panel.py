@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
@@ -41,6 +42,13 @@ from .resources import load_editor_config
 from .widgets.markdown_view import MarkdownContent
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _TextHistoryState:
+    entries: list[str]
+    index: int = 0
+    applying: bool = False
 
 
 class EditorPanel(wx.Panel):
@@ -80,6 +88,8 @@ class EditorPanel(wx.Panel):
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
         self._requirement_selected = True
+        self._text_history_limit = 10
+        self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -171,6 +181,7 @@ class EditorPanel(wx.Panel):
                 ctrl.SetHint(_(spec.hint))
             if spec.name == "id":
                 ctrl.Bind(wx.EVT_TEXT, self._on_id_change)
+            self._install_text_history(ctrl)
             if spec.name == "statement":
                 preview = MarkdownContent(
                     content,
@@ -206,6 +217,7 @@ class EditorPanel(wx.Panel):
                 if spec.hint:
                     ctrl.SetHint(_(spec.hint))
                 self.fields[spec.name] = ctrl
+                self._install_text_history(ctrl)
                 row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 container.Add(row, 0, wx.EXPAND | wx.TOP, border)
@@ -224,6 +236,7 @@ class EditorPanel(wx.Panel):
         container.Add(row, 0, wx.TOP, border)
         self.notes_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
         self._bind_autosize(self.notes_ctrl)
+        self._install_text_history(self.notes_ctrl)
         container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
 
@@ -468,6 +481,78 @@ class EditorPanel(wx.Panel):
         ctrl.Bind(wx.EVT_SIZE, _handler)
         self._auto_resize_text(ctrl)
 
+    def _install_text_history(self, ctrl: wx.TextCtrl) -> None:
+        if ctrl in self._text_histories:
+            return
+        self._text_histories[ctrl] = _TextHistoryState(entries=[ctrl.GetValue()])
+        ctrl.Bind(wx.EVT_TEXT, lambda evt, c=ctrl: self._on_text_history_change(c, evt))
+        ctrl.Bind(wx.EVT_CHAR_HOOK, lambda evt, c=ctrl: self._on_text_history_key(c, evt))
+
+    def _on_text_history_change(self, ctrl: wx.TextCtrl, event: wx.CommandEvent) -> None:
+        state = self._text_histories.get(ctrl)
+        if state is None or state.applying or self._suspend_events:
+            event.Skip()
+            return
+        value = ctrl.GetValue()
+        if value == state.entries[state.index]:
+            event.Skip()
+            return
+        if state.index < len(state.entries) - 1:
+            state.entries = state.entries[: state.index + 1]
+        state.entries.append(value)
+        max_entries = self._text_history_limit + 1
+        if len(state.entries) > max_entries:
+            overflow = len(state.entries) - max_entries
+            state.entries = state.entries[overflow:]
+            state.index = max(state.index - overflow, 0)
+        state.index = len(state.entries) - 1
+        event.Skip()
+
+    def _on_text_history_key(self, ctrl: wx.TextCtrl, event: wx.KeyEvent) -> None:
+        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Z"), ord("z")):
+            if self._undo_text_history(ctrl):
+                return
+        if (
+            event.GetModifiers() == (wx.MOD_CONTROL | wx.MOD_SHIFT)
+            and event.GetKeyCode() in (ord("Z"), ord("z"))
+        ):
+            if self._redo_text_history(ctrl):
+                return
+        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Y"), ord("y")):
+            if self._redo_text_history(ctrl):
+                return
+        event.Skip()
+
+    def _undo_text_history(self, ctrl: wx.TextCtrl) -> bool:
+        state = self._text_histories.get(ctrl)
+        if state is None or state.index <= 0:
+            return False
+        state.index -= 1
+        self._apply_text_history(ctrl, state)
+        return True
+
+    def _redo_text_history(self, ctrl: wx.TextCtrl) -> bool:
+        state = self._text_histories.get(ctrl)
+        if state is None or state.index >= len(state.entries) - 1:
+            return False
+        state.index += 1
+        self._apply_text_history(ctrl, state)
+        return True
+
+    def _apply_text_history(self, ctrl: wx.TextCtrl, state: _TextHistoryState) -> None:
+        state.applying = True
+        try:
+            ctrl.ChangeValue(state.entries[state.index])
+            ctrl.SetInsertionPointEnd()
+        finally:
+            state.applying = False
+
+    def _reset_text_histories(self) -> None:
+        for ctrl, state in self._text_histories.items():
+            state.entries = [ctrl.GetValue()]
+            state.index = 0
+            state.applying = False
+
     def _auto_resize_text(self, ctrl: wx.TextCtrl) -> None:
         if self._suspend_events:
             return
@@ -516,6 +601,7 @@ class EditorPanel(wx.Panel):
         row = wx.BoxSizer(wx.HORIZONTAL)
         id_ctrl = wx.TextCtrl(box)
         id_ctrl.SetHint(_("Requirement ID"))
+        self._install_text_history(id_ctrl)
         row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)
         add_btn = wx.Button(box, label=_("Add"))
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
@@ -766,6 +852,7 @@ class EditorPanel(wx.Panel):
         self._auto_resize_all()
         self._on_id_change()
         self._reset_scroll_position()
+        self._reset_text_histories()
         self.mark_clean()
 
     def load(
@@ -846,6 +933,7 @@ class EditorPanel(wx.Panel):
         self._auto_resize_all()
         self._on_id_change()
         self._reset_scroll_position()
+        self._reset_text_histories()
         self.mark_clean()
         self.set_requirement_selected(True)
 
@@ -865,6 +953,7 @@ class EditorPanel(wx.Panel):
         self.original_modified_at = ""
         self._auto_resize_all()
         self._on_id_change()
+        self._reset_text_histories()
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
@@ -1657,6 +1746,7 @@ class EditorPanel(wx.Panel):
         self._auto_resize_all()
         self._on_id_change()
         self.original_modified_at = self.fields["modified_at"].GetValue()
+        self._reset_text_histories()
         self.mark_clean()
 
     def add_attachment(self, attachment_id: str, path: str, note: str = "") -> None:

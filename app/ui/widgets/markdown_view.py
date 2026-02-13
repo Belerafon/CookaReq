@@ -89,27 +89,56 @@ def _wx_html_table_compatibility_markup(
 
     table_pattern = re.compile(r"<table(\s[^>]*)?>", re.IGNORECASE)
     th_pattern = re.compile(r"<th(\s[^>]*)?>", re.IGNORECASE)
+    td_pattern = re.compile(r"<td(\s[^>]*)?>", re.IGNORECASE)
+
+    def _has_attribute(attributes: str, name: str) -> bool:
+        return re.search(rf"(?:^|\s){re.escape(name)}\s*=", attributes, re.IGNORECASE) is not None
 
     def _table_repl(match: re.Match[str]) -> str:
         attributes = (match.group(1) or "").strip()
-        if "border=" in attributes.lower():
+        additions: list[str] = []
+        if not _has_attribute(attributes, "border"):
+            additions.append('border="1"')
+        if not _has_attribute(attributes, "cellspacing"):
+            additions.append('cellspacing="0"')
+        if not _has_attribute(attributes, "cellpadding"):
+            additions.append('cellpadding="6"')
+        if not _has_attribute(attributes, "bordercolor"):
+            additions.append(f'bordercolor="{border_hex}"')
+        if not additions:
             return match.group(0)
         suffix = f" {attributes}" if attributes else ""
-        return (
-            "<table"
-            f' border="1" cellspacing="0" cellpadding="6" bordercolor="{border_hex}"'
-            f"{suffix}>"
-        )
+        return "<table " + " ".join(additions) + f"{suffix}>"
 
     def _th_repl(match: re.Match[str]) -> str:
         attributes = (match.group(1) or "").strip()
-        if "bgcolor=" in attributes.lower():
+        additions: list[str] = []
+        if not _has_attribute(attributes, "bgcolor"):
+            additions.append(f'bgcolor="{header_hex}"')
+        if not _has_attribute(attributes, "valign"):
+            additions.append('valign="middle"')
+        if not _has_attribute(attributes, "align"):
+            additions.append('align="left"')
+        if not additions:
             return match.group(0)
         suffix = f" {attributes}" if attributes else ""
-        return f'<th bgcolor="{header_hex}"{suffix}>'
+        return "<th " + " ".join(additions) + f"{suffix}>"
+
+    def _td_repl(match: re.Match[str]) -> str:
+        attributes = (match.group(1) or "").strip()
+        additions: list[str] = []
+        if not _has_attribute(attributes, "valign"):
+            additions.append('valign="middle"')
+        if not _has_attribute(attributes, "align"):
+            additions.append('align="left"')
+        if not additions:
+            return match.group(0)
+        suffix = f" {attributes}" if attributes else ""
+        return "<td " + " ".join(additions) + f"{suffix}>"
 
     body_html = table_pattern.sub(_table_repl, body_html)
-    return th_pattern.sub(_th_repl, body_html)
+    body_html = th_pattern.sub(_th_repl, body_html)
+    return td_pattern.sub(_td_repl, body_html)
 
 
 def _estimate_contrast(background: wx.Colour) -> str:
@@ -405,7 +434,7 @@ class MarkdownView(html.HtmlWindow):
             " text-align: left;"
             " vertical-align: middle;"
             "}"
-            "thead tr {"
+            "th {"
             f" background-color: {table_header_hex};"
             " font-weight: bold;"
             "}"

@@ -106,7 +106,7 @@ class EditorPanel(wx.Panel):
             row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
             if spec.name == "statement":
-                mode = wx.Choice(content, choices=[_("Edit"), _("Preview")])
+                mode = wx.Choice(content, choices=[_("Edit"), _("View")])
                 mode.SetSelection(0)
                 mode.Bind(wx.EVT_CHOICE, self._on_statement_mode_change)
                 row.Add(mode, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)

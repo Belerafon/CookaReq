@@ -1,29 +1,33 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": "2026-01-16 03:30:00",
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 18,
   "labels": [
     "software"
   ],
   "links": [
     {
-      "fingerprint": "131cf87f72157a8bc8fc1af82d1e7cf78c3129dd007b02e1484df46b8b708392",
-      "rid": "DEMO17"
+      "fingerprint": "21fff3fc0bbc8ad29fb251cc0b2b6ac46dac73cc8f1b06e9ec96bb00d0509957",
+      "rid": "DEMO12"
+    },
+    {
+      "fingerprint": "daa2338bf78d36f37370354d4a231a3162fd2ff8d73a71d23efe669522f184a3",
+      "rid": "DEMO6"
     }
   ],
   "modified_at": "2026-01-16 02:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Localization Engineer",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #18",
-  "statement": "## Demo focus\nDemo localisation: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Localization Engineer**\n- Requirement RID: `DEMO18`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Demo localisation` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "needs_clarification",
-  "title": "Demo localisation — expanded demo",
+  "source": "DO-178C demo baseline",
+  "statement": "Модуль низкого уровня UPDATE_SIG_VERIFY должен валидировать подпись Ed25519 и хеш SHA-256 манифеста обновления.",
+  "status": "approved",
+  "title": "LLR-06 Проверка подписи обновления",
   "type": "requirement",
-  "verification": "demonstration"
+  "verification": "analysis"
 }

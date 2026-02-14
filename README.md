@@ -100,6 +100,10 @@ python3 -m app.cli item add requirements SYS \
     --statement "Describe behaviour" \
     --labels safety,ui
 
+# list requirements in a document (supports paging/filters)
+python3 -m app.cli item list requirements SYS --page 1 --per-page 20 --show-links
+python3 -m app.cli item list requirements SYS --format json > sys-items.json
+
 # move a requirement between documents
 python3 -m app.cli item move requirements SYS-0003 --new-prefix LLR
 

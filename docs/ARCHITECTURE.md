@@ -10,6 +10,7 @@ so you know which modules are involved and which regressions to guard against.
 | Path | Description |
 | --- | --- |
 | `app/main.py`, `app/application.py` | GUI entry point and the dependency container (`ApplicationContext`). |
+| `app/cli/` | CLI entry points (`python3 -m app.cli`) and command handlers for document/item/link/trace/export/check workflows, including filtered requirement listing (`item list`) in text/JSON formats. CLI commands return explicit process status codes so automation can rely on shell exit semantics. |
 | `app/core/` | Persistent requirement store, core models, search helpers, trace matrix generation, import/export code. |
 | `app/services/` | High-level facades on top of the core, including document caching, user document ingestion and configuration. |
 | `app/agent/` | The local agent that orchestrates LLM calls, MCP tool executions and confirmation flows. |

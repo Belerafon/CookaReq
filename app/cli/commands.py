@@ -541,31 +541,37 @@ def build_item_payload(
 
 def cmd_doc_create(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Create new document within requirements root."""
     service = _service_for(context, args.directory)
-    doc = service.create_document(
-        prefix=args.prefix,
-        title=args.title,
-        parent=args.parent,
-    )
+    try:
+        doc = service.create_document(
+            prefix=args.prefix,
+            title=args.title,
+            parent=args.parent,
+        )
+    except (ValidationError, ValueError, DocumentNotFoundError) as exc:
+        sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
+        return 1
     sys.stdout.write(f"{doc.prefix}\n")
+    return 0
 
 
 def cmd_doc_list(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """List documents configured under requirements root."""
     service = _service_for(context, args.directory)
     docs = service.load_documents(refresh=True)
     for prefix in sorted(docs):
         doc = docs[prefix]
         sys.stdout.write(f"{doc.prefix} {doc.title}\n")
+    return 0
 
 
 def cmd_doc_delete(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Delete document ``prefix`` and its descendants."""
     service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
@@ -574,23 +580,24 @@ def cmd_doc_delete(
             sys.stdout.write(
                 _("document not found: {prefix}\n").format(prefix=args.prefix)
             )
-            return
+            return 1
         for p in doc_list:
             sys.stdout.write(f"{p}\n")
         for rid in item_list:
             sys.stdout.write(f"{rid}\n")
-        return
+        return 0
     msg = _("Delete document {prefix} and its subtree?").format(prefix=args.prefix)
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
-        return
+        return 1
     removed = service.delete_document(args.prefix)
     if removed:
         sys.stdout.write(f"{args.prefix}\n")
-    else:
-        sys.stdout.write(
-            _("document not found: {prefix}\n").format(prefix=args.prefix)
-        )
+        return 0
+    sys.stdout.write(
+        _("document not found: {prefix}\n").format(prefix=args.prefix)
+    )
+    return 1
 
 
 def add_doc_arguments(p: argparse.ArgumentParser) -> None:
@@ -621,11 +628,11 @@ def add_doc_arguments(p: argparse.ArgumentParser) -> None:
 
 def cmd_item_add(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Create a new requirement item under a document."""
     base = _load_template(getattr(args, "data", None))
     if base is None:
-        return
+        return 1
     service = _service_for(context, args.directory)
     try:
         payload = build_item_payload(args, base)
@@ -634,16 +641,17 @@ def cmd_item_add(
         sys.stdout.write(
             _("unknown document prefix: {prefix}\n").format(prefix=args.prefix)
         )
-        return
+        return 1
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
     sys.stdout.write(f"{req.rid}\n")
+    return 0
 
 
 def cmd_item_edit(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Update an existing requirement without changing its RID."""
     try:
         prefix, item_id = parse_rid(args.rid)
@@ -651,22 +659,22 @@ def cmd_item_edit(
         sys.stdout.write(
             _("invalid requirement identifier: {rid}\n").format(rid=args.rid)
         )
-        return
+        return 1
     service = _service_for(context, args.directory)
     try:
         doc = service.get_document(prefix)
     except DocumentNotFoundError:
         sys.stdout.write(_("document not found: {prefix}\n").format(prefix=prefix))
-        return
+        return 1
     try:
         data, _mtime = service.load_item(prefix, item_id)
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
-        return
+        return 1
 
     template = _load_template(getattr(args, "data", None))
     if template is None:
-        return
+        return 1
 
     base_payload: dict[str, Any] = dict(data)
     base_payload.update(template)
@@ -675,13 +683,13 @@ def cmd_item_edit(
         payload = build_item_payload(args, base_payload)
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
 
     labels = list(payload.get("labels", []))
     err = service.validate_labels(prefix, labels)
     if err:
         sys.stdout.write(_("{msg}\n").format(msg=err))
-        return
+        return 1
     payload["labels"] = labels
 
     payload["id"] = int(data["id"])
@@ -690,21 +698,23 @@ def cmd_item_edit(
     service.save_requirement_payload(prefix, req.to_mapping())
     sys.stdout.write(f"{req.rid}\n")
 
+    return 0
+
 
 def cmd_item_move(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Move existing item ``rid`` to document ``new_prefix``."""
     service = _service_for(context, args.directory)
     try:
         current = service.get_requirement(args.rid)
     except RequirementNotFoundError:
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
-        return
+        return 1
 
     template = _load_template(getattr(args, "data", None))
     if template is None:
-        return
+        return 1
 
     base_payload: dict[str, Any] = current.to_mapping()
     base_payload.update(template)
@@ -713,7 +723,7 @@ def cmd_item_move(
         payload = build_item_payload(args, base_payload)
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
 
     try:
         moved = service.move_requirement(
@@ -725,54 +735,57 @@ def cmd_item_move(
         sys.stdout.write(
             _("unknown document prefix: {prefix}\n").format(prefix=args.new_prefix)
         )
-        return
+        return 1
     except RequirementNotFoundError:
         sys.stdout.write(_("requirement not found: {rid}\n").format(rid=args.rid))
-        return
+        return 1
     except RequirementIDCollisionError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
 
     sys.stdout.write(f"{moved.rid}\n")
+
+    return 0
 
 
 def cmd_item_delete(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Delete requirement ``rid`` and update references."""
     service = _service_for(context, args.directory)
     if getattr(args, "dry_run", False):
         exists, refs = service.plan_delete_requirement(args.rid)
         if not exists:
             sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
-            return
+            return 1
         sys.stdout.write(f"{args.rid}\n")
         for r in refs:
             sys.stdout.write(f"{r}\n")
-        return
+        return 0
     msg = _("Delete item {rid}?").format(rid=args.rid)
     if not confirm(msg):
         sys.stdout.write(_("aborted\n"))
-        return
+        return 1
     try:
         canonical = service.delete_requirement(args.rid)
     except ValueError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
-        return
+        return 1
     except ValidationError as exc:
         sys.stdout.write(
             _("cannot delete {rid}: revision error: {msg}\n").format(
                 rid=args.rid, msg=str(exc)
             )
         )
-        return
+        return 1
     except RequirementNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
-        return
+        return 1
     sys.stdout.write(f"{canonical}\n")
+    return 0
 
 
 def _add_item_payload_arguments(
@@ -811,6 +824,51 @@ def _add_item_payload_arguments(
         "--links", help=_("comma-separated parent requirement IDs")
     )
     parser.add_argument("--data", help=_("JSON template file"))
+
+
+def cmd_item_list(
+    args: argparse.Namespace, context: ApplicationContext
+) -> int:
+    """List requirements for one document with optional filters."""
+    service = _service_for(context, args.directory)
+    labels = _split_csv(args.labels) if args.labels else []
+    try:
+        page = service.list_requirements(
+            prefix=args.prefix,
+            page=args.page,
+            per_page=args.per_page,
+            status=args.status,
+            labels=labels,
+        )
+    except DocumentNotFoundError:
+        sys.stdout.write(
+            _("unknown document prefix: {prefix}\n").format(prefix=args.prefix)
+        )
+        return 1
+
+    if args.format == "json":
+        payload = [
+            {
+                "rid": req.rid,
+                "title": req.title,
+                "status": req.status.value,
+                "labels": list(req.labels),
+                "links": [link.rid for link in getattr(req, "links", [])],
+            }
+            for req in page.items
+        ]
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+        return 0
+
+    for req in page.items:
+        line = f"{req.rid} {req.title}"
+        if args.show_links:
+            linked = [link.rid for link in getattr(req, "links", [])]
+            if linked:
+                line = f"{line} -> {', '.join(linked)}"
+        sys.stdout.write(f"{line}\n")
+
+    return 0
 
 
 def add_item_arguments(p: argparse.ArgumentParser) -> None:
@@ -854,6 +912,26 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
     move_p.add_argument("--data", help=_("JSON template file"))
     move_p.set_defaults(func=cmd_item_move)
 
+    list_p = sub.add_parser("list", help=_("list items"))
+    list_p.add_argument("directory", help=_("requirements root"))
+    list_p.add_argument("prefix", help=_("document prefix"))
+    list_p.add_argument("--page", type=int, default=1, help=_("page number"))
+    list_p.add_argument("--per-page", type=int, default=50, help=_("items per page"))
+    list_p.add_argument("--status", choices=STATUS_CHOICES, help=_("filter by status"))
+    list_p.add_argument("--labels", help=_("comma-separated labels"))
+    list_p.add_argument(
+        "--show-links",
+        action="store_true",
+        help=_("include linked parent requirement IDs"),
+    )
+    list_p.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help=_("output format"),
+    )
+    list_p.set_defaults(func=cmd_item_list)
+
     del_p = sub.add_parser("delete", help=_("delete item"))
     del_p.add_argument("directory", help=_("requirements root"))
     del_p.add_argument("rid", help=_("requirement identifier"))
@@ -867,47 +945,47 @@ def add_item_arguments(p: argparse.ArgumentParser) -> None:
 
 def cmd_link(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Add links from requirement ``rid`` to ``parents``."""
     service = _service_for(context, args.directory)
     try:
         prefix, item_id = parse_rid(args.rid)
     except ValueError:
         sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=args.rid))
-        return
+        return 1
     try:
         doc = service.get_document(prefix)
     except DocumentNotFoundError:
         sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=prefix))
-        return
+        return 1
     try:
         data, _mtime = service.load_item(prefix, item_id)
     except FileNotFoundError:
         sys.stdout.write(_("item not found: {rid}\n").format(rid=args.rid))
-        return
+        return 1
     parent_payloads: dict[str, dict] = {}
     for rid in args.parents:
         if rid == args.rid:
             sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
-            return
+            return 1
         try:
             parent_prefix, parent_id = parse_rid(rid)
         except ValueError:
             sys.stdout.write(_("invalid requirement identifier: {rid}\n").format(rid=rid))
-            return
+            return 1
         try:
             service.get_document(parent_prefix)
         except DocumentNotFoundError:
             sys.stdout.write(_("unknown document prefix: {prefix}\n").format(prefix=parent_prefix))
-            return
+            return 1
         if not service.is_ancestor(prefix, parent_prefix):
             sys.stdout.write(_("invalid link target: {rid}\n").format(rid=rid))
-            return
+            return 1
         try:
             parent_data, _parent_mtime = service.load_item(parent_prefix, parent_id)
         except FileNotFoundError:
             sys.stdout.write(_("linked item not found: {rid}\n").format(rid=rid))
-            return
+            return 1
         parent_payloads[rid] = parent_data
 
     req = Requirement.from_mapping(data, doc_prefix=doc.prefix, rid=args.rid)
@@ -923,6 +1001,8 @@ def cmd_link(
     req.links = [existing_links[rid] for rid in sorted(existing_links)]
     service.save_requirement_payload(prefix, req.to_mapping())
     sys.stdout.write(f"{args.rid}\n")
+
+    return 0
 
 
 def add_link_arguments(p: argparse.ArgumentParser) -> None:
@@ -957,28 +1037,32 @@ def _open_export_output(path: str | None, *, binary: bool) -> tuple[Any, bool]:
 
 def cmd_trace(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Export traceability matrix in the requested format."""
     row_axis = _build_axis_config(args, "row")
     column_axis = _build_axis_config(args, "column")
 
     if not row_axis.documents:
-        raise SystemExit(_("at least one --rows value is required"))
+        sys.stdout.write(_("at least one --rows value is required") + "\n")
+        return 1
     if not column_axis.documents:
-        raise SystemExit(_("at least one --columns value is required"))
+        sys.stdout.write(_("at least one --columns value is required") + "\n")
+        return 1
 
     direction_raw = getattr(args, "direction", TraceDirection.CHILD_TO_PARENT.value)
     try:
         direction = TraceDirection(direction_raw)
     except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
+        sys.stdout.write(f"{exc}\n")
+        return 1
 
     config = TraceMatrixConfig(rows=row_axis, columns=column_axis, direction=direction)
 
     try:
         matrix = build_trace_matrix(args.directory, config)
     except (DocumentNotFoundError, FileNotFoundError, ValueError) as exc:
-        raise SystemExit(str(exc)) from exc
+        sys.stdout.write(f"{exc}\n")
+        return 1
 
     fmt = getattr(args, "format", "pairs")
     out, close_out = _open_trace_output(getattr(args, "output", None))
@@ -992,22 +1076,26 @@ def cmd_trace(
         elif fmt == "matrix-json":
             _write_trace_matrix_json(out, matrix)
         else:  # pragma: no cover - defensive
-            raise SystemExit(f"unknown format: {fmt}")
+            sys.stdout.write(f"unknown format: {fmt}\n")
+            return 1
     finally:
         if close_out:
             out.close()
 
+    return 0
+
 
 def cmd_export_requirements(
     args: argparse.Namespace, context: ApplicationContext
-) -> None:
+) -> int:
     """Export requirements into Markdown, HTML, or PDF."""
     selected_docs = tuple(_flatten_arg_list(getattr(args, "documents", []))) or None
 
     try:
         export = build_requirement_export(args.directory, prefixes=selected_docs)
     except (DocumentNotFoundError, FileNotFoundError) as exc:
-        raise SystemExit(str(exc)) from exc
+        sys.stdout.write(f"{exc}\n")
+        return 1
 
     title = getattr(args, "title", None) or _("Requirements export")
     fmt = getattr(args, "format", "markdown")
@@ -1020,7 +1108,7 @@ def cmd_export_requirements(
         finally:
             if close_out:
                 out.close()
-        return
+        return 0
 
     if fmt == "html":
         payload = render_requirements_html(export, title=title)
@@ -1030,7 +1118,7 @@ def cmd_export_requirements(
         finally:
             if close_out:
                 out.close()
-        return
+        return 0
 
     if fmt == "pdf":
         payload = render_requirements_pdf(export, title=title)
@@ -1040,7 +1128,7 @@ def cmd_export_requirements(
         finally:
             if close_out:
                 out.close()
-        return
+        return 0
 
     if fmt == "docx":
         payload = render_requirements_docx(export, title=title)
@@ -1050,9 +1138,10 @@ def cmd_export_requirements(
         finally:
             if close_out:
                 out.close()
-        return
+        return 0
 
-    raise SystemExit(f"unknown format: {fmt}")
+    sys.stdout.write(f"unknown format: {fmt}\n")
+    return 1
 
 
 def add_export_arguments(p: argparse.ArgumentParser) -> None:

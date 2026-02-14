@@ -1,30 +1,24 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 5,
   "labels": [
-    "integration",
+    "system",
     "test"
   ],
-  "links": [
-    {
-      "fingerprint": "f9eaf8b675d2902311dea4d510f099229ca2f51812351b7abc8c0094d4c27944",
-      "rid": "DEMO4"
-    }
-  ],
   "modified_at": "2026-01-16 13:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Platform Engineer",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #05",
-  "statement": "## Demo focus\nMCP tools: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Platform Engineer**\n- Requirement RID: `DEMO5`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `MCP tools` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "Система должна сохранять события уровня safety-critical в энергонезависимом журнале для последующего расследования.",
   "status": "approved",
-  "title": "MCP tools — expanded demo",
-  "type": "constraint",
-  "verification": "inspection"
+  "title": "SYS-05 Журналирование событий безопасности",
+  "type": "requirement",
+  "verification": "test"
 }

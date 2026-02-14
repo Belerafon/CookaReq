@@ -47,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     if preferred_language:
         i18n.install(APP_NAME, LOCALE_DIR, [preferred_language])
     args.app_settings = settings
-    args.func(args, context)
+    result = args.func(args, context)
+    if isinstance(result, int):
+        return result
     return 0
 
 

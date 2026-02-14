@@ -1,30 +1,30 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 11,
   "labels": [
     "software",
-    "system"
+    "test"
   ],
   "links": [
     {
-      "fingerprint": "215ade7ecb4965455982ecf8d3566c744d695e84792c6f6a612a8479343c1ce9",
-      "rid": "DEMO10"
+      "fingerprint": "4542f98bcc53d0d1b62aa783359ed65d6a2f38588f06f588f20fa7e27c016d9c",
+      "rid": "DEMO5"
     }
   ],
   "modified_at": "2026-01-16 19:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Release Engineer",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #11",
-  "statement": "## Demo focus\nRequirements repository: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Release Engineer**\n- Requirement RID: `DEMO11`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Requirements repository` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "in_review",
-  "title": "Requirements repository — expanded demo",
-  "type": "constraint",
-  "verification": "analysis"
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно агрегировать safety-события и передавать их в подсистему защищенного хранения журналов.",
+  "status": "approved",
+  "title": "HLR-05 Подсистема аудита безопасности",
+  "type": "requirement",
+  "verification": "test"
 }

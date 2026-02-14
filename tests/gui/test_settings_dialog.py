@@ -104,6 +104,45 @@ def test_settings_dialog_returns_language(wx_app):
     )
     dlg.Destroy()
 
+
+
+def test_settings_dialog_shows_config_path(wx_app):
+    pytest.importorskip("wx")
+    from app.ui.settings_dialog import SettingsDialog
+
+    config_path = "/home/test/.cookareq/config.json"
+    dlg = SettingsDialog(
+        None,
+        open_last=True,
+        remember_sort=False,
+        language="en",
+        settings_path=config_path,
+        base_url="http://api",
+        model="gpt-test",
+        message_format="openai-chat",
+        api_key="",
+        max_retries=1,
+        max_context_tokens=DEFAULT_MAX_CONTEXT_TOKENS,
+        timeout_minutes=30,
+        use_custom_temperature=False,
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        stream=False,
+        auto_start=False,
+        host="127.0.0.1",
+        port=8123,
+        base_path="/tmp",
+        documents_path="docs",
+        documents_max_read_kb=10,
+        log_dir="",
+        require_token=False,
+        token="",
+        mcp_controller_factory=lambda: IdleMCPController(),
+    )
+
+    assert dlg._settings_path.GetValue() == config_path
+    assert dlg._copy_settings_path.IsEnabled()
+    dlg.Destroy()
+
 def test_mcp_start_stop_server(monkeypatch, wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.settings_dialog as sd

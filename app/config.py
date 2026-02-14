@@ -294,6 +294,12 @@ class ConfigManager:
             for section, overrides in self._overrides.items()
         }
 
+    @property
+    def path(self) -> Path:
+        """Return the absolute path of the persisted configuration file."""
+
+        return self._path
+
     # ------------------------------------------------------------------
     # persistence
     def flush(self) -> None:

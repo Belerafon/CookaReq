@@ -271,7 +271,7 @@ so you know which modules are involved and which regressions to guard against.
   agent events (`timeline.sequence`, kind, tool call id/step index) so a
   reordered or deduplicated timeline triggers a rerender even if entry IDs and
   counts stay the same.
-  * `trace_matrix.py` and `derivation_graph.py` visualise relationships.
+  * `trace_matrix.py` and `derivation_graph.py` visualise relationships. The trace matrix dialog now carries a richer configuration surface: row/column sort field selection, selectable requirement card fields used in headers/details/export, compact symbol rendering, orphan filtering, and direct export to HTML/CSV/JSON from the matrix window.
 * **Controllers** — under `app/ui/controllers/`, they translate wx events into
   service calls (`DocumentsController`, `MCPController`, etc.). Controllers take
   care of ID uniqueness, validation and model updates before hitting the store.

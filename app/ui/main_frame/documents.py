@@ -1047,12 +1047,21 @@ class MainFrameDocumentsMixin:
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
-            config = dialog.get_config()
+            if hasattr(dialog, "get_plan"):
+                plan = dialog.get_plan()
+            else:
+                from ..trace_matrix import TraceMatrixDisplayOptions, TraceMatrixViewPlan
+
+                plan = TraceMatrixViewPlan(
+                    config=dialog.get_config(),
+                    options=TraceMatrixDisplayOptions(),
+                    output_format="interactive",
+                )
         finally:
             dialog.Destroy()
 
         try:
-            matrix = controller.build_trace_matrix(config)
+            matrix = controller.build_trace_matrix(plan.config)
         except Exception as exc:  # pragma: no cover - report via UI
             wx.MessageBox(str(exc), _("Error"))
             return
@@ -1063,6 +1072,58 @@ class MainFrameDocumentsMixin:
             )
             return
 
-        frame = TraceMatrixFrame(self, controller, config, matrix)
+        if plan.output_format != "interactive":
+            try:
+                frame = TraceMatrixFrame(self, controller, plan.config, matrix, options=plan.options)
+            except TypeError:
+                frame = TraceMatrixFrame(self, controller, plan.config, matrix)
+            frame.Hide()
+            suffix = {
+                "matrix-html": ".html",
+                "matrix-csv": ".csv",
+                "matrix-json": ".json",
+            }.get(plan.output_format, "")
+            wildcard = "HTML (*.html)|*.html|CSV (*.csv)|*.csv|JSON (*.json)|*.json"
+            file_dialog = wx.FileDialog(
+                self,
+                message=_("Export trace matrix"),
+                wildcard=wildcard,
+                style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+            )
+            try:
+                if suffix:
+                    file_dialog.SetFilename(f"trace_matrix{suffix}")
+                if file_dialog.ShowModal() != wx.ID_OK:
+                    frame.Destroy()
+                    return
+                path = file_dialog.GetPath()
+            finally:
+                file_dialog.Destroy()
+            try:
+                if path.lower().endswith(".html"):
+                    from ..trace_matrix import _write_matrix_html
+
+                    _write_matrix_html(Path(path), frame.matrix, frame.options)
+                elif path.lower().endswith(".csv"):
+                    from ..trace_matrix import _write_matrix_csv
+
+                    _write_matrix_csv(Path(path), frame.matrix, frame.options)
+                elif path.lower().endswith(".json"):
+                    from ..trace_matrix import _write_matrix_json
+
+                    _write_matrix_json(Path(path), frame.matrix, frame.options)
+                else:
+                    wx.MessageBox(_("Unsupported file extension"), _("Error"))
+                    frame.Destroy()
+                    return
+            finally:
+                frame.Destroy()
+            wx.MessageBox(_("Trace matrix exported"), _("Done"))
+            return
+
+        try:
+            frame = TraceMatrixFrame(self, controller, plan.config, matrix, options=plan.options)
+        except TypeError:
+            frame = TraceMatrixFrame(self, controller, plan.config, matrix)
         self.register_auxiliary_frame(frame)
         frame.Show()

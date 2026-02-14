@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 from app.core.document_store import Document, save_document, save_item
 from app.core.trace_matrix import (
@@ -146,3 +147,44 @@ def test_suspect_links_detected(tmp_path):
     cell = matrix.cells[("HLR1", "SYS1")]
     assert cell.suspect is True
     assert cell.links[0].suspect is True
+
+
+@pytest.mark.unit
+def test_demo_derived_llr_requirements_are_reported_as_orphans() -> None:
+    root = Path(__file__).resolve().parents[2] / "requirements"
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(
+            documents=("DEMO",),
+            query="LLR-",
+            query_fields=("title",),
+        ),
+        columns=TraceMatrixAxisConfig(
+            documents=("DEMO",),
+            query="HLR-",
+            query_fields=("title",),
+        ),
+    )
+
+    matrix = build_trace_matrix(root, config)
+
+    assert [entry.rid for entry in matrix.rows] == [
+        "DEMO13",
+        "DEMO14",
+        "DEMO15",
+        "DEMO16",
+        "DEMO17",
+        "DEMO18",
+        "DEMO19",
+        "DEMO20",
+        "DEMO21",
+    ]
+    assert [entry.rid for entry in matrix.columns] == [
+        "DEMO7",
+        "DEMO8",
+        "DEMO9",
+        "DEMO10",
+        "DEMO11",
+        "DEMO12",
+    ]
+    assert matrix.summary.linked_pairs == 6
+    assert matrix.summary.orphan_rows == ("DEMO19", "DEMO20", "DEMO21")

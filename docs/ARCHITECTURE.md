@@ -290,7 +290,10 @@ so you know which modules are involved and which regressions to guard against.
   `EditorPanel` keeps the requirement form in an explicit two-stage sequence: a
   primary block (ID/title/statement/context/rationale/notes/source/status/labels
   and attachments) followed by extended metadata (acceptance, assumptions,
-  ownership/revision links, classification enums and approval date).
+  ownership/revision links, classification enums and approval date). Requirement
+  switching now applies batched autosize/layout updates under a frozen content
+  panel, so keyboard navigation through the list no longer triggers a visible
+  per-field relayout cascade.
 
 ## Cross-cutting infrastructure
 

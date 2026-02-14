@@ -277,3 +277,38 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
                 frame.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_editor_panel_auto_resize_all_batches_layout(wx_app, monkeypatch):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        for ctrl in panel._autosize_fields:
+            ctrl.SetMinSize((-1, 10))
+            ctrl.SetSize((-1, 10))
+
+        monkeypatch.setattr(panel, "_compute_text_height", lambda _ctrl: 123)
+
+        calls = {"fit": 0, "layout": 0}
+
+        def _fit_inside() -> None:
+            calls["fit"] += 1
+
+        def _layout() -> bool:
+            calls["layout"] += 1
+            return True
+
+        monkeypatch.setattr(panel, "FitInside", _fit_inside)
+        monkeypatch.setattr(panel, "Layout", _layout)
+
+        panel._auto_resize_all()
+
+        assert calls == {"fit": 1, "layout": 1}
+        assert all(ctrl.GetMinSize().height > 10 for ctrl in panel._autosize_fields)
+    finally:
+        frame.Destroy()

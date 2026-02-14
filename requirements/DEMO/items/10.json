@@ -1,30 +1,30 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 10,
   "labels": [
-    "system",
+    "software",
     "integration"
   ],
   "links": [
     {
-      "fingerprint": "5420353b12acc475c49974d99e676d2811b7b78a523bb13d2e61e19f33450416",
-      "rid": "DEMO9"
+      "fingerprint": "6dfd37ea3cf5642d12788c46a64a4146990578f5946ebc988b5c486a29caa55f",
+      "rid": "DEMO4"
     }
   ],
   "modified_at": "2026-01-16 18:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Solution Architect",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #10",
-  "statement": "## Demo focus\nSystem context: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Solution Architect**\n- Requirement RID: `DEMO10`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `System context` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно классифицировать предупреждения по приоритетам WARNING/CAUTION/ADVISORY и публиковать их в шину индикации.",
   "status": "approved",
-  "title": "System context — expanded demo",
-  "type": "interface",
-  "verification": "demonstration"
+  "title": "HLR-04 Генерация предупреждений",
+  "type": "requirement",
+  "verification": "inspection"
 }

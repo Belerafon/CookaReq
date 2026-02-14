@@ -29,8 +29,9 @@ def test_item_add_rejects_unknown_label(tmp_path, capsys, cli_context):
         statement="X",
         labels="unknown",
     )
-    commands.cmd_item_add(args, cli_context)
+    rc = commands.cmd_item_add(args, cli_context)
     out = capsys.readouterr().out
+    assert rc == 1
     assert "unknown label: unknown" in out
     items_dir = Path(tmp_path) / "HLR" / "items"
     assert not items_dir.exists() or not any(items_dir.iterdir())
@@ -53,8 +54,9 @@ def test_item_add_accepts_inherited_label(tmp_path, capsys, cli_context):
         statement="X",
         labels="ui",
     )
-    commands.cmd_item_add(args, cli_context)
+    rc = commands.cmd_item_add(args, cli_context)
     out = capsys.readouterr().out.strip()
+    assert rc == 0
     assert out == "HLR1"
     path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(path.read_text(encoding="utf-8"))

@@ -1,29 +1,24 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 2,
   "labels": [
-    "software"
-  ],
-  "links": [
-    {
-      "fingerprint": "77f1ba46e800264e56facfbd4bb2d47634d77b323c3e9b4ac10910df1ec4fb44",
-      "rid": "DEMO1"
-    }
+    "system",
+    "integration"
   ],
   "modified_at": "2026-01-16 10:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "UX Engineer",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #02",
-  "statement": "## Demo focus\nGUI responsibilities: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **UX Engineer**\n- Requirement RID: `DEMO2`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `GUI responsibilities` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "in_review",
-  "title": "GUI responsibilities — expanded demo",
-  "type": "constraint",
+  "source": "DO-178C demo baseline",
+  "statement": "Система должна поддерживать автоматический заход на посадку по данным ILS CAT II при доступных датчиках.",
+  "status": "approved",
+  "title": "SYS-02 Режим автоматического захода",
+  "type": "requirement",
   "verification": "demonstration"
 }

@@ -1,24 +1,23 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 1,
   "labels": [
-    "system",
-    "integration"
+    "system"
   ],
   "modified_at": "2026-01-16 09:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Lead Architect",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #01",
-  "statement": "## Demo focus\nDemo layer map: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Lead Architect**\n- Requirement RID: `DEMO1`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Demo layer map` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "Система должна ограничивать команду тяги двигателя в диапазоне 0..100% при любых режимах полета.",
   "status": "approved",
-  "title": "Demo layer map — expanded demo",
-  "type": "interface",
-  "verification": "inspection"
+  "title": "SYS-01 Управление тягой двигателя",
+  "type": "requirement",
+  "verification": "analysis"
 }

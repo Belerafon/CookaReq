@@ -1,30 +1,30 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": "2026-01-16 18:30:00",
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 9,
   "labels": [
-    "system",
-    "test"
+    "software",
+    "hardware"
   ],
   "links": [
     {
-      "fingerprint": "4e1f37fbe8bab04aa0dc90ea4b3a07347993feb0d56dcd57eb5dee257fbab5fb",
-      "rid": "DEMO8"
+      "fingerprint": "2ed9e437134114ee60ebb6ed572fe88df6ccd2fb3c0c28f533414781cf1c3841",
+      "rid": "DEMO3"
     }
   ],
   "modified_at": "2026-01-16 17:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Project Manager",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #09",
-  "statement": "## Demo focus\nRisks and tasks: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Project Manager**\n- Requirement RID: `DEMO9`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Risks and tasks` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "needs_clarification",
-  "title": "Risks and tasks — expanded demo",
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно выполнять majority-voting для каналов скорости и инициировать деградацию при конфликте каналов.",
+  "status": "approved",
+  "title": "HLR-03 Переключение каналов датчиков",
   "type": "requirement",
-  "verification": "inspection"
+  "verification": "test"
 }

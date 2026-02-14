@@ -1,30 +1,34 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 13,
   "labels": [
-    "system",
-    "software"
+    "software",
+    "test"
   ],
   "links": [
     {
-      "fingerprint": "172724467a0bede65c6a091a2bb9a22100729c4a544bc299321c4e900c9834ef",
-      "rid": "DEMO12"
+      "fingerprint": "ec87e929625152e619080dddcd54e5a6d1845dd045a5e8a62d3d2620f43ba749",
+      "rid": "DEMO1"
+    },
+    {
+      "fingerprint": "39b8027514f33ea5f2176c284fd2d053105bd6ec7569a9d5af0bab846c6e1fc8",
+      "rid": "DEMO7"
     }
   ],
   "modified_at": "2026-01-16 21:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "DevOps Engineer",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #13",
-  "statement": "## Demo focus\nApplication configuration: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **DevOps Engineer**\n- Requirement RID: `DEMO13`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Application configuration` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "Модуль низкого уровня THR_CMD_LIMIT должен ограничивать входную команду функцией clamp(x,0,100) перед записью в ARINC-пакет.",
   "status": "approved",
-  "title": "Application configuration — expanded demo",
-  "type": "interface",
-  "verification": "inspection"
+  "title": "LLR-01 Проверка диапазона команды тяги",
+  "type": "requirement",
+  "verification": "test"
 }

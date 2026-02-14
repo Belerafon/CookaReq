@@ -1,29 +1,34 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": "2026-01-16 00:30:00",
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 15,
   "labels": [
-    "system"
+    "software",
+    "hardware"
   ],
   "links": [
     {
-      "fingerprint": "d1ea4636d552a8a3a187060bee4d4b4afa44c2d90abca047d02009d004fdcfb8",
-      "rid": "DEMO14"
+      "fingerprint": "2ed9e437134114ee60ebb6ed572fe88df6ccd2fb3c0c28f533414781cf1c3841",
+      "rid": "DEMO3"
+    },
+    {
+      "fingerprint": "98fc77e522781586236d63be7a428ce25dc3089a9cbf92e3f107c4b1752a3beb",
+      "rid": "DEMO9"
     }
   ],
   "modified_at": "2026-01-16 23:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Data Steward",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #15",
-  "statement": "## Demo focus\nData management: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Data Steward**\n- Requirement RID: `DEMO15`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Data management` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "in_review",
-  "title": "Data management — expanded demo",
+  "source": "DO-178C demo baseline",
+  "statement": "Модуль низкого уровня SENSOR_FAILOVER должен запускать watchdog 200 мс и подтверждать переключение на резерв после трех валидных выборок.",
+  "status": "approved",
+  "title": "LLR-03 Таймер переключения датчиков",
   "type": "requirement",
-  "verification": "analysis"
+  "verification": "test"
 }

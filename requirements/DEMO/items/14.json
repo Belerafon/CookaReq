@@ -1,29 +1,33 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 14,
   "labels": [
-    "integration"
+    "software"
   ],
   "links": [
     {
-      "fingerprint": "7dd0e5dc862b26ebd6359ef3103895936e3f08b655f51fba948cea9132a85acb",
-      "rid": "DEMO13"
+      "fingerprint": "522efc63dbebaaa580c12030b9abc045b996f603b37f25e638c9e332cbf1a60b",
+      "rid": "DEMO2"
+    },
+    {
+      "fingerprint": "c010d24d849447877f032641e86021e432618ccc72a9df1ac276dfbba46ef9ef",
+      "rid": "DEMO8"
     }
   ],
   "modified_at": "2026-01-16 22:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "LLM Ops",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #14",
-  "statement": "## Demo focus\nAgent settings: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **LLM Ops**\n- Requirement RID: `DEMO14`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Agent settings` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "Модуль низкого уровня APP_GS_FILTER должен применять цифровой фильтр 2-го порядка к сигналу отклонения глиссады.",
   "status": "approved",
-  "title": "Agent settings — expanded demo",
-  "type": "constraint",
-  "verification": "demonstration"
+  "title": "LLR-02 Фильтрация отклонения глиссады",
+  "type": "requirement",
+  "verification": "analysis"
 }

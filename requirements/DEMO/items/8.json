@@ -1,30 +1,30 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 8,
   "labels": [
-    "integration",
-    "test"
+    "software",
+    "integration"
   ],
   "links": [
     {
-      "fingerprint": "b5376452145c6a4b167eb6757bd05de8545c1205dd66046ae42802ffc90170ed",
-      "rid": "DEMO7"
+      "fingerprint": "522efc63dbebaaa580c12030b9abc045b996f603b37f25e638c9e332cbf1a60b",
+      "rid": "DEMO2"
     }
   ],
   "modified_at": "2026-01-16 16:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "QA Engineer",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
   "priority": "high",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #08",
-  "statement": "## Demo focus\nEnd-to-end scenarios: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **QA Engineer**\n- Requirement RID: `DEMO8`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `End-to-end scenarios` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно реализовать режим AUTO APP и выдавать команды директору полета на основе ILS и инерциальных данных.",
   "status": "approved",
-  "title": "End-to-end scenarios — expanded demo",
-  "type": "constraint",
-  "verification": "test"
+  "title": "HLR-02 Логика автоматического захода",
+  "type": "requirement",
+  "verification": "demonstration"
 }

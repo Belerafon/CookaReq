@@ -1,29 +1,29 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": "2026-01-16 21:30:00",
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 12,
   "labels": [
     "software"
   ],
   "links": [
     {
-      "fingerprint": "9314f0de6747ec6350fa8961d5947a6e2ee21f2980a0c13a329f5c4833469add",
-      "rid": "DEMO11"
+      "fingerprint": "daa2338bf78d36f37370354d4a231a3162fd2ff8d73a71d23efe669522f184a3",
+      "rid": "DEMO6"
     }
   ],
   "modified_at": "2026-01-16 20:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "Domain Analyst",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #12",
-  "statement": "## Demo focus\nDomain models: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **Domain Analyst**\n- Requirement RID: `DEMO12`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Domain models` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "draft",
-  "title": "Domain models — expanded demo",
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно проверять цепочку сертификатов подписи и блокировать запуск неподписанного обновления.",
+  "status": "approved",
+  "title": "HLR-06 Валидация пакета обновления",
   "type": "requirement",
-  "verification": "test"
+  "verification": "analysis"
 }

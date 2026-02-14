@@ -1,29 +1,29 @@
 {
-  "acceptance": "Demo entry contains owner, source, markdown formatting, and measurable validation notes.",
+  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
   "approved_at": null,
-  "assumptions": "Users review requirements in both GUI and exported markdown/html reports.",
+  "assumptions": "Используются единые правила идентификации и ревизии требований.",
   "attachments": [],
-  "conditions": "Dataset loaded from requirements/DEMO and editable via CLI/GUI.",
+  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
   "id": 7,
   "labels": [
-    "system"
+    "software"
   ],
   "links": [
     {
-      "fingerprint": "5d29c04ce02a84a93f2aa205bca07a37eb29835ed61950be96e996030c99b61d",
-      "rid": "DEMO6"
+      "fingerprint": "ec87e929625152e619080dddcd54e5a6d1845dd045a5e8a62d3d2620f43ba749",
+      "rid": "DEMO1"
     }
   ],
   "modified_at": "2026-01-16 15:00:00",
-  "notes": "Expanded automatically through CLI-based update scenario for showcase.",
-  "owner": "System Analyst",
-  "priority": "medium",
-  "rationale": "Richer examples improve product demos and reduce onboarding friction.",
+  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
+  "owner": "Авиационная демонстрационная команда",
+  "priority": "high",
+  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
   "revision": 2,
-  "source": "DEMO workshop backlog item #07",
-  "statement": "## Demo focus\nShared services: enriched scenario description for product walkthrough.\n\n### Rich details for walkthrough\n- Scenario owner: **System Analyst**\n- Requirement RID: `DEMO7`\n- Expected artifact: Markdown + traceable metadata\n\n| Aspect | Demo expectation |\n|---|---|\n| Business value | Explain why `Shared services` matters in real onboarding |\n| Technical depth | Mention GUI/CLI/MCP touch points where applicable |\n| Validation | Include measurable acceptance evidence |\n\n> This item should feel like a real project requirement, not a placeholder.",
-  "status": "draft",
-  "title": "Shared services — expanded demo",
-  "type": "interface",
+  "source": "DO-178C demo baseline",
+  "statement": "ПО верхнего уровня должно вычислять лимит команды тяги по текущему режиму FADEC и передавать ограниченную команду исполнительному модулю.",
+  "status": "approved",
+  "title": "HLR-01 Алгоритм ограничения тяги",
+  "type": "requirement",
   "verification": "analysis"
 }

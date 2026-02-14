@@ -31,6 +31,7 @@ class MainFrameSettingsMixin:
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
             language=self.language,
+            settings_path=str(self.config.path),
             base_url=self.llm_settings.base_url,
             model=self.llm_settings.model,
             message_format=getattr(

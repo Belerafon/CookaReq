@@ -450,7 +450,9 @@ so you know which modules are involved and which regressions to guard against.
   subsequent commands; scaling will require coordination changes with the UI.
 * The MCP server keeps its requirement base path in sync with the directory
   opened in the main window. The settings dialog shows the value read-only so
-  that only valid, user-selected folders are applied. Auto-start launches MCP
+  that only valid, user-selected folders are applied. The same dialog now also
+  displays the absolute path of the persisted application config file and offers
+  a one-click copy action for support/debug workflows. Auto-start launches MCP
   when a requirements folder becomes active; disabling auto-start leaves MCP
   stopped until started manually from the dialog.
 * Any change to the requirement JSON schema must update the document store,

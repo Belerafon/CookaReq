@@ -44,6 +44,10 @@ GENERAL_HELP: dict[str, str] = {
         "Language for menus and dialogs.\n"
         "Changes apply after restarting CookaReq.",
     ),
+    "settings_path": _help_msg(
+        "Path to the persistent CookaReq settings file on this machine.\n"
+        "Use it to inspect backups, troubleshoot startup issues, or share diagnostics.",
+    ),
 }
 
 
@@ -230,6 +234,7 @@ class SettingsDialog(wx.Dialog):
         open_last: bool,
         remember_sort: bool,
         language: str,
+        settings_path: str = "",
         base_url: str,
         model: str,
         message_format: str,
@@ -286,6 +291,15 @@ class SettingsDialog(wx.Dialog):
         self._remember_sort.SetValue(remember_sort)
         self._language_choice = wx.Choice(general, choices=choices)
         self._language_choice.SetSelection(idx)
+        self._settings_path = wx.TextCtrl(
+            general,
+            value=settings_path,
+            style=wx.TE_READONLY | wx.BORDER_NONE,
+        )
+        self._settings_path.SetBackgroundColour(general.GetBackgroundColour())
+        self._copy_settings_path = wx.Button(general, label=_("Copy"))
+        self._copy_settings_path.Bind(wx.EVT_BUTTON, self._on_copy_settings_path)
+        self._copy_settings_path.Enable(bool(settings_path.strip()))
 
         gen_sizer = wx.BoxSizer(wx.VERTICAL)
         open_last_sz = wx.BoxSizer(wx.HORIZONTAL)
@@ -334,6 +348,26 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         gen_sizer.Add(lang_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        settings_path_sz = wx.BoxSizer(wx.HORIZONTAL)
+        settings_path_sz.Add(
+            wx.StaticText(general, label=_("Settings file")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        settings_path_sz.Add(self._settings_path, 1, wx.ALIGN_CENTER_VERTICAL)
+        settings_path_sz.Add(self._copy_settings_path, 0, wx.LEFT, 5)
+        settings_path_sz.Add(
+            make_help_button(
+                general,
+                _(GENERAL_HELP["settings_path"]),
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        gen_sizer.Add(settings_path_sz, 0, wx.ALL | wx.EXPAND, 5)
         general.SetSizer(gen_sizer)
 
         # LLM/Agent settings ---------------------------------------------
@@ -1124,6 +1158,26 @@ class SettingsDialog(wx.Dialog):
             f"{_('Status')}: {label}\n{result.message}",
             _("Check MCP"),
         )
+
+    def _on_copy_settings_path(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
+        """Copy the settings file path to the clipboard."""
+
+        path_value = self._settings_path.GetValue().strip()
+        if not path_value:
+            return
+        if not wx.TheClipboard.Open():
+            wx.MessageBox(
+                _("Could not access the clipboard."),
+                _("Settings"),
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
+            return
+        try:
+            wx.TheClipboard.SetData(wx.TextDataObject(path_value))
+            wx.TheClipboard.Flush()
+        finally:
+            wx.TheClipboard.Close()
 
     # ------------------------------------------------------------------
     def _run_background_check(

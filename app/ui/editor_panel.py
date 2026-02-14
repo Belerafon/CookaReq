@@ -90,6 +90,7 @@ class EditorPanel(wx.Panel):
         self._requirement_selected = True
         self._text_history_limit = 10
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
+        self._defer_autosize_layout = False
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -556,29 +557,49 @@ class EditorPanel(wx.Panel):
     def _auto_resize_text(self, ctrl: wx.TextCtrl) -> None:
         if self._suspend_events:
             return
+        height = self._compute_text_height(ctrl)
+        if ctrl.GetMinSize().height != height:
+            ctrl.SetMinSize((-1, height))
+            ctrl.SetSize((-1, height))
+            if self._defer_autosize_layout:
+                return
+            self.FitInside()
+            self.Layout()
+
+    def _compute_text_height(self, ctrl: wx.TextCtrl) -> int:
         lines = max(ctrl.GetNumberOfLines(), 1)
         line_height = ctrl.GetCharHeight()
         border = ctrl.GetWindowBorderSize().height * 2
         padding = 4
-        height = line_height * (lines + 1) + border + padding
-        if ctrl.GetMinSize().height != height:
-            ctrl.SetMinSize((-1, height))
-            ctrl.SetSize((-1, height))
-            self.FitInside()
-            self.Layout()
+        return line_height * (lines + 1) + border + padding
 
     def _auto_resize_all(self) -> None:
-        for ctrl in self._autosize_fields:
-            self._auto_resize_text(ctrl)
+        changed = False
+        self._defer_autosize_layout = True
+        try:
+            for ctrl in self._autosize_fields:
+                height = self._compute_text_height(ctrl)
+                if ctrl.GetMinSize().height == height:
+                    continue
+                ctrl.SetMinSize((-1, height))
+                ctrl.SetSize((-1, height))
+                changed = True
+        finally:
+            self._defer_autosize_layout = False
+        if changed:
+            self.FitInside()
+            self.Layout()
 
     @contextmanager
     def _bulk_update(self):
         """Temporarily disable events and redraws during bulk updates."""
         self._suspend_events = True
         self.Freeze()
+        self._content_panel.Freeze()
         try:
             yield
         finally:
+            self._content_panel.Thaw()
             self.Thaw()
             self._suspend_events = False
 

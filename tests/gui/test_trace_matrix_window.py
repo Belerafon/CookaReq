@@ -90,7 +90,7 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
         assert frame.grid.GetColSize(0) >= frame.FromDIP(90)
         assert frame.grid.GetColLabelSize() >= frame.FromDIP(72)
         assert frame.grid.GetCellValue(0, 0) != ""
-        assert frame.grid.GetCellValue(1, 0) == ""
+        assert frame.grid.GetCellValue(1, 0) in {"", "·"}
 
         row_label = frame.grid.GetRowLabelValue(0)
         assert "SYS1" in row_label

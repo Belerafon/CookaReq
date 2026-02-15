@@ -789,6 +789,9 @@ class MainFrameDocumentsMixin:
                     group_by_labels=labels_grouped,
                     label_group_mode=label_group_mode,
                     colorize_label_backgrounds=plan.colorize_label_backgrounds,
+                    trace_mode="hierarchical",
+                    link_preview=True,
+                    include_incoming_links=True,
                 )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}

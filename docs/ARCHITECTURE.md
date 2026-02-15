@@ -59,8 +59,12 @@ so you know which modules are involved and which regressions to guard against.
   tables as ASCII grids for readability. The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert
   LaTeX-style formulas (`\(...\)`, `$...$`, and `$$...$$`) into MathML, and
-  resolve attachment links to the stored asset paths. The same export pipeline
-  can also render DOCX cards with embedded attachments, and the GUI export
+  resolve attachment links to the stored asset paths. HTML card exports now
+  support a hierarchical trace mode that orders documents by parent chain,
+  emits interactive trace links with hover/focus previews (RID, title, type,
+  status, statement excerpt), and can optionally render incoming backlinks in
+  each requirement card. The same export pipeline can also render DOCX cards
+  with embedded attachments, and the GUI export
   dialog uses the card renderer for HTML/DOCX alongside the tabular/text
   formats with a selectable DOCX formula renderer (plain text, MathML→OMML, PNG
   fallback, or SVG→PNG fallback). Card exports (Markdown/HTML/DOCX/PDF) omit

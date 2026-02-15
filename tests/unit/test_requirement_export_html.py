@@ -6,8 +6,12 @@ import pytest
 
 from app.core.document_store import Document, DocumentLabels, LabelDef, save_document, save_item
 from app.i18n import install
-from app.core.model import Attachment, Priority, Requirement, RequirementType, Status, Verification
-from app.core.requirement_export import build_requirement_export, render_requirements_html
+from app.core.model import Attachment, Link, Priority, Requirement, RequirementType, Status, Verification
+from app.core.requirement_export import (
+    build_requirement_export,
+    build_requirement_export_from_requirements,
+    render_requirements_html,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -372,3 +376,162 @@ def test_render_requirements_html_colorizes_labels_in_legend_and_cards(tmp_path:
     assert "class='label-chip'" in rendered
     assert "background:#123456" in rendered
     assert "<span class='label-chip' style='background:#123456" in rendered
+
+
+def test_render_requirements_html_trace_mode_hierarchical_orders_parent_chain(tmp_path: Path) -> None:
+    sys_doc = Document(prefix="SYS", title="System")
+    tvu_doc = Document(prefix="TVU", title="Top", parent="SYS")
+    tnu_doc = Document(prefix="TNU", title="Low", parent="TVU")
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "TVU", tvu_doc)
+    save_document(tmp_path / "TNU", tnu_doc)
+
+    sys_req = Requirement(
+        id=1,
+        title="SYS root",
+        statement="Root statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.APPROVED,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    tvu_req = Requirement(
+        id=1,
+        title="TVU child",
+        statement="Child statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="SYS1")],
+        attachments=[],
+        doc_prefix="TVU",
+        rid="TVU1",
+    )
+    tnu_req = Requirement(
+        id=1,
+        title="TNU child",
+        statement="Leaf statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="TVU1")],
+        attachments=[],
+        doc_prefix="TNU",
+        rid="TNU1",
+    )
+    save_item(tmp_path / "SYS", sys_doc, sys_req.to_mapping())
+    save_item(tmp_path / "TVU", tvu_doc, tvu_req.to_mapping())
+    save_item(tmp_path / "TNU", tnu_doc, tnu_req.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export, trace_mode="hierarchical", include_incoming_links=True)
+
+    assert html.index("id='doc-SYS'") < html.index("id='doc-TVU'") < html.index("id='doc-TNU'")
+    assert "<h4>Linked from</h4>" in html
+    assert "href='#TVU1' class='trace-link'" in html
+
+
+def test_render_requirements_html_includes_trace_preview_payload(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    parent = Requirement(
+        id=1,
+        title="Parent",
+        statement="Parent statement text",
+        type=RequirementType.REQUIREMENT,
+        status=Status.APPROVED,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    child = Requirement(
+        id=2,
+        title="Child",
+        statement="Child statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="SYS1")],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS2",
+    )
+    save_item(tmp_path / "SYS", doc, parent.to_mapping())
+    save_item(tmp_path / "SYS", doc, child.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export, link_preview=True)
+
+    assert "id='trace-preview-data'" in html
+    assert 'data-preview-id=\'SYS1\'' in html
+    assert '"SYS1"' in html
+    assert "Parent statement text" in html
+
+
+def test_render_requirements_html_marks_links_outside_export_scope(tmp_path: Path) -> None:
+    sys_doc = Document(prefix="SYS", title="System")
+    tvu_doc = Document(prefix="TVU", title="Top", parent="SYS")
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "TVU", tvu_doc)
+
+    sys_req = Requirement(
+        id=1,
+        title="SYS root",
+        statement="Root statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.APPROVED,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    tvu_req = Requirement(
+        id=1,
+        title="TVU child",
+        statement="Child statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="SYS1")],
+        attachments=[],
+        doc_prefix="TVU",
+        rid="TVU1",
+    )
+    save_item(tmp_path / "SYS", sys_doc, sys_req.to_mapping())
+    save_item(tmp_path / "TVU", tvu_doc, tvu_req.to_mapping())
+
+    export = build_requirement_export_from_requirements(
+        [tvu_req],
+        {"SYS": sys_doc, "TVU": tvu_doc},
+        base_path=tmp_path,
+        prefixes=("TVU",),
+        link_lookup=[sys_req, tvu_req],
+    )
+    html = render_requirements_html(export, link_preview=True)
+
+    assert "outside exported scope" in html
+    assert "href='#SYS1'" not in html

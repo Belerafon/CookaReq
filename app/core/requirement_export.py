@@ -7,6 +7,7 @@ from datetime import datetime, UTC
 from io import BytesIO
 from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
+import json
 import re
 
 from reportlab.lib import colors
@@ -100,6 +101,19 @@ class RequirementExport:
     selected_prefixes: tuple[str, ...]
     generated_at: datetime
     base_path: Path
+
+
+@dataclass(slots=True)
+class RequirementLinkPreview:
+    """Compact preview payload for interactive trace links in HTML export."""
+
+    rid: str
+    title: str
+    status: str
+    req_type: str
+    statement_preview: str
+    exists: bool = True
+    suspect: bool = False
 
 
 def _normalize_prefixes(prefixes: Sequence[str] | None, docs: Mapping[str, Document]) -> tuple[str, ...]:
@@ -720,6 +734,80 @@ def _html_markdown(value: str, *, requirement: Requirement) -> str:
     return _render_markdown(content)
 
 
+def _statement_preview(req: Requirement, *, max_chars: int) -> str:
+    prepared = convert_markdown_math(req.statement or "")
+    value = strip_markdown(prepared).strip()
+    if len(value) <= max_chars:
+        return value
+    return value[: max(1, max_chars - 1)].rstrip() + "…"
+
+
+def _build_preview_lookup(
+    export: RequirementExport,
+    *,
+    max_statement_chars: int,
+) -> dict[str, RequirementLinkPreview]:
+    lookup: dict[str, RequirementLinkPreview] = {}
+    for doc in export.documents:
+        for view in doc.requirements:
+            req = view.requirement
+            lookup[req.rid] = RequirementLinkPreview(
+                rid=req.rid,
+                title=req.title or _('(no title)'),
+                status=_meta_field_value(req, "status") or "",
+                req_type=_meta_field_value(req, "type") or "",
+                statement_preview=_statement_preview(req, max_chars=max_statement_chars),
+            )
+    return lookup
+
+
+def _build_incoming_links(export: RequirementExport) -> dict[str, list[tuple[str, str]]]:
+    incoming: dict[str, list[tuple[str, str]]] = {}
+    for doc in export.documents:
+        for view in doc.requirements:
+            source = view.requirement
+            source_label = source.title or _('(no title)')
+            for link in view.links:
+                bucket = incoming.setdefault(link.rid, [])
+                bucket.append((source.rid, source_label))
+    for rid in incoming:
+        incoming[rid].sort(key=lambda item: item[0])
+    return incoming
+
+
+def _hierarchical_document_order(export: RequirementExport) -> list[DocumentExport]:
+    selected = {doc.document.prefix: doc for doc in export.documents}
+    children: dict[str | None, list[str]] = {}
+    for prefix, payload in selected.items():
+        parent = payload.document.parent
+        if parent not in selected:
+            parent = None
+        children.setdefault(parent, []).append(prefix)
+    for values in children.values():
+        values.sort()
+
+    ordered: list[DocumentExport] = []
+    visited: set[str] = set()
+
+    def walk(prefix: str) -> None:
+        if prefix in visited:
+            return
+        visited.add(prefix)
+        ordered.append(selected[prefix])
+        for child in children.get(prefix, []):
+            walk(child)
+
+    for root in children.get(None, []):
+        walk(root)
+    for prefix in sorted(selected):
+        walk(prefix)
+    return ordered
+
+
+def _json_for_html(payload: object) -> str:
+    return json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+
+
 def render_requirements_html(
     export: RequirementExport,
     *,
@@ -730,6 +818,10 @@ def render_requirements_html(
     unlabeled_group_title: str | None = None,
     label_group_mode: str = "per_label",
     colorize_label_backgrounds: bool = False,
+    trace_mode: str = "flat",
+    link_preview: bool = True,
+    include_incoming_links: bool = False,
+    max_preview_statement_chars: int = 220,
 ) -> str:
     """Render export data as standalone HTML."""
     selected_fields = _normalize_export_fields(fields)
@@ -755,7 +847,10 @@ def render_requirements_html(
         "dl.meta-list dt{font-weight:bold;margin:0;}",
         "dl.meta-list dd{margin:0 0 8px 0;}",
         "ul.links{margin:8px 0 0 16px;}",
-        "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}",
+        "ul.links li{margin-bottom:4px;}span.missing{color:#b00020;}span.suspect{color:#a35a00;}span.outside-export{color:#334f7d;}",
+        "a.trace-link{position:relative;}",
+        "#trace-preview-popover{position:fixed;z-index:9999;max-width:340px;padding:10px 12px;border:1px solid #C8CDD3;border-radius:8px;background:#fff;box-shadow:0 6px 18px rgba(0,0,0,.18);display:none;}",
+        "#trace-preview-popover .rid{font-weight:700;margin-bottom:4px;}#trace-preview-popover .meta{color:#525252;font-size:.8125rem;margin-bottom:6px;}#trace-preview-popover .statement{font-size:.8125rem;line-height:1.35;white-space:pre-wrap;}",
         ".label-chip{display:inline-block;padding:2px 8px;border:1px solid #C8CDD3;border-radius:999px;font-size:0.8125rem;font-weight:600;line-height:1.2;background:#f5f6f8;color:#1f2328;margin:0 6px 4px 0;}",
         "</style>",
         "</head><body>",
@@ -781,11 +876,16 @@ def render_requirements_html(
             parts.append("</tbody></table>")
 
     palette = _label_palette(export) if colorize_label_backgrounds else {}
+    preview_lookup = _build_preview_lookup(export, max_statement_chars=max_preview_statement_chars)
+    rendered_rids = {view.requirement.rid for doc in export.documents for view in doc.requirements}
+    incoming_links = _build_incoming_links(export) if include_incoming_links else {}
+    document_iter = export.documents if trace_mode == "flat" else _hierarchical_document_order(export)
 
-    for doc in export.documents:
-        parts.append(f"<section class='document' id='doc-{_escape_html(doc.document.prefix)}'>")
+    for doc in document_iter:
+        doc_prefix = _escape_html(doc.document.prefix)
+        parts.append(f"<section class='document' id='doc-{doc_prefix}'>")
         parts.append(
-            f"<h2>{_escape_html(doc.document.title)} (<code>{_escape_html(doc.document.prefix)}</code>)</h2>"
+            f"<h2>{_escape_html(doc.document.title)} (<code>{doc_prefix}</code>)</h2>"
         )
         if group_by_labels:
             group_iter = _group_requirement_views_by_labels(
@@ -850,43 +950,133 @@ def render_requirements_html(
 
                 if field_rows:
                     parts.append("<dl class='meta-list'>")
-                    for label, value, is_inline in field_rows:
-                        label_html = _escape_html(label)
-                        parts.append(f"<dt>{label_html}</dt>")
-                        if is_inline:
-                            parts.append(f"<dd>{value}</dd>")
-                        else:
-                            parts.append(f"<dd>{value}</dd>")
+                    for label, value, _is_inline in field_rows:
+                        parts.append(f"<dt>{_escape_html(label)}</dt>")
+                        parts.append(f"<dd>{value}</dd>")
                     parts.append("</dl>")
 
                 if view.links and _should_render_field(selected_fields, "links"):
                     parts.append(f"<h4>{_escape_html(_('Related requirements'))}</h4><ul class='links'>")
                     for link in view.links:
-                        label = _escape_html(link.rid)
-                        title = _escape_html(link.title) if link.title else ""
+                        rid = _escape_html(link.rid)
+                        title_value = link.title or preview_lookup.get(link.rid, RequirementLinkPreview(rid=link.rid, title="", status="", req_type="", statement_preview="")).title
+                        title = _escape_html(title_value) if title_value else ""
                         classes: list[str] = []
                         if not link.exists:
                             classes.append("missing")
                         if link.suspect:
                             classes.append("suspect")
+                        if link.exists and link.rid not in rendered_rids:
+                            classes.append("outside-export")
                         cls_attr = f" class='{' '.join(classes)}'" if classes else ""
-                        if link.exists:
-                            text = label if not title else f"{label} — {title}"
-                            parts.append(
-                                f"<li><a href='#{label}'{cls_attr}>{text}</a></li>"
-                            )
+                        preview_attr = ""
+                        if link_preview and link.rid in preview_lookup:
+                            preview_attr = f" data-preview-id='{rid}'"
+                        text = rid if not title else f"{rid} — {title}"
+                        if link.exists and link.rid in rendered_rids:
+                            parts.append(f"<li><a href='#{rid}' class='trace-link'{preview_attr}{cls_attr}>{text}</a></li>")
+                        elif link.exists:
+                            parts.append(f"<li><span{cls_attr}>{text} ({_escape_html(_('outside exported scope'))})</span></li>")
                         else:
-                            text_parts = [label]
+                            text_parts = [rid]
                             if title:
                                 text_parts.append(f"— {title}")
-                            if not link.exists:
-                                text_parts.append(f"({_('missing')})")
+                            text_parts.append(f"({_('missing')})")
                             if link.suspect:
                                 text_parts.append(f"({_('suspect')})")
                             parts.append(f"<li><span{cls_attr}>{' '.join(text_parts)}</span></li>")
                     parts.append("</ul>")
+
+                if include_incoming_links and _should_render_field(selected_fields, "links"):
+                    incoming = incoming_links.get(req.rid, [])
+                    if incoming:
+                        parts.append(f"<h4>{_escape_html(_('Linked from'))}</h4><ul class='links'>")
+                        for source_rid, source_title in incoming:
+                            source_rid_html = _escape_html(source_rid)
+                            source_title_html = _escape_html(source_title)
+                            source_text = source_rid_html if not source_title else f"{source_rid_html} — {source_title_html}"
+                            preview_attr = ""
+                            if link_preview and source_rid in preview_lookup:
+                                preview_attr = f" data-preview-id='{source_rid_html}'"
+                            if source_rid in rendered_rids:
+                                parts.append(f"<li><a href='#{source_rid_html}' class='trace-link'{preview_attr}>{source_text}</a></li>")
+                            else:
+                                parts.append(f"<li><span class='outside-export'>{source_text} ({_escape_html(_('outside exported scope'))})</span></li>")
+                        parts.append("</ul>")
                 parts.append("</article>")
         parts.append("</section>")
+
+    if link_preview and preview_lookup:
+        preview_payload = {
+            rid: {
+                "rid": item.rid,
+                "title": item.title,
+                "status": item.status,
+                "type": item.req_type,
+                "statement": item.statement_preview,
+                "exists": item.exists,
+                "suspect": item.suspect,
+            }
+            for rid, item in preview_lookup.items()
+        }
+        parts.append("<div id='trace-preview-popover' role='tooltip' aria-hidden='true'></div>")
+        parts.append(
+            "<script type='application/json' id='trace-preview-data'>"
+            f"{_json_for_html(preview_payload)}"
+            "</script>"
+        )
+        script = """<script>(function(){
+const payloadNode=document.getElementById('trace-preview-data');
+if(!payloadNode){return;}
+const payload=JSON.parse(payloadNode.textContent||'{}');
+const popover=document.getElementById('trace-preview-popover');
+if(!popover){return;}
+const esc=(value)=>String(value??'').replace(/[&<>"']/g,(ch)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const render=(item)=>{
+  if(!item){return '';}
+  const meta=[item.type,item.status].filter(Boolean).map(esc).join(' • ');
+  return '<div class="rid">'+esc(item.rid)+'</div>'
+    +'<div class="title">'+esc(item.title)+'</div>'
+    +'<div class="meta">'+meta+'</div>'
+    +'<div class="statement">'+esc(item.statement||'')+'</div>';
+};
+const place=(event)=>{
+  const margin=12;
+  let left=(event.clientX||0)+margin;
+  let top=(event.clientY||0)+margin;
+  const rect=popover.getBoundingClientRect();
+  const maxLeft=window.innerWidth-rect.width-margin;
+  const maxTop=window.innerHeight-rect.height-margin;
+  left=Math.min(Math.max(margin,left),Math.max(margin,maxLeft));
+  top=Math.min(Math.max(margin,top),Math.max(margin,maxTop));
+  popover.style.left=left+'px';
+  popover.style.top=top+'px';
+};
+const show=(event)=>{
+  const target=event.currentTarget;
+  const key=target.dataset.previewId;
+  const item=payload[key];
+  if(!item){return;}
+  popover.innerHTML=render(item);
+  popover.style.display='block';
+  popover.setAttribute('aria-hidden','false');
+  const rect=target.getBoundingClientRect();
+  const synthetic={clientX:event.clientX||rect.left,clientY:event.clientY||rect.bottom};
+  place(synthetic);
+};
+const hide=()=>{
+  popover.style.display='none';
+  popover.setAttribute('aria-hidden','true');
+};
+document.querySelectorAll('.trace-link[data-preview-id]').forEach((node)=>{
+  node.addEventListener('mouseover',show);
+  node.addEventListener('mousemove',place);
+  node.addEventListener('mouseout',hide);
+  node.addEventListener('focus',show);
+  node.addEventListener('blur',hide);
+});
+})();</script>"""
+        parts.append(script)
     parts.append("</body></html>")
     return "".join(parts)
 

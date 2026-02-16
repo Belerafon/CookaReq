@@ -9,6 +9,7 @@ import bleach
 __all__ = [
     "MAX_STATEMENT_LENGTH",
     "convert_markdown_math",
+    "normalize_escaped_newlines",
     "render_markdown_plain_text",
     "strip_markdown",
     "sanitize_html",
@@ -28,6 +29,9 @@ _HTML_ATTR_RE = re.compile(
 _SCHEME_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9+.\-]*):")
 _INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)")
 _INLINE_DOLLAR_FORMULA_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$")
+_ESCAPED_CRLF_RE = re.compile(r"(?<!\\)\\r\\n")
+_ESCAPED_LF_RE = re.compile(r"(?<!\\)\\n")
+_ESCAPED_CR_RE = re.compile(r"(?<!\\)\\r")
 
 MAX_STATEMENT_LENGTH = 50_000
 
@@ -100,6 +104,7 @@ def strip_markdown(value: str) -> str:
     """Return ``value`` with basic Markdown markers removed."""
     if not value:
         return ""
+    value = normalize_escaped_newlines(value)
     lines = value.splitlines()
     output: list[str] = []
     idx = 0
@@ -332,6 +337,7 @@ def render_markdown_plain_text(value: str) -> str:
     """Return a plain-text representation of Markdown, including ASCII tables."""
     if not value:
         return ""
+    value = normalize_escaped_newlines(value)
     lines = value.splitlines()
     output: list[str] = []
     idx = 0
@@ -424,6 +430,7 @@ def convert_markdown_math(value: str) -> str:
     """Replace LaTeX-style math markers with MathML where possible."""
     if not value or ("\\(" not in value and "$$" not in value and "$" not in value):
         return value
+    value = normalize_escaped_newlines(value)
     lines = value.splitlines()
     output: list[str] = []
     in_fence = False
@@ -482,3 +489,13 @@ def convert_markdown_math(value: str) -> str:
     if in_block:
         output.append("$$" + "\n".join(block_lines))
     return "\n".join(output)
+
+
+def normalize_escaped_newlines(value: str) -> str:
+    """Replace unescaped ``\\n``/``\\r`` sequences with real line breaks."""
+    if not value or "\\" not in value:
+        return value
+    normalized = _ESCAPED_CRLF_RE.sub("\n", value)
+    normalized = _ESCAPED_LF_RE.sub("\n", normalized)
+    normalized = _ESCAPED_CR_RE.sub("\n", normalized)
+    return normalized

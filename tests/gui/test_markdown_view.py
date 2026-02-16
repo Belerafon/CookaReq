@@ -77,3 +77,16 @@ def test_markdown_view_render_markdown_supports_single_dollar_formulas() -> None
 
     assert "$E = mc^2$" not in rendered
     assert "math-formula-inline" in rendered or "<math" in rendered
+
+
+def test_markdown_view_render_markdown_normalizes_escaped_newlines() -> None:
+    from app.ui.widgets.markdown_view import _render_markdown
+
+    rendered = _render_markdown(
+        r"\(a+b\)\n\n$$\frac{c}{d}$$",
+        allow_html=True,
+        render_math=True,
+    )
+
+    assert r"\n\n" not in rendered
+    assert "math-formula-inline" in rendered or "<math" in rendered

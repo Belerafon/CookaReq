@@ -124,6 +124,34 @@ def test_render_requirements_html_renders_formulas(tmp_path: Path) -> None:
     assert "$E = mc^2$" not in html
 
 
+
+
+def test_render_requirements_html_normalizes_escaped_newlines_between_formulas(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=31,
+        title="Escaped newline formula",
+        statement=r"\(\sqrt{a^2 + b^2} = c\)\n\n$$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS31",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert r"\n\n" not in html
+    assert html.count("<math") >= 2
+
 def test_render_requirements_html_shows_empty_fields_placeholder(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

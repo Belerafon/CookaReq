@@ -35,7 +35,12 @@ from ..i18n import _
 from ..util.time import format_datetime_for_humans
 from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
 from .document_store import label_color as resolved_label_color
-from .markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
+from .markdown_utils import (
+    convert_markdown_math,
+    normalize_escaped_newlines,
+    sanitize_html,
+    strip_markdown,
+)
 from .model import Requirement
 
 __all__ = [
@@ -1115,7 +1120,8 @@ def _docx_add_markdown(
     formula_renderer: str,
     start_paragraph: docx.text.paragraph.Paragraph | None = None,
 ) -> None:
-    segments = _iter_markdown_segments(text, attachment_map=attachment_map)
+    normalized_text = normalize_escaped_newlines(text)
+    segments = _iter_markdown_segments(normalized_text, attachment_map=attachment_map)
     first_paragraph = start_paragraph
 
     def _next_paragraph() -> docx.text.paragraph.Paragraph:

@@ -1,24 +1,24 @@
 {
-  "acceptance": "На демонстрационном стенде выполнена проверка повторных перезапусков: после 50 циклов не возникает расхождения контрольных сумм конфигурации.",
+  "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
   "approved_at": null,
-  "assumptions": "Конфигурация хранится в энергонезависимой памяти с ограниченным числом циклов записи.",
+  "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
-  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
   "id": 21,
   "labels": [
     "software",
     "hardware"
   ],
   "modified_at": "2026-01-16 00:00:00",
-  "notes": "Производное LLR без трассировки вверх: требование зафиксировано на уровне реализации persistence-механизма.",
-  "owner": "Авиационная демонстрационная команда",
+  "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
+  "owner": "Aviation demo team",
   "priority": "medium",
-  "rationale": "Обоснование: требование выведено из ограничений flash-памяти и экспериментов по восстановлению состояния после рестарта. Это локальное проектное правило, поэтому в демо не трассируется к верхнеуровневым требованиям.",
+  "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "Persistence design review",
-  "statement": "Компонент CONFIG_STORE должен перед записью новой конфигурации выполнять двухфазную фиксацию с атомарным переключением активного слота и сохранением контрольной суммы SHA-256.",
+  "statement": "The CONFIG_STORE component shall perform a two-phase commit before writing a new configuration, with atomic active-slot switch and SHA-256 checksum persistence.",
   "status": "approved",
-  "title": "LLR-09 Атомарная фиксация конфигурации",
+  "title": "LLR-09 Atomic configuration commit",
   "type": "requirement",
   "verification": "test"
 }

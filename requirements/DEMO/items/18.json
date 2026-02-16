@@ -1,33 +1,33 @@
 {
-  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
+  "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
   "approved_at": "2026-01-16 03:30:00",
-  "assumptions": "Используются единые правила идентификации и ревизии требований.",
+  "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
-  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
   "id": 18,
   "labels": [
     "software"
   ],
   "links": [
     {
-      "fingerprint": "21fff3fc0bbc8ad29fb251cc0b2b6ac46dac73cc8f1b06e9ec96bb00d0509957",
+      "fingerprint": "4aa2141921da3b131c1ae48f731089063008d0367fc0c10951630e1530ed9f16",
       "rid": "DEMO12"
     },
     {
-      "fingerprint": "daa2338bf78d36f37370354d4a231a3162fd2ff8d73a71d23efe669522f184a3",
+      "fingerprint": "25034b77d5f028d056043d57deb06a48a8acfd44a23e7cdce2940f9e7b7316b5",
       "rid": "DEMO6"
     }
   ],
   "modified_at": "2026-01-16 02:00:00",
-  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
-  "owner": "Авиационная демонстрационная команда",
+  "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
+  "owner": "Aviation demo team",
   "priority": "high",
-  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
+  "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "DO-178C demo baseline",
-  "statement": "Модуль низкого уровня UPDATE_SIG_VERIFY должен валидировать подпись Ed25519 и хеш SHA-256 манифеста обновления.",
+  "statement": "The low-level UPDATE_SIG_VERIFY module shall validate the Ed25519 signature and SHA-256 hash of the update manifest.",
   "status": "approved",
-  "title": "LLR-06 Проверка подписи обновления",
+  "title": "LLR-06 Update signature verification",
   "type": "requirement",
   "verification": "analysis"
 }

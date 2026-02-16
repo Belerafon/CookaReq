@@ -1,24 +1,24 @@
 {
-  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
+  "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
   "approved_at": null,
-  "assumptions": "Используются единые правила идентификации и ревизии требований.",
+  "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
-  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
   "id": 2,
   "labels": [
     "system",
     "integration"
   ],
   "modified_at": "2026-01-16 10:00:00",
-  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
-  "owner": "Авиационная демонстрационная команда",
+  "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
+  "owner": "Aviation demo team",
   "priority": "high",
-  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
+  "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "DO-178C demo baseline",
-  "statement": "Система должна поддерживать автоматический заход на посадку по данным ILS CAT II при доступных датчиках.",
+  "statement": "The system shall support automatic landing approach using ILS CAT II data when required sensors are available.",
   "status": "approved",
-  "title": "SYS-02 Режим автоматического захода",
+  "title": "SYS-02 Automatic approach mode",
   "type": "requirement",
   "verification": "demonstration"
 }

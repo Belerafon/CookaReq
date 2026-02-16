@@ -1,33 +1,33 @@
 {
-  "acceptance": "Выполняется демонстрационная проверка трассируемости SYS→HLR→LLR и подтверждается корректность формулировки требования.",
+  "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
   "approved_at": null,
-  "assumptions": "Используются единые правила идентификации и ревизии требований.",
+  "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
-  "conditions": "Демо-репозиторий загружен локально; операции выполнены через CookaReq CLI.",
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
   "id": 14,
   "labels": [
     "software"
   ],
   "links": [
     {
-      "fingerprint": "522efc63dbebaaa580c12030b9abc045b996f603b37f25e638c9e332cbf1a60b",
+      "fingerprint": "7f284cb064be74d4c1a7c917c1653718fa88a3808f4d6191a5c35ac775e4a8a1",
       "rid": "DEMO2"
     },
     {
-      "fingerprint": "c010d24d849447877f032641e86021e432618ccc72a9df1ac276dfbba46ef9ef",
+      "fingerprint": "bd303e23a34f1854929fdc9c62587f41ccaad2dfeb284d83c713d45517822716",
       "rid": "DEMO8"
     }
   ],
   "modified_at": "2026-01-16 22:00:00",
-  "notes": "Подготовлено автоматически через CLI для демонстрации DO-178 traceability.",
-  "owner": "Авиационная демонстрационная команда",
+  "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
+  "owner": "Aviation demo team",
   "priority": "high",
-  "rationale": "Набор демонстрирует трехуровневую декомпозицию требований в стиле DO-178.",
+  "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "DO-178C demo baseline",
-  "statement": "Модуль низкого уровня APP_GS_FILTER должен применять цифровой фильтр 2-го порядка к сигналу отклонения глиссады.",
+  "statement": "The low-level APP_GS_FILTER module shall apply a second-order digital filter to the glideslope deviation signal.",
   "status": "approved",
-  "title": "LLR-02 Фильтрация отклонения глиссады",
+  "title": "LLR-02 Glideslope deviation filtering",
   "type": "requirement",
   "verification": "analysis"
 }

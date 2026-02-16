@@ -146,3 +146,31 @@ def test_export_dialog_default_scope_from_context(wx_app):
     finally:
         dialog.Destroy()
         wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_export_dialog_docx_formula_default_is_auto(wx_app):
+    from app.ui.export_dialog import ExportFormat, RequirementExportDialog
+
+    dialog = RequirementExportDialog(
+        None,
+        available_fields=["id", "statement"],
+        selected_fields=["statement"],
+    )
+    try:
+        wx_app.Yield()
+        dialog.format_choice.SetSelection(2)
+        dialog._on_format_changed(pytest.importorskip("wx").CommandEvent())
+        assert dialog.docx_formula_choice.GetSelection() == 0
+
+        dialog.file_picker.SetPath("/tmp/export.docx")
+        plan = dialog.get_plan()
+        assert plan is not None
+        assert plan.format == ExportFormat.DOCX
+        assert plan.docx_formula_renderer == "auto"
+
+        state = dialog.get_state()
+        assert state.docx_formula_renderer == "auto"
+    finally:
+        dialog.Destroy()
+        wx_app.Yield()

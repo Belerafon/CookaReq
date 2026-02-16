@@ -15,7 +15,12 @@ import markdown
 import wx
 import wx.html as wx_html
 
-from ...core.markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
+from ...core.markdown_utils import (
+    convert_markdown_math,
+    normalize_escaped_newlines,
+    sanitize_html,
+    strip_markdown,
+)
 from ..text import normalize_for_display
 
 
@@ -74,7 +79,7 @@ _MARKDOWN_WITH_HTML = _build_markdown_renderer(allow_html=True)
 def _render_markdown(markdown_text: str, *, allow_html: bool, render_math: bool) -> str:
     renderer = _MARKDOWN_WITH_HTML if allow_html else _MARKDOWN
     renderer.reset()
-    prepared = markdown_text or ""
+    prepared = normalize_escaped_newlines(markdown_text or "")
     if render_math:
         prepared = _replace_markdown_formulas_with_images(prepared)
         prepared = convert_markdown_math(prepared)

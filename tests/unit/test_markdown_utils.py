@@ -35,3 +35,17 @@ def test_convert_markdown_math_renders_single_dollar_inline_formula(monkeypatch:
 
     assert "<math" in rendered
     assert "$v = s / t$" not in rendered
+
+def test_convert_markdown_math_normalizes_escaped_newlines(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        markdown_utils,
+        "_convert_latex_to_mathml",
+        lambda latex, *, display: f"<math display='{display}'><mi>{latex}</mi></math>",
+    )
+
+    rendered = convert_markdown_math(r"\(a+b\)\n\n$$\frac{c}{d}$$")
+
+    assert r"\n\n" not in rendered
+    assert "display='inline'" in rendered
+    assert "display='block'" in rendered
+

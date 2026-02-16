@@ -201,6 +201,37 @@ def test_render_requirements_docx_renders_single_dollar_formula_in_text_mode(tmp
         assert "$E = mc^2$" not in document_xml
 
 
+
+
+def test_render_requirements_docx_normalizes_escaped_newlines_for_formulas(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=46,
+        title="Escaped newline formula",
+        statement=r"\(\sqrt{a^2 + b^2} = c\)\n\n$$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS46",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="text")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "\\n\\n" not in document_xml
+        assert "sqrt" in document_xml
+        assert "frac" in document_xml
+
 def test_render_requirements_docx_renders_formula_png(tmp_path: Path) -> None:
     pytest.importorskip("matplotlib")
     doc = Document(prefix="SYS", title="System")

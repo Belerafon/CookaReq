@@ -59,7 +59,10 @@ so you know which modules are involved and which regressions to guard against.
   tables as ASCII grids for readability. The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert
   LaTeX-style formulas (`\(...\)`, `$...$`, and `$$...$$`) into MathML, and
-  resolve attachment links to the stored asset paths. HTML card exports now
+  resolve attachment links to the stored asset paths. Before Markdown/formula
+  rendering the pipeline normalizes unescaped `\n`/`\r` sequences into real
+  line breaks so LLM-provided text with escaped newlines no longer leaks as
+  literal `\n\n` in preview/HTML/DOCX exports. HTML card exports now
   support a hierarchical trace mode that orders documents by parent chain,
   emits interactive trace links with hover/focus previews (RID, title, type,
   status, statement excerpt), and can optionally render incoming backlinks in

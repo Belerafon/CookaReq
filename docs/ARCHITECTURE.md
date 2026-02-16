@@ -69,8 +69,11 @@ so you know which modules are involved and which regressions to guard against.
   each requirement card. The same export pipeline can also render DOCX cards
   with embedded attachments, and the GUI export
   dialog uses the card renderer for HTML/DOCX alongside the tabular/text
-  formats with a selectable DOCX formula renderer (plain text, MathML→OMML, PNG
-  fallback, or SVG→PNG fallback). Card exports (Markdown/HTML/DOCX/PDF) omit
+  formats with a selectable DOCX formula renderer. The default "Automatic" mode
+  now tries LaTeX→MathML→OMML first and then falls back to SVG→PNG or PNG image
+  rendering, so formulas stay visual in Word exports even when OMML conversion
+  dependencies are unavailable; users can still force plain text/MathML/SVG/PNG
+  explicitly from the export dialog. Card exports (Markdown/HTML/DOCX/PDF) omit
   empty section blocks by default and only render placeholders when the user
   enables the explicit "show empty fields" option; section/meta labels and
   enumerated metadata values (type/status/priority) are passed through gettext

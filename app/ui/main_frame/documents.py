@@ -760,7 +760,7 @@ class MainFrameDocumentsMixin:
             content = render_requirements_docx(
                 export,
                 title=title,
-                formula_renderer=plan.docx_formula_renderer or "text",
+                formula_renderer=plan.docx_formula_renderer or "auto",
                 empty_field_placeholder=empty_placeholder,
                 fields=plan.columns,
                 group_by_labels=labels_grouped,

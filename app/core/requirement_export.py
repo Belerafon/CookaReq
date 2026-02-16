@@ -604,18 +604,18 @@ def _render_formula_run(
     *,
     formula_renderer: str,
 ) -> None:
-    if formula_renderer == "mathml":
+    if formula_renderer in {"auto", "mathml"}:
         omml = _latex_to_omml(formula)
         if omml:
             _append_omml_run(paragraph, omml)
             return
-    if formula_renderer == "svg":
+    if formula_renderer in {"auto", "svg"}:
         image_bytes = _latex_to_svg_png(formula)
         if image_bytes:
             run = paragraph.add_run()
             run.add_picture(BytesIO(image_bytes))
             return
-    if formula_renderer == "png":
+    if formula_renderer in {"auto", "png"}:
         image_bytes = _latex_to_png(formula)
         if image_bytes:
             run = paragraph.add_run()
@@ -1337,7 +1337,7 @@ def render_requirements_docx(
     export: RequirementExport,
     *,
     title: str | None = None,
-    formula_renderer: str = "text",
+    formula_renderer: str = "auto",
     empty_field_placeholder: str | None = None,
     fields: Iterable[str] | None = None,
     group_by_labels: bool = False,

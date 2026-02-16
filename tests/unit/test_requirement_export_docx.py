@@ -495,3 +495,58 @@ def test_render_requirements_docx_bolds_only_field_labels(tmp_path: Path) -> Non
     assert statement_label_bold is True
     assert title_value_bold is False
     assert statement_value_bold is False
+
+
+def test_render_requirements_docx_auto_formula_renderer_prefers_omml(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    calls: list[str] = []
+
+    def fake_latex_to_omml(latex: str) -> str | None:
+        calls.append(f"omml:{latex}")
+        return '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" />'
+
+    def fail_if_called(_latex: str) -> bytes | None:
+        raise AssertionError("Image fallback must not be used when OMML conversion succeeds")
+
+    monkeypatch.setattr(module, "_latex_to_omml", fake_latex_to_omml)
+    monkeypatch.setattr(module, "_latex_to_svg_png", fail_if_called)
+    monkeypatch.setattr(module, "_latex_to_png", fail_if_called)
+
+    document = module.docx.Document()
+    paragraph = document.add_paragraph()
+    module._render_formula_run(paragraph, "E = mc^2", formula_renderer="auto")
+
+    xml = paragraph._p.xml
+    assert "m:oMath" in xml
+    assert calls == ["omml:E = mc^2"]
+
+
+def test_render_requirements_docx_auto_formula_renderer_falls_back_to_png(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    calls: list[str] = []
+
+    def no_omml(latex: str) -> str | None:
+        calls.append(f"omml:{latex}")
+        return None
+
+    def no_svg(latex: str) -> bytes | None:
+        calls.append(f"svg:{latex}")
+        return None
+
+    def png_bytes(latex: str) -> bytes | None:
+        calls.append(f"png:{latex}")
+        return _PNG_BYTES
+
+    monkeypatch.setattr(module, "_latex_to_omml", no_omml)
+    monkeypatch.setattr(module, "_latex_to_svg_png", no_svg)
+    monkeypatch.setattr(module, "_latex_to_png", png_bytes)
+
+    document = module.docx.Document()
+    paragraph = document.add_paragraph()
+    module._render_formula_run(paragraph, "a/b", formula_renderer="auto")
+
+    xml = paragraph._p.xml
+    assert "a:blip" in xml
+    assert calls == ["omml:a/b", "svg:a/b", "png:a/b"]

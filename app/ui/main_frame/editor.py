@@ -196,7 +196,7 @@ class MainFrameEditorMixin:
         if hasattr(self.model, "mark_unsaved"):
             self.model.mark_unsaved(requirement)
         self.panel.recalc_derived_map(self.model.get_all())
-        self.panel.refresh(select_id=requirement.id)
+        self.panel.refresh()
         return True
 
     def _open_detached_editor(self: MainFrame, requirement: Requirement) -> None:

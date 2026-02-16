@@ -75,5 +75,5 @@ def test_markdown_view_render_markdown_supports_single_dollar_formulas() -> None
 
     rendered = _render_markdown("Energy: $E = mc^2$", allow_html=True, render_math=True)
 
-    assert "<math" in rendered
     assert "$E = mc^2$" not in rendered
+    assert "math-formula-inline" in rendered or "<math" in rendered

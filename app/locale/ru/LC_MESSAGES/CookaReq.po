@@ -1981,6 +1981,9 @@ msgstr "Вставить таблицу"
 msgid "Insert formula"
 msgstr "Вставить формулу"
 
+msgid "Insert formula (inline: \\(...\\), block: $$...$$)"
+msgstr "Вставить формулу (встроенная: \\(...\\), блок: $$...$$)"
+
 msgid "Insert heading"
 msgstr "Вставить заголовок"
 

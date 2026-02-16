@@ -201,7 +201,7 @@ so you know which modules are involved and which regressions to guard against.
     table cell content. Because `wx.html.HtmlWindow` supports CSS only
     partially, the renderer also injects legacy table attributes (`border`,
     `bordercolor`, `bgcolor`) so borders and headers stay visible on all
-    supported platforms.
+    supported platforms. Formula snippets in the statement preview are rendered as LaTeX-generated PNG images (inline and block markers) before Markdown conversion so superscripts, fractions, and roots remain visually accurate even though `wx.html.HtmlWindow` does not natively render MathML.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is
   still executing; the panel surfaces the pending message in a cancellable

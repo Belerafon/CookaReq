@@ -141,7 +141,7 @@ class EditorPanel(wx.Panel):
                 formula_btn = self._create_icon_button(
                     content,
                     art_ids=(wx.ART_TIP, wx.ART_QUESTION),
-                    tooltip=_("Insert formula"),
+                    tooltip=_(r"Insert formula (inline: \(...\), block: $$...$$)"),
                     handler=self._on_insert_formula,
                 )
                 row.Add(formula_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
@@ -1282,7 +1282,7 @@ class EditorPanel(wx.Panel):
         self._insert_statement_block_snippet(snippet)
 
     def _on_insert_formula(self, _event: wx.CommandEvent) -> None:
-        snippet = "\\(E = mc^2\\)\n\n$$E = mc^2$$"
+        snippet = r"\(\sqrt{a^2 + b^2} = c\)\n\n$$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$"
         self._insert_statement_block_snippet(snippet)
 
     def _on_insert_heading(self, _event: wx.CommandEvent) -> None:

@@ -261,6 +261,9 @@ class MainFrameSectionsMixin:
 
     def _confirm_discard_changes(self: MainFrame) -> bool:
         """Ask user what to do with unsaved edits before switching."""
+        if self.__dict__.get("_skip_unsaved_prompt_once", False):
+            self._skip_unsaved_prompt_once = False
+            return True
         if not getattr(self, "editor", None):
             return True
         if not hasattr(self, "model"):
@@ -296,12 +299,17 @@ class MainFrameSectionsMixin:
                 self.editor,
                 doc_prefix=self.current_doc_prefix,
             )
+            if saved is not None:
+                self._skip_unsaved_prompt_once = True
             return saved is not None
         if dirty:
-            return self._stash_unsaved_edits(
+            stashed = self._stash_unsaved_edits(
                 self.editor,
                 doc_prefix=self.current_doc_prefix,
             )
+            if stashed:
+                self._skip_unsaved_prompt_once = True
+            return stashed
         return True
 
     def _default_editor_sash(self: MainFrame) -> int:

@@ -387,6 +387,94 @@ def test_requirement_selection_keeps_unsaved(monkeypatch, wx_app, tmp_path):
         frame.Destroy()
 
 
+
+def test_requirement_selection_keep_prompt_only_once(monkeypatch, wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import wx
+
+    import app.ui.main_frame as main_frame_mod
+    from app.core.document_store import Document
+    from app.core.model import (
+        Priority,
+        Requirement,
+        RequirementType,
+        Status,
+        Verification,
+    )
+
+    frame = _create_frame(main_frame_mod, tmp_path, name="req_keep_once.ini")
+    try:
+        doc = Document(prefix="DOC", title="Doc")
+        docs = {"DOC": doc}
+        frame.doc_tree.set_documents(docs)
+
+        class DummyController:
+            def __init__(self) -> None:
+                self.documents = docs
+
+            def load_items(self, prefix: str) -> dict:
+                return {}
+
+            def collect_labels(self, prefix: str) -> tuple[list, bool]:
+                return ([], False)
+
+        frame.docs_controller = DummyController()
+        frame.current_dir = tmp_path
+
+        req1 = Requirement(
+            id=1,
+            title="Req 1",
+            statement="Statement 1",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Source",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+        )
+        req2 = Requirement(
+            id=2,
+            title="Req 2",
+            statement="Statement 2",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Source",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+        )
+        frame.model.set_requirements([req1, req2])
+
+        doc_item = frame.doc_tree._node_for_prefix["DOC"]
+        frame.doc_tree.tree.SelectItem(doc_item)
+        wx.YieldIfNeeded()
+
+        frame.panel.list.Select(0)
+        wx.YieldIfNeeded()
+
+        frame.editor.fields["title"].ChangeValue("Dirty")
+        assert frame.editor.is_dirty() is True
+
+        prompt_calls = 0
+
+        def _keep_once() -> str:
+            nonlocal prompt_calls
+            prompt_calls += 1
+            return "keep"
+
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", _keep_once)
+
+        frame.panel.list.Select(1)
+        wx.YieldIfNeeded()
+
+        assert frame._selected_requirement_id == 2
+        assert prompt_calls == 1
+        assert frame.model.is_unsaved(req1) is True
+    finally:
+        frame.Destroy()
 def test_requirement_multiselect_does_not_reload_editor(wx_app, tmp_path):
     pytest.importorskip("wx")
 

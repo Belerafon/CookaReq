@@ -89,7 +89,7 @@ _ALLOWED_TAGS = set(bleach.sanitizer.ALLOWED_TAGS) | {
 } | _MATHML_TAGS
 _ALLOWED_ATTRIBUTES = {
     "a": ["href", "title"],
-    "img": ["src", "alt", "title"],
+    "img": ["src", "alt", "title", "class"],
     "math": ["xmlns", "display"],
 }
 _ALLOWED_PROTOCOLS = ["http", "https", "mailto", "file"]

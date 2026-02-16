@@ -1964,6 +1964,9 @@ msgstr "Insert table"
 msgid "Insert formula"
 msgstr "Insert formula"
 
+msgid "Insert formula (inline: \\(...\\), block: $$...$$)"
+msgstr "Insert formula (inline: \\(...\\), block: $$...$$)"
+
 msgid "Insert heading"
 msgstr "Insert heading"
 

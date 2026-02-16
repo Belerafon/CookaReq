@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import hashlib
+import html as html_lib
+from pathlib import Path
 import re
+import tempfile
+from urllib.parse import quote
 
 import markdown
 import wx
-import wx.html as html
+import wx.html as wx_html
 
 from ...core.markdown_utils import convert_markdown_math, sanitize_html, strip_markdown
 from ..text import normalize_for_display
@@ -69,11 +74,164 @@ _MARKDOWN_WITH_HTML = _build_markdown_renderer(allow_html=True)
 def _render_markdown(markdown_text: str, *, allow_html: bool, render_math: bool) -> str:
     renderer = _MARKDOWN_WITH_HTML if allow_html else _MARKDOWN
     renderer.reset()
-    prepared = (
-        convert_markdown_math(markdown_text or "") if render_math else (markdown_text or "")
-    )
+    prepared = markdown_text or ""
+    if render_math:
+        prepared = _replace_markdown_formulas_with_images(prepared)
+        prepared = convert_markdown_math(prepared)
     markup = renderer.convert(prepared)
     return sanitize_html(markup)
+
+
+_INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)")
+_INLINE_DOLLAR_FORMULA_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$")
+_CODE_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def _looks_like_formula(candidate: str) -> bool:
+    stripped = candidate.strip()
+    if not stripped:
+        return False
+    return any(ch.isalpha() for ch in stripped) or any(
+        token in stripped for token in ("\\", "^", "_", "{", "}", "=", "+", "-", "*", "/")
+    )
+
+
+def _latex_to_png_bytes(latex: str) -> bytes | None:
+    try:
+        import matplotlib
+        from matplotlib import pyplot as plt
+    except ImportError:  # pragma: no cover - optional runtime dependency
+        return None
+
+    matplotlib.use("Agg", force=True)
+    figure = None
+    try:
+        figure = plt.figure(figsize=(0.01, 0.01))
+        figure.text(0.0, 0.0, f"${latex}$", fontsize=12)
+        buffer = tempfile.SpooledTemporaryFile()
+        figure.savefig(
+            buffer,
+            format="png",
+            bbox_inches="tight",
+            pad_inches=0.1,
+            transparent=True,
+        )
+        buffer.seek(0)
+        return buffer.read()
+    except Exception:  # pragma: no cover - rendering failures
+        return None
+    finally:
+        if figure is not None:
+            plt.close(figure)
+
+
+def _formula_image_uri(latex: str) -> str | None:
+    png_bytes = _latex_to_png_bytes(latex)
+    if not png_bytes:
+        return None
+    cache_dir = Path(tempfile.gettempdir()) / "cookareq-formula-preview"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(latex.encode("utf-8")).hexdigest()
+    target = cache_dir / f"{digest}.png"
+    if not target.exists():
+        target.write_bytes(png_bytes)
+    return target.as_uri()
+
+
+def _formula_img_tag(latex: str, *, display: str) -> str:
+    uri = _formula_image_uri(latex)
+    if not uri:
+        escaped = latex.replace("\\", "\\\\")
+        return f"$${escaped}$$" if display == "block" else f"\\({escaped}\\)"
+    escaped_latex = html_lib.escape(latex, quote=True)
+    class_name = "math-formula-block" if display == "block" else "math-formula-inline"
+    return (
+        f'<img src="{quote(uri, safe=":/%")}" alt="{escaped_latex}" '
+        f'title="{escaped_latex}" class="{class_name}" />'
+    )
+
+
+def _replace_inline_formulas(text: str) -> str:
+    parts = text.split("`")
+    for idx, part in enumerate(parts):
+        if idx % 2:
+            continue
+
+        def _inline_repl(match: re.Match[str]) -> str:
+            latex = match.group(1).strip()
+            if not latex:
+                return match.group(0)
+            return _formula_img_tag(latex, display="inline")
+
+        def _inline_dollar_repl(match: re.Match[str]) -> str:
+            latex = match.group(1).strip()
+            if not _looks_like_formula(latex):
+                return match.group(0)
+            return _formula_img_tag(latex, display="inline")
+
+        converted = _INLINE_FORMULA_RE.sub(_inline_repl, part)
+        parts[idx] = _INLINE_DOLLAR_FORMULA_RE.sub(_inline_dollar_repl, converted)
+    return "`".join(parts)
+
+
+def _replace_markdown_formulas_with_images(value: str) -> str:
+    if not value or ("\\(" not in value and "$$" not in value and "$" not in value):
+        return value
+
+    lines = value.splitlines()
+    output: list[str] = []
+    in_fence = False
+    fence_marker = ""
+    in_block = False
+    block_lines: list[str] = []
+
+    for line in lines:
+        match = _CODE_FENCE_RE.match(line)
+        if match:
+            marker = match.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                in_fence = False
+                fence_marker = ""
+            output.append(line)
+            continue
+        if in_fence:
+            output.append(line)
+            continue
+        if in_block:
+            if "$$" in line:
+                before, _sep, after = line.partition("$$")
+                block_lines.append(before)
+                latex = "\n".join(block_lines).strip()
+                rendered = _formula_img_tag(latex, display="block") if latex else ""
+                tail = _replace_inline_formulas(after) if after else ""
+                output.append(f"{rendered}{tail}")
+                block_lines = []
+                in_block = False
+            else:
+                block_lines.append(line)
+            continue
+        if "$$" in line:
+            before, _sep, after = line.partition("$$")
+            if "$$" in after:
+                latex, _sep2, rest = after.partition("$$")
+                replacement = _formula_img_tag(latex.strip(), display="block")
+                output.append(
+                    f"{_replace_inline_formulas(before)}{replacement}{_replace_inline_formulas(rest)}"
+                )
+            else:
+                if before:
+                    output.append(_replace_inline_formulas(before))
+                block_lines = [after]
+                in_block = True
+            continue
+        output.append(_replace_inline_formulas(line))
+
+    if in_block:
+        output.append("$$" + "\n".join(block_lines))
+    return "\n".join(output)
 
 
 def _wx_html_table_compatibility_markup(
@@ -170,7 +328,7 @@ _RENDER_BUSY_RETRY_LIMIT = 5
 _RENDER_RETRY_DELAY_MS = 0
 
 
-class MarkdownView(html.HtmlWindow):
+class MarkdownView(wx_html.HtmlWindow):
     """Simple view displaying markdown converted to HTML."""
 
     def __init__(
@@ -183,7 +341,7 @@ class MarkdownView(html.HtmlWindow):
     ) -> None:
         super().__init__(
             parent,
-            style=html.HW_SCROLLBAR_AUTO,
+            style=wx_html.HW_SCROLLBAR_AUTO,
         )
         self._theme = MarkdownTheme(foreground_colour, background_colour)
         self._markdown: str = ""
@@ -464,6 +622,13 @@ class MarkdownView(html.HtmlWindow):
             "a {"
             f" color: {foreground_hex};"
             " text-decoration: underline;"
+            "}"
+            "img.math-formula-inline {"
+            " vertical-align: middle;"
+            "}"
+            "img.math-formula-block {"
+            " display: block;"
+            " margin: 8px 0;"
             "}"
             "hr {"
             f" border: 0; border-top: 1px solid {table_border_hex};"

@@ -52,3 +52,14 @@ pytest --list-suites
 
 Если нужно ограничиться одной подгруппой файлов, указывайте путь: `pytest --suite core tests/unit/test_agent_loop_runner.py -q`.
 
+## Практика для GUI-тестов с модальными окнами
+
+- Если сценарий проверяет не UX модального окна, а сам факт уведомления/ошибки,
+  используйте общую фикстуру `intercept_message_box` из `tests/conftest.py`.
+  Она перехватывает `wx.MessageBox` и возвращает список вызовов в формате
+  `(message, caption, style)`.
+- Не добавляйте локальные `monkeypatch.setattr(wx, "MessageBox", ...)` прямо в
+  тесты без необходимости: такие ad-hoc патчи быстро расходятся по сигнатурам и
+  усложняют отладку зависаний в headless-прогонах.
+- Для точечной отладки держите кейсы таргетированными, например:
+  `pytest --suite gui-smoke -q tests/gui/test_settings_dialog.py::test_mcp_check_status`.

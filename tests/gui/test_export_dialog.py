@@ -174,3 +174,92 @@ def test_export_dialog_docx_formula_default_is_auto(wx_app):
     finally:
         dialog.Destroy()
         wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_export_dialog_default_columns_match_export_preset(wx_app):
+    from app.ui.export_dialog import RequirementExportDialog
+
+    dialog = RequirementExportDialog(
+        None,
+        available_fields=[
+            "labels",
+            "id",
+            "source",
+            "status",
+            "statement",
+            "type",
+            "owner",
+            "priority",
+            "verification",
+            "acceptance",
+            "conditions",
+            "rationale",
+            "assumptions",
+            "modified_at",
+            "attachments",
+            "revision",
+            "approved_at",
+            "notes",
+            "links",
+            "doc_prefix",
+            "rid",
+            "derived_from",
+            "derived_count",
+        ],
+        selected_fields=["status"],
+    )
+    try:
+        wx_app.Yield()
+        assert dialog._field_order == [
+            "title",
+            "labels",
+            "id",
+            "source",
+            "status",
+            "statement",
+            "type",
+            "owner",
+            "priority",
+            "verification",
+            "acceptance",
+            "conditions",
+            "rationale",
+            "assumptions",
+            "modified_at",
+            "attachments",
+            "revision",
+            "approved_at",
+            "notes",
+            "links",
+            "doc_prefix",
+            "rid",
+            "derived_from",
+            "derived_count",
+        ]
+        assert dialog._checked_fields() == [
+            "title",
+            "labels",
+            "id",
+            "source",
+            "statement",
+            "owner",
+            "verification",
+            "acceptance",
+            "conditions",
+            "rationale",
+            "assumptions",
+            "modified_at",
+            "attachments",
+            "revision",
+            "approved_at",
+            "notes",
+            "links",
+            "doc_prefix",
+            "rid",
+            "derived_from",
+            "derived_count",
+        ]
+    finally:
+        dialog.Destroy()
+        wx_app.Yield()

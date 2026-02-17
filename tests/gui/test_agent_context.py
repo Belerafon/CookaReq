@@ -67,8 +67,8 @@ def test_agent_context_includes_selected_requirements(tmp_path, wx_app):
         assert "GUI selection #" not in content
         assert "(id=" not in content
         assert "prefix=" not in content
-        assert "DEMO1" in content
-        assert "DEMO2" in content
+        assert "HLR1" in content
+        assert "HLR2" in content
         assert "[User documentation]" in content
         assert "Directory tree:" in content
         assert "ГОСТ требования.txt" in content

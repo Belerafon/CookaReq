@@ -1,0 +1,25 @@
+{
+  "acceptance": "On the demo bench, repeated restart checks were executed: after 50 cycles, no checksum mismatch is observed between active and backup slots.",
+  "approved_at": null,
+  "assumptions": "Configuration is stored in non-volatile memory with a limited number of write cycles.",
+  "attachments": [],
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
+  "id": 9,
+  "labels": [
+    "software",
+    "hardware"
+  ],
+  "links": [],
+  "modified_at": "2026-01-16 00:00:00",
+  "notes": "Derived LLR without upward traceability: this requirement is fixed at the implementation level of the persistence mechanism.",
+  "owner": "Aviation demo team",
+  "priority": "medium",
+  "rationale": "Rationale: this requirement is derived from flash-memory constraints and state-recovery experiments after restart. No direct SYS/HLR linkage is recorded because it constrains the internal commit protocol implementation.",
+  "revision": 2,
+  "source": "Persistence design review",
+  "statement": "The CONFIG_STORE component shall perform a two-phase commit before writing a new configuration, with atomic active-slot switch and SHA-256 checksum persistence.",
+  "status": "approved",
+  "title": "LLR-09 Atomic configuration commit",
+  "type": "requirement",
+  "verification": "test"
+}

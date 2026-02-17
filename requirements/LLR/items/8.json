@@ -1,0 +1,25 @@
+{
+  "acceptance": "The demo log confirms that under burst load, safety-class event records are not lost and the reserve-capacity requirement is maintained.",
+  "approved_at": null,
+  "assumptions": "The logging buffer uses fixed memory capacity and a ring-buffer eviction strategy.",
+  "attachments": [],
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
+  "id": 8,
+  "labels": [
+    "software",
+    "test"
+  ],
+  "links": [],
+  "modified_at": "2026-01-16 00:00:00",
+  "notes": "Derived LLR without upward traceability: this refinement was introduced after stress tests of the demo bench.",
+  "owner": "Aviation demo team",
+  "priority": "medium",
+  "rationale": "Rationale: this requirement emerged from logger load-testing results and protects the diagnostic value of logs under peak load. No direct SYS/HLR linkage is recorded because it formalizes an internal buffering policy.",
+  "revision": 2,
+  "source": "Burst logging benchmark report",
+  "statement": "The AUDIT_BUFFER subsystem shall reserve at least 30% of ring-buffer capacity for safety-critical events and prevent their eviction by info/debug events.",
+  "status": "approved",
+  "title": "LLR-08 Buffer reservation for safety events",
+  "type": "requirement",
+  "verification": "analysis"
+}

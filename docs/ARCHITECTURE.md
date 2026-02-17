@@ -19,7 +19,7 @@ so you know which modules are involved and which regressions to guard against.
 | `app/ui/` | wxPython UI (frames, panels, controllers, models, dialogs). |
 | `app/util/`, `app/log.py`, `app/telemetry.py` | Cross-cutting utilities: cancellation, JSON helpers, timing, logging and telemetry. |
 | `app/resources/version.json` | Build-stamped version metadata (date only) surfaced in the main window title. The loader first tries `importlib.resources` and then falls back to filesystem paths so frozen bundles still show the version. |
-| `requirements/` | Bundled sample requirements packs (`DEMO/…`). |
+| `requirements/` | Bundled sample requirements documents (`SYS/`, `HLR/`, `LLR/`). |
 | `tests/` | End-to-end, GUI, services and core suites (see `tests/README.md`). |
 | `tools/` | Development helpers such as `run_wx.py` for running wx scripts under a virtual display. |
 
@@ -432,8 +432,9 @@ so you know which modules are involved and which regressions to guard against.
 
 ## Persistence and operational environment
 
-* Sample requirement packs under `requirements/DEMO` demonstrate the storage
-  layout. Real installations point `ConfigManager` to a writable directory.
+* Sample requirements under `requirements/SYS`, `requirements/HLR`, and
+  `requirements/LLR` demonstrate canonical multi-level storage. Real
+  installations point `ConfigManager` to a writable directory.
 * User configuration and logs live in the home directory (`ConfigManager._default_config_path`).
 * LLM credentials (`OPEN_ROUTER`) are read from the environment or loaded via
   `.env`. The default configuration targets

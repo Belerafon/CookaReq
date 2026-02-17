@@ -1,0 +1,25 @@
+{
+  "acceptance": "The demo includes a channel-loss scenario run and confirms that fallback parameters are applied within no more than 150 ms.",
+  "approved_at": null,
+  "assumptions": "Bench system time is synchronized; the main control loop frequency is 100 Hz.",
+  "attachments": [],
+  "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
+  "id": 7,
+  "labels": [
+    "software",
+    "integration"
+  ],
+  "links": [],
+  "modified_at": "2026-01-16 00:00:00",
+  "notes": "Derived LLR without upward traceability: this constraint is introduced from fail-safe analysis and bench-specific characteristics.",
+  "owner": "Aviation demo team",
+  "priority": "high",
+  "rationale": "Rationale: this requirement is derived from FMEA analysis of the telemetry channel and defines a local protective reaction. No direct SYS/HLR linkage is recorded because this is an implementation constraint of the subsystem.",
+  "revision": 2,
+  "source": "Safety workshop notes, DEMO platform constraints",
+  "statement": "The SENSOR_GUARD module shall activate the local fallback thrust-control profile within 150 ms after detecting invalidity of the input channel.",
+  "status": "approved",
+  "title": "LLR-07 Local fallback on channel loss",
+  "type": "requirement",
+  "verification": "demonstration"
+}

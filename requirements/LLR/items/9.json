@@ -4,11 +4,12 @@
   "assumptions": "Configuration is stored in non-volatile memory with a limited number of write cycles.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 21,
+  "id": 9,
   "labels": [
     "software",
     "hardware"
   ],
+  "links": [],
   "modified_at": "2026-01-16 00:00:00",
   "notes": "Derived LLR without upward traceability: this requirement is fixed at the implementation level of the persistence mechanism.",
   "owner": "Aviation demo team",

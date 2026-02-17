@@ -4,11 +4,12 @@
   "assumptions": "The logging buffer uses fixed memory capacity and a ring-buffer eviction strategy.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 20,
+  "id": 8,
   "labels": [
     "software",
     "test"
   ],
+  "links": [],
   "modified_at": "2026-01-16 00:00:00",
   "notes": "Derived LLR without upward traceability: this refinement was introduced after stress tests of the demo bench.",
   "owner": "Aviation demo team",

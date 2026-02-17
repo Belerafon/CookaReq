@@ -9,6 +9,7 @@
     "system",
     "test"
   ],
+  "links": [],
   "modified_at": "2026-01-16 13:00:00",
   "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
   "owner": "Aviation demo team",

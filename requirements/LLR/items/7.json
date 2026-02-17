@@ -4,11 +4,12 @@
   "assumptions": "Bench system time is synchronized; the main control loop frequency is 100 Hz.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 19,
+  "id": 7,
   "labels": [
     "software",
     "integration"
   ],
+  "links": [],
   "modified_at": "2026-01-16 00:00:00",
   "notes": "Derived LLR without upward traceability: this constraint is introduced from fail-safe analysis and bench-specific characteristics.",
   "owner": "Aviation demo team",

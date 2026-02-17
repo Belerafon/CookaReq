@@ -1,29 +1,31 @@
 {
   "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
-  "approved_at": null,
+  "approved_at": "2026-01-16 03:30:00",
   "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 7,
+  "id": 6,
   "labels": [
     "software"
   ],
   "links": [
     {
-      "fingerprint": "11145de1600b4ff633f20ac29a80787ad16d8d42a0076512aa12ba284b2fb528",
-      "rid": "DEMO1"
+      "rid": "HLR6"
+    },
+    {
+      "rid": "SYS6"
     }
   ],
-  "modified_at": "2026-01-16 15:00:00",
+  "modified_at": "2026-01-16 02:00:00",
   "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
   "owner": "Aviation demo team",
   "priority": "high",
   "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "DO-178C demo baseline",
-  "statement": "The high-level software shall compute the thrust command limit from the current FADEC mode and forward the limited command to the actuator module.",
+  "statement": "The low-level UPDATE_SIG_VERIFY module shall validate the Ed25519 signature and SHA-256 hash of the update manifest.",
   "status": "approved",
-  "title": "HLR-01 Thrust limiting algorithm",
+  "title": "LLR-06 Update signature verification",
   "type": "requirement",
   "verification": "analysis"
 }

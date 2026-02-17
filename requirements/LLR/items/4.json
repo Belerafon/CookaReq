@@ -4,19 +4,17 @@
   "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 16,
+  "id": 4,
   "labels": [
     "software",
     "integration"
   ],
   "links": [
     {
-      "fingerprint": "cfb0bc44c1a92723769ade7698e8e33a677b645bd63e171fc093d754e4a735c8",
-      "rid": "DEMO10"
+      "rid": "HLR4"
     },
     {
-      "fingerprint": "4e1ff1f1382d6574a59aa8b034fc919b3260e04a609c1e34d91322931c3f2287",
-      "rid": "DEMO4"
+      "rid": "SYS4"
     }
   ],
   "modified_at": "2026-01-16 00:00:00",

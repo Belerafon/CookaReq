@@ -154,12 +154,12 @@ def test_demo_derived_llr_requirements_are_reported_as_orphans() -> None:
     root = Path(__file__).resolve().parents[2] / "requirements"
     config = TraceMatrixConfig(
         rows=TraceMatrixAxisConfig(
-            documents=("DEMO",),
+            documents=("LLR",),
             query="LLR-",
             query_fields=("title",),
         ),
         columns=TraceMatrixAxisConfig(
-            documents=("DEMO",),
+            documents=("HLR",),
             query="HLR-",
             query_fields=("title",),
         ),
@@ -168,23 +168,23 @@ def test_demo_derived_llr_requirements_are_reported_as_orphans() -> None:
     matrix = build_trace_matrix(root, config)
 
     assert [entry.rid for entry in matrix.rows] == [
-        "DEMO13",
-        "DEMO14",
-        "DEMO15",
-        "DEMO16",
-        "DEMO17",
-        "DEMO18",
-        "DEMO19",
-        "DEMO20",
-        "DEMO21",
+        "LLR1",
+        "LLR2",
+        "LLR3",
+        "LLR4",
+        "LLR5",
+        "LLR6",
+        "LLR7",
+        "LLR8",
+        "LLR9",
     ]
     assert [entry.rid for entry in matrix.columns] == [
-        "DEMO7",
-        "DEMO8",
-        "DEMO9",
-        "DEMO10",
-        "DEMO11",
-        "DEMO12",
+        "HLR1",
+        "HLR2",
+        "HLR3",
+        "HLR4",
+        "HLR5",
+        "HLR6",
     ]
     assert matrix.summary.linked_pairs == 6
-    assert matrix.summary.orphan_rows == ("DEMO19", "DEMO20", "DEMO21")
+    assert matrix.summary.orphan_rows == ("LLR7", "LLR8", "LLR9")

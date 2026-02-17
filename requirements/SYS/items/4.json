@@ -4,27 +4,22 @@
   "assumptions": "Unified requirement identification and revision rules are applied.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
-  "id": 10,
+  "id": 4,
   "labels": [
-    "software",
+    "system",
     "integration"
   ],
-  "links": [
-    {
-      "fingerprint": "4e1ff1f1382d6574a59aa8b034fc919b3260e04a609c1e34d91322931c3f2287",
-      "rid": "DEMO4"
-    }
-  ],
-  "modified_at": "2026-01-16 18:00:00",
+  "links": [],
+  "modified_at": "2026-01-16 12:00:00",
   "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
   "owner": "Aviation demo team",
   "priority": "high",
   "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
   "revision": 2,
   "source": "DO-178C demo baseline",
-  "statement": "The high-level software shall classify alerts by WARNING/CAUTION/ADVISORY priority and publish them to the indication bus.",
+  "statement": "The system shall generate a crew alert when computed and measured flight parameters disagree.",
   "status": "approved",
-  "title": "HLR-04 Alert generation",
+  "title": "SYS-04 Crew alerting",
   "type": "requirement",
   "verification": "inspection"
 }

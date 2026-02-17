@@ -55,13 +55,13 @@ def _new_log_entries(path: Path, previous_count: int) -> list[dict[str, object]]
 
 
 def _load_requirement_summaries(ids: Sequence[int]) -> list[tuple[str, str, str]]:
-    items_dir = _REPO_ROOT / "requirements" / "DEMO" / "items"
+    items_dir = _REPO_ROOT / "requirements" / "SYS" / "items"
     results: list[tuple[str, str, str]] = []
     for rid in ids:
         path = items_dir / f"{rid}.json"
         with path.open(encoding="utf-8") as stream:
             payload = json.load(stream)
-        label = f"DEMO{rid}"
+        label = f"SYS{rid}"
         title = str(payload.get("title") or "")
         statement = str(payload.get("statement") or "")
         results.append((label, title, statement))
@@ -72,7 +72,7 @@ def _compose_context(requirements: Sequence[tuple[str, str, str]]) -> str:
     rid_list = ", ".join(label for label, _, _ in requirements)
     lines = [
         "[Workspace context]",
-        "Active document: DEMO — Demo requirements",
+        "Active document: SYS — System Requirements",
         f"Selected requirement RIDs: {rid_list}",
     ]
     for label, title, statement in requirements:

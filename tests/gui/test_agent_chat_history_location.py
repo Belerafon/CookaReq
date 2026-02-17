@@ -73,16 +73,8 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_contex
 
 
 def test_switching_from_empty_directory_does_not_create_local_cookareq(
-    tmp_path, wx_app, gui_context, monkeypatch
+    tmp_path, wx_app, gui_context, intercept_message_box
 ):
-    wx = pytest.importorskip("wx")
-    notices: list[tuple[str, str, int]] = []
-
-    def fake_message_box(message: str, caption: str, style: int = 0) -> int:
-        notices.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message_box)
 
     wrong_repository = tmp_path / "wrong"
     wrong_repository.mkdir()
@@ -97,7 +89,7 @@ def test_switching_from_empty_directory_does_not_create_local_cookareq(
         frame._load_directory(repository)
         wx_app.Yield()
         assert not (wrong_repository / ".cookareq").exists()
-        assert notices, "Expected an informational message for a new empty directory"
+        assert intercept_message_box, "Expected an informational message for a new empty directory"
     finally:
         frame.Destroy()
         wx_app.Yield()

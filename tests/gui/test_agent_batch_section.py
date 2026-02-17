@@ -38,6 +38,12 @@ class DummyPanel(wx.Panel):
     def _reset_batch_conversation_tracking(self) -> None:
         self.batch_resets += 1
 
+    def _prepare_batch_attachment(self) -> None:
+        return None
+
+    def _clear_batch_attachment(self) -> None:
+        return None
+
     @property
     def is_running(self) -> bool:
         return self._is_running

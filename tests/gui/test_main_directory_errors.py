@@ -13,9 +13,17 @@ from app.settings import MCPSettings
 pytestmark = pytest.mark.gui
 
 
-def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app, gui_context):
-    wx = pytest.importorskip("wx")
+def _build_frame(tmp_path, gui_context):
     import app.ui.main_frame as main_frame
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = main_frame.MainFrame(None, context=gui_context, config=config)
+    return frame, main_frame
+
+
+def test_load_directory_reports_validation_error(tmp_path, wx_app, gui_context, intercept_message_box):
+    wx = pytest.importorskip("wx")
 
     root_dir = tmp_path / "requirements"
     invalid_dir = root_dir / "SYS1"
@@ -25,23 +33,11 @@ def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app, 
         encoding="utf-8",
     )
 
-    messages: list[tuple[str, str, int]] = []
-
-    def fake_message(message: str, caption: str, style: int = 0, *args, **kwargs):
-        messages.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
-
-    config = ConfigManager(path=tmp_path / "config.ini")
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-
-    frame = main_frame.MainFrame(None, context=gui_context, config=config)
-
+    frame, main_frame = _build_frame(tmp_path, gui_context)
     frame._load_directory(root_dir)
 
-    assert messages, "error message should be shown for invalid document structure"
-    message, caption, style = messages[-1]
+    assert intercept_message_box, "error message should be shown for invalid document structure"
+    message, caption, style = intercept_message_box[-1]
     assert "Failed to load requirements folder" in message
     assert "document prefix mismatch" in message
     assert root_dir.name in message
@@ -57,10 +53,9 @@ def test_load_directory_reports_validation_error(tmp_path, monkeypatch, wx_app, 
 
 
 def test_load_directory_reports_wrong_level_hint_for_document_folder(
-    tmp_path, monkeypatch, wx_app, gui_context
+    tmp_path, wx_app, gui_context, intercept_message_box
 ):
     wx = pytest.importorskip("wx")
-    import app.ui.main_frame as main_frame
 
     document_dir = tmp_path / "SYS"
     document_dir.mkdir(parents=True)
@@ -70,23 +65,11 @@ def test_load_directory_reports_wrong_level_hint_for_document_folder(
     )
     (document_dir / "items").mkdir()
 
-    messages: list[tuple[str, str, int]] = []
-
-    def fake_message(message: str, caption: str, style: int = 0, *args, **kwargs):
-        messages.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
-
-    config = ConfigManager(path=tmp_path / "config.ini")
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-
-    frame = main_frame.MainFrame(None, context=gui_context, config=config)
-
+    frame, main_frame = _build_frame(tmp_path, gui_context)
     frame._load_directory(document_dir)
 
-    assert messages
-    message, caption, style = messages[-1]
+    assert intercept_message_box
+    message, caption, style = intercept_message_box[-1]
     assert "single document" in message.lower()
     assert document_dir.parent.name in message
     assert str(document_dir.parent) not in message
@@ -99,28 +82,15 @@ def test_load_directory_reports_wrong_level_hint_for_document_folder(
 
 
 def test_load_directory_warns_about_new_directory_without_documents(
-    tmp_path, monkeypatch, wx_app, gui_context
+    tmp_path, wx_app, gui_context, intercept_message_box
 ):
     wx = pytest.importorskip("wx")
-    import app.ui.main_frame as main_frame
 
-    messages: list[tuple[str, str, int]] = []
-
-    def fake_message(message: str, caption: str, style: int = 0, *args, **kwargs):
-        messages.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
-
-    config = ConfigManager(path=tmp_path / "config.ini")
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-
-    frame = main_frame.MainFrame(None, context=gui_context, config=config)
-
+    frame, main_frame = _build_frame(tmp_path, gui_context)
     frame._load_directory(tmp_path)
 
-    assert messages
-    message, caption, style = messages[-1]
+    assert intercept_message_box
+    message, caption, style = intercept_message_box[-1]
     assert "No requirement documents were found" in message
     assert "new directory" in message
     assert str(tmp_path) in message
@@ -134,10 +104,9 @@ def test_load_directory_warns_about_new_directory_without_documents(
 
 
 def test_load_directory_reports_hint_for_internal_cookareq_folder(
-    tmp_path, monkeypatch, wx_app, gui_context
+    tmp_path, wx_app, gui_context, intercept_message_box
 ):
     wx = pytest.importorskip("wx")
-    import app.ui.main_frame as main_frame
 
     doc_dir = tmp_path / "SYS"
     doc_dir.mkdir(parents=True)
@@ -149,23 +118,11 @@ def test_load_directory_reports_hint_for_internal_cookareq_folder(
     internal_dir = tmp_path / ".cookareq"
     internal_dir.mkdir()
 
-    messages: list[tuple[str, str, int]] = []
-
-    def fake_message(message: str, caption: str, style: int = 0, *args, **kwargs):
-        messages.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
-
-    config = ConfigManager(path=tmp_path / "config.ini")
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-
-    frame = main_frame.MainFrame(None, context=gui_context, config=config)
-
+    frame, main_frame = _build_frame(tmp_path, gui_context)
     frame._load_directory(internal_dir)
 
-    assert messages
-    message, caption, style = messages[-1]
+    assert intercept_message_box
+    message, caption, style = intercept_message_box[-1]
     assert "internal CookaReq data" in message
     assert "parent folder" in message
     assert str(internal_dir) not in message
@@ -179,10 +136,9 @@ def test_load_directory_reports_hint_for_internal_cookareq_folder(
 
 @pytest.mark.parametrize("nested_name", ["items", "assets"])
 def test_load_directory_reports_hint_for_document_subfolders(
-    tmp_path, monkeypatch, wx_app, gui_context, nested_name
+    tmp_path, wx_app, gui_context, intercept_message_box, nested_name
 ):
     wx = pytest.importorskip("wx")
-    import app.ui.main_frame as main_frame
 
     doc_dir = tmp_path / "SYS"
     doc_dir.mkdir(parents=True)
@@ -194,23 +150,11 @@ def test_load_directory_reports_hint_for_document_subfolders(
     nested_dir = doc_dir / nested_name
     nested_dir.mkdir(exist_ok=True)
 
-    messages: list[tuple[str, str, int]] = []
-
-    def fake_message(message: str, caption: str, style: int = 0, *args, **kwargs):
-        messages.append((message, caption, style))
-        return wx.OK
-
-    monkeypatch.setattr(wx, "MessageBox", fake_message)
-
-    config = ConfigManager(path=tmp_path / "config.ini")
-    config.set_mcp_settings(MCPSettings(auto_start=False))
-
-    frame = main_frame.MainFrame(None, context=gui_context, config=config)
-
+    frame, main_frame = _build_frame(tmp_path, gui_context)
     frame._load_directory(nested_dir)
 
-    assert messages
-    message, caption, style = messages[-1]
+    assert intercept_message_box
+    message, caption, style = intercept_message_box[-1]
     assert f'"{nested_name}" subfolder' in message
     assert "open requirements root" in message.lower()
     assert str(nested_dir) not in message

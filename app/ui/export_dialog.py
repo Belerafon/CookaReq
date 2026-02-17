@@ -40,6 +40,58 @@ class RequirementExportPlan:
     colorize_label_backgrounds: bool
 
 
+DEFAULT_EXPORT_FIELD_ORDER: tuple[str, ...] = (
+    "title",
+    "labels",
+    "id",
+    "source",
+    "status",
+    "statement",
+    "type",
+    "owner",
+    "priority",
+    "verification",
+    "acceptance",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "modified_at",
+    "attachments",
+    "revision",
+    "approved_at",
+    "notes",
+    "links",
+    "doc_prefix",
+    "rid",
+    "derived_from",
+    "derived_count",
+)
+
+DEFAULT_EXPORT_SELECTED_FIELDS: tuple[str, ...] = (
+    "title",
+    "labels",
+    "id",
+    "source",
+    "statement",
+    "owner",
+    "verification",
+    "acceptance",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "modified_at",
+    "attachments",
+    "revision",
+    "approved_at",
+    "notes",
+    "links",
+    "doc_prefix",
+    "rid",
+    "derived_from",
+    "derived_count",
+)
+
+
 class RequirementExportDialog(wx.Dialog):
     """Allow the user to configure export format and columns."""
 
@@ -58,11 +110,10 @@ class RequirementExportDialog(wx.Dialog):
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._document_label = document_label or ""
         self._available_fields = self._build_available_fields(available_fields)
-        selection_seed = selected_fields
-        force_title = True
+        selection_seed = list(DEFAULT_EXPORT_SELECTED_FIELDS)
+        force_title = False
         if saved_state and saved_state.columns:
             selection_seed = saved_state.columns
-            force_title = False
         self._default_selected = self._build_default_selected(selection_seed, force_title=force_title)
         self._field_order = self._build_field_order(saved_state.order if saved_state else None)
         self._field_labels = {field: locale.field_label(field) for field in self._available_fields}
@@ -157,7 +208,9 @@ class RequirementExportDialog(wx.Dialog):
                 if field in self._available_fields and field not in ordered:
                     ordered.append(field)
         if not ordered:
-            ordered = list(self._default_selected)
+            for field in DEFAULT_EXPORT_FIELD_ORDER:
+                if field in self._available_fields and field not in ordered:
+                    ordered.append(field)
         for field in self._available_fields:
             if field not in ordered:
                 ordered.append(field)

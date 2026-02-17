@@ -15,7 +15,7 @@ from app.ui.requirement_model import RequirementModel
 pytestmark = pytest.mark.gui
 
 
-def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_context):
+def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_context, intercept_message_box):
     """Ensure graph/matrix frames close automatically with the main window."""
 
     wx = pytest.importorskip("wx")
@@ -75,14 +75,6 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_
 
         frame.docs_controller = _Controller()
         frame.current_dir = tmp_path
-
-        message_calls: list[tuple] = []
-
-        def _record_message(*args, **kwargs):
-            message_calls.append((args, kwargs))
-            return wx.ID_OK
-
-        monkeypatch.setattr(wx, "MessageBox", _record_message)
 
         class _DialogStub:
             destroyed = False
@@ -153,7 +145,7 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_
             with pytest.raises(RuntimeError):
                 aux.IsShownOnScreen()
 
-        assert message_calls == []
+        assert intercept_message_box == []
     finally:
         if not frame.IsBeingDeleted():
             frame.Destroy()

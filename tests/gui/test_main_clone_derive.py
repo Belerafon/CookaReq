@@ -254,7 +254,7 @@ def test_delete_unsaved_new_requirement(monkeypatch, wx_app, tmp_path):
     finally:
         frame.Destroy()
 
-def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path):
+def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path, intercept_message_box):
     frame = _prepare_frame(tmp_path)
     import app.ui.main_frame.requirements as requirements_mod
     wx = pytest.importorskip("wx")
@@ -262,12 +262,6 @@ def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path):
     hw_doc = Document(prefix="HW", title="Hardware")
     save_document(tmp_path / "HW", hw_doc)
     frame.docs_controller.load_documents()
-
-    messages: list[tuple[str, str]] = []
-
-    def fake_message(text: str, title: str, style: int = 0) -> int:
-        messages.append((text, title))
-        return wx.ID_OK
 
     class _Plan:
         mode = requirements_mod.TransferMode.COPY
@@ -290,7 +284,6 @@ def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path):
 
     try:
         monkeypatch.setattr(requirements_mod, "RequirementTransferDialog", _Dialog)
-        monkeypatch.setattr(wx, "MessageBox", fake_message)
         wx_app.Yield()
 
         frame.on_transfer_requirements([1])
@@ -301,12 +294,12 @@ def test_transfer_copy_creates_requirement(monkeypatch, wx_app, tmp_path):
         assert copied.revision == 1
         assert frame.current_doc_prefix == "REQ"
         assert frame.model.get_by_id(1) is not None
-        assert messages, "expected success message"
+        assert intercept_message_box, "expected success message"
     finally:
         frame.Destroy()
 
 
-def test_transfer_move_switches_document(monkeypatch, wx_app, tmp_path):
+def test_transfer_move_switches_document(monkeypatch, wx_app, tmp_path, intercept_message_box):
     extra = [_req(2, "Second")]
     frame = _prepare_frame(tmp_path, extra_requirements=extra)
     import app.ui.main_frame.requirements as requirements_mod
@@ -315,12 +308,6 @@ def test_transfer_move_switches_document(monkeypatch, wx_app, tmp_path):
     hw_doc = Document(prefix="HW", title="Hardware")
     save_document(tmp_path / "HW", hw_doc)
     frame.docs_controller.load_documents()
-
-    messages: list[tuple[str, str]] = []
-
-    def fake_message(text: str, title: str, style: int = 0) -> int:
-        messages.append((text, title))
-        return wx.ID_OK
 
     class _Plan:
         mode = requirements_mod.TransferMode.MOVE
@@ -343,7 +330,6 @@ def test_transfer_move_switches_document(monkeypatch, wx_app, tmp_path):
 
     try:
         monkeypatch.setattr(requirements_mod, "RequirementTransferDialog", _Dialog)
-        monkeypatch.setattr(wx, "MessageBox", fake_message)
         wx_app.Yield()
 
         frame.on_transfer_requirements([1])
@@ -353,7 +339,7 @@ def test_transfer_move_switches_document(monkeypatch, wx_app, tmp_path):
         assert moved.rid == "HW1"
         assert frame.current_doc_prefix == "HW"
         assert frame.model.get_by_id(1) is None
-        assert messages, "expected success message"
+        assert intercept_message_box, "expected success message"
     finally:
         frame.Destroy()
 

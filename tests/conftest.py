@@ -366,3 +366,19 @@ def wx_app(
 
     _destroy_top_windows(wx)
     _reset_wx_config(wx)
+
+@pytest.fixture
+def intercept_message_box(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int]]:
+    """Patch ``wx.MessageBox`` and collect all invocations for assertions."""
+
+    wx = pytest.importorskip("wx")
+    calls: list[tuple[str, str, int]] = []
+
+    def _fake_message_box(message: str, caption: str, style: int = 0, *args, **kwargs) -> int:
+        calls.append((message, caption, style))
+        return wx.OK
+
+    monkeypatch.setattr(wx, "MessageBox", _fake_message_box)
+    return calls
+
+

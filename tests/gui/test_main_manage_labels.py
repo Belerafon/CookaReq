@@ -60,22 +60,14 @@ def test_manage_labels_menu_state_tracks_documents(wx_app, tmp_path):
             wx_app.Yield()
 
 
-def test_manage_labels_prompts_without_selection(monkeypatch, wx_app, tmp_path):
+def test_manage_labels_prompts_without_selection(wx_app, tmp_path, intercept_message_box):
     frame = _create_frame(tmp_path)
     try:
         wx_app.Yield()
-        captured: dict[str, tuple[str, str, int]] = {}
-
-        def fake_message_box(message, caption, style=0):
-            captured["call"] = (message, caption, style)
-            return wx.OK
-
-        monkeypatch.setattr(wx, "MessageBox", fake_message_box)
-
         frame.on_manage_labels(wx.CommandEvent())
 
-        assert "call" in captured
-        message, caption, style = captured["call"]
+        assert intercept_message_box
+        message, caption, style = intercept_message_box[-1]
         assert "Select requirements folder first" in message
         assert caption == "No Data"
         assert style == 0
@@ -117,7 +109,7 @@ def test_manage_labels_removal_updates_loaded_requirements(monkeypatch, wx_app, 
         assert requirements and requirements[0].labels == ["bug"]
 
         class _DialogStub:
-            def __init__(self, _parent, labels):
+            def __init__(self, _parent, labels, **_kwargs):
                 self._labels = labels
 
             def ShowModal(self):

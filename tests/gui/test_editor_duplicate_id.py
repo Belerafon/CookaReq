@@ -30,7 +30,7 @@ def _make_requirement(req_id: int) -> Requirement:
     )
 
 
-def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -> None:
+def test_editor_save_rejects_duplicate_id(wx_app, tmp_path: Path, intercept_message_box) -> None:
     wx = pytest.importorskip("wx")
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
@@ -48,21 +48,11 @@ def test_editor_save_rejects_duplicate_id(monkeypatch, wx_app, tmp_path: Path) -
     panel.fields["title"].ChangeValue("Duplicate")
     panel.fields["statement"].ChangeValue("Copy")
 
-    messages: list[str] = []
-
-    import app.ui.editor_panel as editor_module
-
-    def fake_message(message: str, caption: str, style: int = 0) -> int:
-        messages.append(message)
-        return wx.ID_OK
-
-    monkeypatch.setattr(editor_module.wx, "MessageBox", fake_message)
-
     with pytest.raises(RequirementIDCollisionError):
         panel.save("SYS")
 
-    assert messages, "duplicate warning should be shown"
-    assert "already exists" in messages[0]
+    assert intercept_message_box, "duplicate warning should be shown"
+    assert "already exists" in intercept_message_box[0][0]
     assert panel._id_conflict is True
 
     panel.Destroy()

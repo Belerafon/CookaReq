@@ -235,7 +235,7 @@ def test_mcp_start_stop_server(monkeypatch, wx_app):
     dlg.Destroy()
 
 
-def test_mcp_check_status(monkeypatch, wx_app):
+def test_mcp_check_status(wx_app, intercept_message_box):
     wx = pytest.importorskip("wx")
     import app.ui.settings_dialog as sd
     from app.mcp.controller import MCPCheckResult, MCPStatus
@@ -264,12 +264,6 @@ def test_mcp_check_status(monkeypatch, wx_app):
             return MCPCheckResult(self.state, f"{self.state.value}")
 
     dummy = DummyMCP()
-    messages: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        "wx.MessageBox",
-        lambda msg, caption, *a, **k: messages.append((msg, caption)),
-    )
-
     dlg = SettingsDialog(
         None,
         open_last=False,
@@ -300,7 +294,7 @@ def test_mcp_check_status(monkeypatch, wx_app):
     dummy.state = MCPStatus.READY
     dlg._on_check(wx.CommandEvent())
     assert dlg._status.GetLabel() == f"{sd._('Status')}: {sd._('ready')}"
-    msg, caption = messages[-1]
+    msg, caption, _style = intercept_message_box[-1]
     assert msg.startswith(f"{sd._('Status')}: {sd._('ready')}")
     assert caption == sd._("Check MCP")
 

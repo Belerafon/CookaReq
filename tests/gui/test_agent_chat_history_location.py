@@ -73,8 +73,9 @@ def test_agent_chat_history_saved_next_to_documents(tmp_path, wx_app, gui_contex
 
 
 def test_switching_from_empty_directory_does_not_create_local_cookareq(
-    tmp_path, wx_app, gui_context
+    tmp_path, wx_app, gui_context, intercept_message_box
 ):
+
     wrong_repository = tmp_path / "wrong"
     wrong_repository.mkdir()
     repository = _copy_sample_repository(tmp_path)
@@ -88,6 +89,7 @@ def test_switching_from_empty_directory_does_not_create_local_cookareq(
         frame._load_directory(repository)
         wx_app.Yield()
         assert not (wrong_repository / ".cookareq").exists()
+        assert intercept_message_box, "Expected an informational message for a new empty directory"
     finally:
         frame.Destroy()
         wx_app.Yield()

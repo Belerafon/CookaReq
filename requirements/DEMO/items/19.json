@@ -1,7 +1,7 @@
 {
-  "acceptance": "A demonstration SYS→HLR→LLR traceability check is executed, and requirement wording correctness is confirmed.",
+  "acceptance": "The demo includes a channel-loss scenario run and confirms that fallback parameters are applied within no more than 150 ms.",
   "approved_at": null,
-  "assumptions": "Unified requirement identification and revision rules are applied.",
+  "assumptions": "Bench system time is synchronized; the main control loop frequency is 100 Hz.",
   "attachments": [],
   "conditions": "The demo repository is loaded locally; operations are executed through the CookaReq CLI.",
   "id": 19,
@@ -10,10 +10,10 @@
     "integration"
   ],
   "modified_at": "2026-01-16 00:00:00",
-  "notes": "Prepared automatically through CLI to demonstrate DO-178 traceability.",
+  "notes": "Derived LLR without upward traceability: this constraint is introduced from fail-safe analysis and bench-specific characteristics.",
   "owner": "Aviation demo team",
   "priority": "high",
-  "rationale": "This set demonstrates three-level requirement decomposition in a DO-178 style.",
+  "rationale": "Rationale: this requirement is derived from FMEA analysis of the telemetry channel and defines a local protective reaction. No direct SYS/HLR linkage is recorded because this is an implementation constraint of the subsystem.",
   "revision": 2,
   "source": "Safety workshop notes, DEMO platform constraints",
   "statement": "The SENSOR_GUARD module shall activate the local fallback thrust-control profile within 150 ms after detecting invalidity of the input channel.",

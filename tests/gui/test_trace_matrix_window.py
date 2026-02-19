@@ -17,7 +17,7 @@ from app.core.trace_matrix import TraceMatrixAxisConfig, TraceMatrixConfig
 from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
-from app.ui.trace_matrix import TraceMatrixFrame
+from app.ui.trace_matrix import TraceMatrixFrame, _build_health_snapshot, _format_health_report
 
 pytestmark = pytest.mark.gui
 
@@ -107,6 +107,21 @@ def test_trace_matrix_frame_renders_links(wx_app, tmp_path):
 
         summary = frame._summary.GetLabel()
         assert "2 × 1" in summary
+
+        health = frame.health_panel._overview.GetLabel()
+        assert "Coverage:" in health
+        assert "Suspect links:" in health
+
+        orphan_rows = frame.health_panel._orphan_rows.GetLabel()
+        assert "SYS2" in orphan_rows
+
+        orphan_columns = frame.health_panel._orphan_columns.GetLabel()
+        assert "none" in orphan_columns
+
+        report = _format_health_report(_build_health_snapshot(frame.matrix))
+        assert "Trace Matrix Health" in report
+        assert "Orphan rows:" in report
+        assert "SYS2" in report
     finally:
         frame.Destroy()
         wx_app.Yield()

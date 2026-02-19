@@ -353,6 +353,51 @@ class _DetailsState:
     link_details: str = ""
 
 
+@dataclass(frozen=True)
+class _HealthSnapshot:
+    """Compact health indicators for the currently displayed matrix."""
+
+    linked_cells: int
+    total_cells: int
+    suspect_cells: int
+    suspect_links: int
+    orphan_rows: tuple[str, ...]
+    orphan_columns: tuple[str, ...]
+
+    @property
+    def linked_ratio(self) -> float:
+        if self.total_cells == 0:
+            return 0.0
+        return self.linked_cells / self.total_cells
+
+    @property
+    def suspect_cell_ratio(self) -> float:
+        if self.linked_cells == 0:
+            return 0.0
+        return self.suspect_cells / self.linked_cells
+
+
+def _build_health_snapshot(matrix: TraceMatrix) -> _HealthSnapshot:
+    linked_cells = 0
+    suspect_cells = 0
+    suspect_links = 0
+    for cell in matrix.cells.values():
+        if not cell.links:
+            continue
+        linked_cells += 1
+        if cell.suspect:
+            suspect_cells += 1
+        suspect_links += sum(1 for link in cell.links if link.suspect)
+    return _HealthSnapshot(
+        linked_cells=linked_cells,
+        total_cells=matrix.summary.total_pairs,
+        suspect_cells=suspect_cells,
+        suspect_links=suspect_links,
+        orphan_rows=matrix.summary.orphan_rows,
+        orphan_columns=matrix.summary.orphan_columns,
+    )
+
+
 class TraceMatrixDetailsPanel(wx.Panel):
     """Display contextual information about the current selection."""
 
@@ -407,6 +452,84 @@ class TraceMatrixDetailsPanel(wx.Panel):
         self.Layout()
 
 
+class TraceMatrixHealthPanel(wx.Panel):
+    """Show orphan/suspect coverage signals for quick GUI triage."""
+
+    def __init__(self, parent: wx.Window) -> None:
+        super().__init__(parent)
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        padding = self.FromDIP(12)
+        root = wx.BoxSizer(wx.VERTICAL)
+
+        self._overview = wx.StaticText(self, label="")
+        root.Add(self._overview, 0, wx.ALL | wx.EXPAND, padding)
+
+        self._orphan_rows = wx.StaticText(self, label="")
+        root.Add(self._orphan_rows, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
+
+        self._orphan_columns = wx.StaticText(self, label="")
+        root.Add(self._orphan_columns, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
+
+        self.SetSizer(root)
+
+    def set_snapshot(self, snapshot: _HealthSnapshot) -> None:
+        self._overview.SetLabel(
+            _(
+                "Coverage: {linked}/{total} cells ({coverage:.0%})\n"
+                "Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.0%})\n"
+                "Suspect links: {suspect_links}"
+            ).format(
+                linked=snapshot.linked_cells,
+                total=snapshot.total_cells,
+                coverage=snapshot.linked_ratio,
+                suspect_cells=snapshot.suspect_cells,
+                suspect_ratio=snapshot.suspect_cell_ratio,
+                suspect_links=snapshot.suspect_links,
+            )
+        )
+
+        orphan_rows_label = (
+            ", ".join(snapshot.orphan_rows)
+            if snapshot.orphan_rows
+            else _("none")
+        )
+        self._orphan_rows.SetLabel(_("Orphan rows: {rows}").format(rows=orphan_rows_label))
+
+        orphan_columns_label = (
+            ", ".join(snapshot.orphan_columns)
+            if snapshot.orphan_columns
+            else _("none")
+        )
+        self._orphan_columns.SetLabel(
+            _("Orphan columns: {columns}").format(columns=orphan_columns_label)
+        )
+        self.Layout()
+
+
+def _format_health_report(snapshot: _HealthSnapshot) -> str:
+    """Build plain-text health report suitable for clipboard/export."""
+    orphan_rows = ", ".join(snapshot.orphan_rows) if snapshot.orphan_rows else _("none")
+    orphan_columns = ", ".join(snapshot.orphan_columns) if snapshot.orphan_columns else _("none")
+    return _(
+        "Trace Matrix Health\n"
+        "Coverage: {linked}/{total} cells ({coverage:.2%})\n"
+        "Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.2%})\n"
+        "Suspect links: {suspect_links}\n"
+        "Orphan rows: {orphan_rows}\n"
+        "Orphan columns: {orphan_columns}"
+    ).format(
+        linked=snapshot.linked_cells,
+        total=snapshot.total_cells,
+        coverage=snapshot.linked_ratio,
+        suspect_cells=snapshot.suspect_cells,
+        suspect_ratio=snapshot.suspect_cell_ratio,
+        suspect_links=snapshot.suspect_links,
+        orphan_rows=orphan_rows,
+        orphan_columns=orphan_columns,
+    )
+
 class TraceMatrixFrame(wx.Frame):
     """Interactive traceability matrix window."""
 
@@ -444,6 +567,10 @@ class TraceMatrixFrame(wx.Frame):
         self._export_btn.Bind(wx.EVT_BUTTON, self._on_export)
         controls.Add(self._export_btn, 0, wx.RIGHT, self.FromDIP(8))
 
+        self._copy_health_btn = wx.Button(container, label=_("Copy health"))
+        self._copy_health_btn.Bind(wx.EVT_BUTTON, self._on_copy_health)
+        controls.Add(self._copy_health_btn, 0, wx.RIGHT, self.FromDIP(8))
+
         self._summary = wx.StaticText(container, label="")
         controls.Add(self._summary, 0, wx.ALIGN_CENTER_VERTICAL)
         left.Add(controls, 0, wx.ALL | wx.EXPAND, self.FromDIP(12))
@@ -464,8 +591,14 @@ class TraceMatrixFrame(wx.Frame):
 
         root.Add(left, 3, wx.EXPAND)
 
+        right = wx.BoxSizer(wx.VERTICAL)
+        self.health_panel = TraceMatrixHealthPanel(container)
+        right.Add(self.health_panel, 0, wx.TOP | wx.RIGHT | wx.EXPAND, self.FromDIP(12))
+
         self.details_panel = TraceMatrixDetailsPanel(container)
-        root.Add(self.details_panel, 2, wx.TOP | wx.BOTTOM | wx.RIGHT | wx.EXPAND, self.FromDIP(12))
+        right.Add(self.details_panel, 1, wx.TOP | wx.BOTTOM | wx.RIGHT | wx.EXPAND, self.FromDIP(12))
+
+        root.Add(right, 2, wx.EXPAND)
 
         container.SetSizer(root)
         frame_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -483,7 +616,19 @@ class TraceMatrixFrame(wx.Frame):
             self.grid.EndBatch()
         self.grid.ForceRefresh()
         self._summary.SetLabel(self._format_summary(matrix.summary))
+        self.health_panel.set_snapshot(_build_health_snapshot(matrix))
         self.details_panel.show_message(_("Select a cell or header to view details."))
+
+    def _on_copy_health(self, _event: wx.CommandEvent) -> None:
+        report = _format_health_report(_build_health_snapshot(self.matrix))
+        if wx.TheClipboard.Open():
+            try:
+                wx.TheClipboard.SetData(wx.TextDataObject(report))
+            finally:
+                wx.TheClipboard.Close()
+            wx.MessageBox(_("Health report copied to clipboard"), _("Done"))
+            return
+        wx.MessageBox(_("Could not access clipboard"), _("Warning"))
 
     def _on_rebuild(self, _event: wx.CommandEvent) -> None:
         config = self._prompt_config()

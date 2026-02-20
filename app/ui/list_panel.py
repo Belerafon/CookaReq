@@ -1348,11 +1348,14 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         value = self._prompt_value(field)
         if value is None:
             return
+        selected_ids: list[int] = []
+        persisted = False
         for idx in self._get_selected_indices():
             items = self.model.get_visible()
             if idx >= len(items):
                 continue
             req = items[idx]
+            selected_ids.append(req.id)
             if field == "revision":
                 try:
                     numeric = int(str(value).strip())
@@ -1372,7 +1375,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             else:
                 display = value
             self.list.SetItem(idx, column, str(display))
-            self._persist_requirement(req)
+            saved = self._persist_requirement(req)
+            if saved is not None:
+                persisted = True
+        if persisted:
+            self._refresh()
+            self._restore_selection(self._ordered_unique_ids(selected_ids))
 
     def _ordered_unique_ids(self, req_ids: Sequence[int]) -> list[int]:
         """Return ``req_ids`` without duplicates preserving order."""
@@ -1533,14 +1541,17 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 with suppress(Exception):
                     self.list.EnsureVisible(focus_index)
 
-    def _persist_requirement(self, req: Requirement) -> None:
-        """Persist edited ``req`` if controller and document are available."""
+    def _persist_requirement(self, req: Requirement) -> Requirement | None:
+        """Persist edited ``req`` and return the saved representation."""
         if not self._docs_controller or not self._current_doc_prefix:
-            return
+            return None
         try:
-            self._docs_controller.save_requirement(self._current_doc_prefix, req)
+            saved = self._docs_controller.save_requirement(self._current_doc_prefix, req)
+            self.model.update(saved)
             if hasattr(self.model, "clear_unsaved"):
-                self.model.clear_unsaved(req)
+                self.model.clear_unsaved(saved)
+            return saved
         except Exception:  # pragma: no cover - log and continue
             rid = getattr(req, "rid", req.id)
             logger.exception("Failed to save requirement %s", rid)
+            return None

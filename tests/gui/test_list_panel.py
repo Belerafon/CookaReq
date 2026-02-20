@@ -357,6 +357,50 @@ def test_context_edit_saves_to_disk(
     assert stored["owner"] == "bob"
 
 
+
+
+def test_context_edit_statement_syncs_revision_in_model_and_list(
+    stubbed_list_panel_env, monkeypatch, tmp_path
+):
+    env = stubbed_list_panel_env
+    requirement_model_cls = env.requirement_model_cls
+    documents_controller_cls = importlib.import_module(
+        "app.ui.controllers.documents",
+    ).DocumentsController
+
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    original = _req(1, "Base", statement="original", revision=1)
+    save_item(doc_dir, doc, original.to_mapping())
+
+    model = requirement_model_cls()
+    controller = documents_controller_cls(RequirementsService(tmp_path), model)
+    controller.load_documents()
+    derived_map = controller.load_items("SYS")
+
+    panel = env.create_panel(model=model, docs_controller=controller)
+    panel.set_columns(["statement", "revision"])
+    panel.set_active_document("SYS")
+    panel.set_requirements(model.get_all(), derived_map)
+
+    monkeypatch.setattr(panel, "_get_selected_indices", lambda: [0])
+    monkeypatch.setattr(panel, "_prompt_value", lambda field: "updated statement")
+
+    panel._on_edit_field(1)
+
+    data_path = item_path(doc_dir, doc, 1)
+    with data_path.open(encoding="utf-8") as fh:
+        stored = json.load(fh)
+
+    assert stored["statement"] == "updated statement"
+    assert stored["revision"] == 2
+
+    saved_req = model.get_by_id(1, doc_prefix="SYS")
+    assert saved_req is not None
+    assert saved_req.revision == 2
+    assert panel.list.GetItem(0, 2).GetText() == "2"
+
 def test_sort_method_and_callback(stubbed_list_panel_env):
     env = stubbed_list_panel_env
     calls = []

@@ -378,3 +378,26 @@ def test_save_derived_requirement_with_missing_parent_rid(monkeypatch, wx_app, t
         assert data["links"][0]["rid"].startswith("REQ")
     finally:
         frame.Destroy()
+
+
+def test_editor_save_syncs_revision_after_statement_change(wx_app, tmp_path):
+    frame = _prepare_frame(tmp_path)
+
+    try:
+        wx_app.Yield()
+        current = frame.model.get_by_id(1)
+        assert current is not None
+        frame._selected_requirement_id = 1
+        frame.editor.load(current)
+        wx_app.Yield()
+
+        frame.editor.fields["statement"].ChangeValue("Updated statement")
+        frame._on_editor_save()
+        wx_app.Yield()
+
+        saved = frame.model.get_by_id(1)
+        assert saved is not None
+        assert saved.revision == 2
+        assert frame.editor.fields["revision"].GetValue() == "2"
+    finally:
+        frame.Destroy()

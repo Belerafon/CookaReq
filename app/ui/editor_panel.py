@@ -1592,8 +1592,8 @@ class EditorPanel(wx.Panel):
     def _on_cancel_button(self, _evt: wx.Event) -> None:
         self.discard_changes()
 
-    def save(self, prefix: str) -> Path:
-        """Persist editor contents within document ``prefix`` and return path."""
+    def save(self, prefix: str) -> Requirement:
+        """Persist editor contents within document ``prefix`` and return saved requirement."""
         service = self._require_service()
         try:
             doc = service.get_document(prefix)
@@ -1620,8 +1620,14 @@ class EditorPanel(wx.Panel):
         req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
         data = req.to_mapping()
         path = service.save_requirement_payload(prefix, data)
-        self.fields["modified_at"].ChangeValue(req.modified_at)
-        self.original_modified_at = req.modified_at
+        saved_payload, _ = service.load_item(prefix, req.id)
+        saved_req = Requirement.from_mapping(saved_payload)
+        saved_req.doc_prefix = prefix
+        with self._bulk_update():
+            self.fields["modified_at"].ChangeValue(saved_req.modified_at)
+            if "revision" in self.fields:
+                self.fields["revision"].ChangeValue(str(saved_req.revision))
+        self.original_modified_at = saved_req.modified_at
         self.current_path = path
         self.mtime = path.stat().st_mtime
         self._doc_prefix = prefix
@@ -1631,7 +1637,7 @@ class EditorPanel(wx.Panel):
         self._known_ids = None
         self._on_id_change()
         self.mark_clean()
-        return path
+        return saved_req
 
     def _snapshot_state(self) -> dict[str, Any]:
         """Return immutable snapshot of current editor contents."""

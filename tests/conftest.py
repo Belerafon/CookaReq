@@ -114,7 +114,7 @@ class SuiteDefinition:
 SUITES: Mapping[str, SuiteDefinition] = {
     "core": SuiteDefinition(
         name="core",
-        exclude_any=("gui", "gui_smoke", "gui_full", "real_llm", "slow", "quality"),
+        exclude_any=("gui", "gui_smoke", "gui_full", "real_llm", "slow", "quality_lint", "quality_docstyle", "quality_i18n"),
         exclude_paths=(
             "tests/gui",
             "tests/slow",
@@ -148,13 +148,29 @@ SUITES: Mapping[str, SuiteDefinition] = {
         runtime_hint="~8 min",
         when_to_run="Nightly or before a release with significant UI work",
     ),
-    "quality": SuiteDefinition(
-        name="quality",
-        include_any=("quality",),
+    "quality-lint": SuiteDefinition(
+        name="quality-lint",
+        include_any=("quality_lint",),
         include_by_default=False,
-        description="Static analysis, translations, and style enforcement",
+        description="Static linting checks (ruff + vulture)",
         runtime_hint="~1 min",
-        when_to_run="When touching i18n resources or lint-configurable code",
+        when_to_run="When touching Python code, test infra, or lint configuration",
+    ),
+    "quality-docstyle": SuiteDefinition(
+        name="quality-docstyle",
+        include_any=("quality_docstyle",),
+        include_by_default=False,
+        description="Docstring conventions on curated backend scope",
+        runtime_hint="~30 s",
+        when_to_run="When changing docstrings or pydocstyle targets",
+    ),
+    "quality-i18n": SuiteDefinition(
+        name="quality-i18n",
+        include_any=("quality_i18n",),
+        include_by_default=False,
+        description="Translation catalogue completeness and coverage",
+        runtime_hint="~2 s",
+        when_to_run="When changing UI strings, locale files, or i18n plumbing",
     ),
 }
 

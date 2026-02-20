@@ -178,6 +178,39 @@ def test_save_requirement_increments_revision_only_for_statement_changes(tmp_pat
     assert get_document_revision(load_document(doc_dir)) == 2
 
 
+
+
+def test_save_requirement_allows_manual_revision_override(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+
+    original = _req(1)
+    original.revision = 1
+    save_item(doc_dir, doc, original.to_mapping())
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+    loaded = model.get_all()[0]
+
+    loaded.revision = 7
+    controller.save_requirement("SYS", loaded)
+
+    data_after_manual, _ = load_item(doc_dir, doc, 1)
+    assert data_after_manual["revision"] == 7
+    assert get_document_revision(load_document(doc_dir)) == 1
+
+    loaded.statement = "Changed statement"
+    loaded.revision = 9
+    controller.save_requirement("SYS", loaded)
+
+    data_after_statement, _ = load_item(doc_dir, doc, 1)
+    assert data_after_statement["revision"] == 9
+    assert get_document_revision(load_document(doc_dir)) == 2
+
+
 def test_iter_links(tmp_path: Path):
     sys_doc = Document(prefix="SYS", title="System")
     hlr_doc = Document(prefix="HLR", title="High", parent="SYS")

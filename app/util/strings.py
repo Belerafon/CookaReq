@@ -1,5 +1,4 @@
 """String helpers with defensive conversions."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -12,7 +11,6 @@ _DEFAULT_CONVERTERS: tuple[Callable[[Any], object], ...] = (str, repr)
 
 def _normalise_candidate(candidate: object) -> str | None:
     """Convert ``candidate`` into a usable string when possible."""
-
     if isinstance(candidate, str):
         return candidate
     if isinstance(candidate, (bytes, bytearray)):
@@ -26,7 +24,6 @@ def _normalise_candidate(candidate: object) -> str | None:
 
 def truncate_text(text: str, limit: int | None) -> str:
     """Clip ``text`` to ``limit`` characters using an ellipsis when required."""
-
     if limit is None or limit <= 0 or len(text) <= limit:
         return text
     if limit == 1:
@@ -36,14 +33,10 @@ def truncate_text(text: str, limit: int | None) -> str:
 
 def describe_unprintable(value: Any, *, prefix: str = "unprintable") -> str:
     """Return a placeholder describing ``value`` that resisted stringification."""
-
     cls = type(value)
     qualname = getattr(cls, "__qualname__", cls.__name__)
     module = getattr(cls, "__module__", "")
-    if module and module != "builtins":
-        typename = f"{module}.{qualname}"
-    else:
-        typename = qualname
+    typename = f"{module}.{qualname}" if module and module != "builtins" else qualname
     if prefix:
         return f"<{prefix} {typename}>"
     return f"<{typename}>"
@@ -69,12 +62,8 @@ def coerce_text(
     honour ``allow_empty`` and ``truncate``. ``None`` is returned only when no
     conversion succeeded and no fallback produced a usable string.
     """
-
     converter_sequence: Iterable[Callable[[Any], object]]
-    if converters is None:
-        converter_sequence = _DEFAULT_CONVERTERS
-    else:
-        converter_sequence = converters
+    converter_sequence = _DEFAULT_CONVERTERS if converters is None else converters
 
     text_normaliser = normaliser or _normalise_candidate
 

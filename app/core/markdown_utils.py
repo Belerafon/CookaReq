@@ -225,11 +225,7 @@ def _validate_tables(value: str) -> list[str]:
                 row_cells = _split_table_row(row_line)
                 if row_cells and len(row_cells) != len(header_cells):
                     errors.append(
-                        "table row {row} has {actual} columns, expected {expected}".format(
-                            row=row_offset,
-                            actual=len(row_cells),
-                            expected=len(header_cells),
-                        )
+                        f"table row {row_offset} has {len(row_cells)} columns, expected {len(header_cells)}"
                     )
                 idx += 1
                 row_offset += 1
@@ -492,7 +488,7 @@ def convert_markdown_math(value: str) -> str:
 
 
 def normalize_escaped_newlines(value: str) -> str:
-    """Replace unescaped ``\\n``/``\\r`` sequences with real line breaks."""
+    r"""Replace unescaped ``\n``/``\r`` sequences with real line breaks."""
     if not value or "\\" not in value:
         return value
     normalized = _ESCAPED_CRLF_RE.sub("\n", value)

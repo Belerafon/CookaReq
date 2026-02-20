@@ -1,6 +1,5 @@
 import json
 
-import json
 
 from app.ui.agent_chat_panel.panel import AgentChatPanel
 from app.ui.chat_entry import ChatEntry

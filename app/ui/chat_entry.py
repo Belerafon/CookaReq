@@ -4,7 +4,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
+from collections.abc import Callable
 from collections.abc import Iterable, Mapping, Sequence
 from uuid import uuid4
 
@@ -303,13 +304,13 @@ class ChatEntry:
     )
 
     def __setattr__(self, key: str, value: Any) -> None:  # pragma: no cover - hot path
+        """Assign attribute and invalidate cached computed views when needed."""
         object.__setattr__(self, key, value)
         if key in _CACHE_INVALIDATING_FIELDS:
             self._reset_view_cache()
 
     def __post_init__(self) -> None:
         """Normalise derived fields and cached token metadata."""
-
         if self.display_response is None:
             self.display_response = self.response
         self.timeline_status = _normalise_timeline_status(self.timeline_status)
@@ -483,6 +484,7 @@ class ChatEntry:
         return cache
 
     def cache_view_value(self, key: str, factory: Callable[[], T]) -> T:
+        """Return cached value for ``key`` or compute it with ``factory``."""
         cache = self._ensure_view_cache()
         value = cache.get(key, _CACHE_SENTINEL)
         if value is _CACHE_SENTINEL:
@@ -491,6 +493,7 @@ class ChatEntry:
         return cast(T, value)
 
     def history_safe_raw_result(self) -> Any:
+        """Return ``raw_result`` converted to JSON-safe structure for history storage."""
         if self.raw_result is None:
             return None
 
@@ -500,12 +503,14 @@ class ChatEntry:
         )
 
     def sanitized_context_messages(self) -> tuple[dict[str, Any], ...]:
+        """Return context messages sanitized for persistence and deterministic replay."""
         return self.cache_view_value(
             "context_messages",
             lambda: _sanitize_for_history(self.context_messages),
         )
 
     def sanitized_reasoning_segments(self) -> tuple[dict[str, Any], ...]:
+        """Return sanitized reasoning segments suitable for serialized history."""
         return self.cache_view_value(
             "reasoning_segments",
             lambda: _sanitize_for_history(self.reasoning),
@@ -554,7 +559,6 @@ class ChatEntry:
 
     def ensure_tool_messages(self) -> tuple[dict[str, Any], ...] | None:
         """Return or derive tool messages associated with this entry."""
-
         if self.tool_messages is None:
             derived = _derive_tool_messages(self.raw_result)
             if derived:

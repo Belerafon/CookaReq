@@ -868,7 +868,7 @@ class RequirementsService:
 
         docs = self._ensure_documents()
         inventory: list[DocumentInventoryEntry] = []
-        for prefix, document in sorted(docs.items()):
+        for _prefix, document in sorted(docs.items()):
             directory = self.root / document.prefix
             count = len(doc_store.list_item_ids(directory, document))
             inventory.append(

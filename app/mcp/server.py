@@ -62,6 +62,7 @@ class RequirementsServiceCache:
     """Thread-safe cache of :class:`RequirementsService` per base directory."""
 
     def __init__(self) -> None:
+        """Initialize empty cache and lock protecting service instances."""
         self._lock = threading.RLock()
         self._services: dict[Path, RequirementsService] = {}
         self._active_base: Path | None = None
@@ -73,7 +74,6 @@ class RequirementsServiceCache:
 
     def activate(self, base_path: str | Path) -> None:
         """Switch the cache to *base_path* dropping stale entries when needed."""
-
         target = self._normalize(base_path)
         with self._lock:
             if self._active_base != target:
@@ -82,14 +82,12 @@ class RequirementsServiceCache:
 
     def deactivate(self) -> None:
         """Clear all cached services and forget the active base path."""
-
         with self._lock:
             self._services.clear()
             self._active_base = None
 
     def get(self, base_path: str | Path) -> RequirementsService:
         """Return a cached service for *base_path* creating it on demand."""
-
         target = self._normalize(base_path)
         with self._lock:
             service = self._services.get(target)
@@ -104,7 +102,6 @@ app.state.requirements_service_cache = RequirementsServiceCache()
 
 def get_requirements_service(base_path: str | Path) -> RequirementsService:
     """Return a cached :class:`RequirementsService` for ``base_path``."""
-
     cache: RequirementsServiceCache = app.state.requirements_service_cache
     return cache.get(base_path)
 
@@ -572,7 +569,6 @@ def search_requirements(
 @register_tool(schema=_TOOL_ARGUMENT_SCHEMAS["list_labels"])
 def list_labels(prefix: str) -> dict:
     """Return label definitions available to document ``prefix``."""
-
     directory = app.state.base_path
     return tools_read.list_labels(directory, prefix=prefix)
 
@@ -637,7 +633,6 @@ def create_label(
     color: str | None = None,
 ) -> dict:
     """Create a label definition for document ``prefix``."""
-
     directory = app.state.base_path
     return tools_write.create_label(
         directory,
@@ -659,7 +654,6 @@ def update_label(
     propagate: bool = False,
 ) -> dict:
     """Update label ``key`` for document ``prefix``."""
-
     directory = app.state.base_path
     return tools_write.update_label(
         directory,
@@ -680,7 +674,6 @@ def delete_label(
     remove_from_requirements: bool = False,
 ) -> dict:
     """Delete label ``key`` from document ``prefix``."""
-
     directory = app.state.base_path
     return tools_write.delete_label(
         directory,
@@ -767,7 +760,6 @@ def delete_user_document(path: str) -> dict:
 @app.get("/mcp/schema")
 async def describe_tools() -> dict[str, Any]:
     """Return registered MCP tool schemas for LocalAgent synchronisation."""
-
     return {
         "tools": {
             name: dict(metadata)

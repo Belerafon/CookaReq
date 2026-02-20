@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
@@ -16,7 +16,7 @@ from .model import Link, Requirement, RequirementType, Status
 from .search import SEARCHABLE_FIELDS, filter_text_fields, search_text
 
 
-class TraceDirection(str, Enum):
+class TraceDirection(StrEnum):
     """Define orientation of links within the matrix."""
 
     CHILD_TO_PARENT = "child-to-parent"

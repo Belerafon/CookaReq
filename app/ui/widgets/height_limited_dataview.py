@@ -88,10 +88,7 @@ class HeightLimitedDataViewListCtrl(dv.DataViewListCtrl):
     # ------------------------------------------------------------------
     def _effective_min_height(self) -> int:
         getter = getattr(self, "GetEffectiveMinSize", None)
-        if callable(getter):
-            min_size = getter()
-        else:
-            min_size = self.GetMinSize()
+        min_size = getter() if callable(getter) else self.GetMinSize()
         if isinstance(min_size, wx.Size):
             return max(int(min_size.height), 0)
         return 0

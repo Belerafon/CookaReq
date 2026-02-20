@@ -9,7 +9,6 @@ import re
 from typing import Any, Literal, TYPE_CHECKING
 
 from ...agent.run_contract import (
-    AgentEvent,
     AgentEventLog,
     AgentRunPayload,
     AgentTimelineEntry,
@@ -40,7 +39,7 @@ else:  # pragma: no cover - runtime avoids circular import
     ChatEntry = Any  # type: ignore[assignment]
 
 
-_UTC_MIN = _dt.datetime.min.replace(tzinfo=_dt.timezone.utc)
+_UTC_MIN = _dt.datetime.min.replace(tzinfo=_dt.UTC)
 
 _BR_TAG_PATTERN = re.compile(r"[ \t\f\v]*<br\s*/?>[ \t\f\v]*", flags=re.IGNORECASE)
 _SPACE_RUN_PATTERN = re.compile(r"[ \t\f\v]{2,}(?!\n)")
@@ -86,7 +85,7 @@ class AgentTimelineEvent:
     order_index: int
     sequence: int | None = None
     response: AgentResponse | None = None
-    tool_call: "ToolCallDetails" | None = None
+    tool_call: ToolCallDetails | None = None
 
 
 @dataclass(slots=True)
@@ -668,12 +667,11 @@ def _build_agent_turn(
         regenerated=bool(getattr(entry, "regenerated", False)),
     )
 
-    if final_response is not None and final_response.step_index is None:
-        if llm_trace.steps:
-            last_index = llm_trace.steps[-1].index
-            if last_index is None:
-                last_index = len(llm_trace.steps)
-            final_response.step_index = last_index
+    if final_response is not None and final_response.step_index is None and llm_trace.steps:
+        last_index = llm_trace.steps[-1].index
+        if last_index is None:
+            last_index = len(llm_trace.steps)
+        final_response.step_index = last_index
 
     excluded_displays: set[str] = set()
     if reasoning_display:
@@ -864,10 +862,7 @@ def _persist_canonical_timeline(
 
     raw_result = getattr(entry, "raw_result", None)
     updated_raw: dict[str, Any]
-    if isinstance(raw_result, Mapping):
-        updated_raw = dict(raw_result)
-    else:
-        updated_raw = {}
+    updated_raw = dict(raw_result) if isinstance(raw_result, Mapping) else {}
 
     updated_raw["timeline"] = [
         timeline_entry.to_dict() for timeline_entry in timeline_entries
@@ -1079,15 +1074,12 @@ def _build_tool_calls(
             raw_data = raw_map
         timestamp = _tool_timestamp(snapshot)
 
-        if not timestamp.missing:
-            if latest_timestamp is None:
-                latest_timestamp = timestamp
-            elif (
-                timestamp.occurred_at is not None
-                and latest_timestamp.occurred_at is not None
-                and timestamp.occurred_at >= latest_timestamp.occurred_at
-            ):
-                latest_timestamp = timestamp
+        if not timestamp.missing and (latest_timestamp is None or (
+            timestamp.occurred_at is not None
+            and latest_timestamp.occurred_at is not None
+            and timestamp.occurred_at >= latest_timestamp.occurred_at
+        )):
+            latest_timestamp = timestamp
 
         identifier = snapshot.call_id or f"tool:{index}"
         tool_calls.append(
@@ -1761,10 +1753,7 @@ def _can_regenerate_entry(
     if getattr(entry, "raw_result", None) is not None:
         return True
 
-    if getattr(entry, "diagnostic", None) is not None:
-        return True
-
-    return False
+    return getattr(entry, "diagnostic", None) is not None
 
 
 __all__ = [

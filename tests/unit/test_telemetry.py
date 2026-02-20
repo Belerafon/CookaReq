@@ -109,7 +109,7 @@ def test_log_debug_payload_emits_full_payload(
     assert message == "TEST_DEBUG"
     # Payload should live in structured extras to avoid double escaping in the
     # log message itself.
-    record_json = getattr(records[-1], "json")
+    record_json = records[-1].json
     assert isinstance(record_json, dict)
     payload = record_json.get("payload")
     assert payload

@@ -510,18 +510,15 @@ class EditorPanel(wx.Panel):
         event.Skip()
 
     def _on_text_history_key(self, ctrl: wx.TextCtrl, event: wx.KeyEvent) -> None:
-        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Z"), ord("z")):
-            if self._undo_text_history(ctrl):
-                return
+        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Z"), ord("z")) and self._undo_text_history(ctrl):
+            return
         if (
             event.GetModifiers() == (wx.MOD_CONTROL | wx.MOD_SHIFT)
             and event.GetKeyCode() in (ord("Z"), ord("z"))
-        ):
-            if self._redo_text_history(ctrl):
-                return
-        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Y"), ord("y")):
-            if self._redo_text_history(ctrl):
-                return
+        ) and self._redo_text_history(ctrl):
+            return
+        if event.GetModifiers() == wx.MOD_CONTROL and event.GetKeyCode() in (ord("Y"), ord("y")) and self._redo_text_history(ctrl):
+            return
         event.Skip()
 
     def _undo_text_history(self, ctrl: wx.TextCtrl) -> bool:
@@ -1692,9 +1689,7 @@ class EditorPanel(wx.Panel):
         if self.extra.get("notes"):
             return True
         dt = self.approved_picker.GetValue()
-        if dt.IsValid():
-            return True
-        return False
+        return bool(dt.IsValid())
 
     def is_dirty(self) -> bool:
         """Return True when editor content differs from saved baseline."""

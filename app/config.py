@@ -522,10 +522,7 @@ class ConfigManager:
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
         """Persist export dialog state for directory *path* and flush."""
         raw = self._raw.get("export_dialog_state")
-        if isinstance(raw, dict):
-            export_state = dict(raw)
-        else:
-            export_state = {}
+        export_state = dict(raw) if isinstance(raw, dict) else {}
         key = self._normalise_directory_key(path)
         export_state[key] = {
             "path": state.path,

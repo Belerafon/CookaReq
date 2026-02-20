@@ -180,7 +180,7 @@ class MainFrameSettingsMixin:
             dlg.Destroy()
 
     # ------------------------------------------------------------------
-    def _is_mcp_running(self: "MainFrame") -> bool:
+    def _is_mcp_running(self: MainFrame) -> bool:
         """Return True when the MCP controller reports an active server."""
         try:
             return bool(self.mcp.is_running())
@@ -188,7 +188,7 @@ class MainFrameSettingsMixin:
             logger.exception("Failed to query MCP server state")
             return False
 
-    def _start_mcp_if_applicable(self: "MainFrame") -> None:
+    def _start_mcp_if_applicable(self: MainFrame) -> None:
         """Start MCP when auto-start conditions are met."""
         if getattr(self, "current_dir", None) is None:
             return
@@ -203,7 +203,7 @@ class MainFrameSettingsMixin:
         except Exception:
             logger.exception("Failed to start MCP server with current settings")
 
-    def _stop_mcp_controller(self: "MainFrame") -> None:
+    def _stop_mcp_controller(self: MainFrame) -> None:
         """Stop the MCP server, logging unexpected controller failures."""
         try:
             self.mcp.stop()

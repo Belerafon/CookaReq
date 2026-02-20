@@ -7,7 +7,6 @@ import os
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from typing import Deque
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -38,7 +37,6 @@ from ...util.time import utc_now_iso
 from ..chat_entry import (
     ChatConversation,
     ChatEntry,
-    count_context_message_tokens,
 )
 from ..helpers import (
     format_error_message,
@@ -319,7 +317,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             persistent_preference = RequirementConfirmPreference.PROMPT
         self._persistent_confirm_preference = persistent_preference
         self._pending_attachment: _PendingAttachment | None = None
-        self._prompt_queue: Deque[_QueuedPrompt] = deque()
+        self._prompt_queue: deque[_QueuedPrompt] = deque()
         self._queued_prompt_panel: wx.Panel | None = None
         self._queued_prompt_label: wx.StaticText | None = None
         self._queued_prompt_cancel: wx.Button | None = None
@@ -743,10 +741,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 return True
 
         diagnostic = entry.diagnostic
-        if isinstance(diagnostic, Mapping) and diagnostic.get("error"):
-            return True
-
-        return False
+        return bool(isinstance(diagnostic, Mapping) and diagnostic.get("error"))
 
     def _submit_batch_prompt(
         self,
@@ -1690,13 +1685,11 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                         "last_observed_at",
                         "status",
                     ):
-                        if not merged_payload.get(field):
-                            if existing_payload.get(field):
-                                merged_payload[field] = existing_payload[field]
+                        if not merged_payload.get(field) and existing_payload.get(field):
+                            merged_payload[field] = existing_payload[field]
                     for field in ("tool_arguments", "result", "error"):
-                        if merged_payload.get(field) in (None, {}, ""):
-                            if existing_payload.get(field) not in (None, {}, ""):
-                                merged_payload[field] = existing_payload[field]
+                        if merged_payload.get(field) in (None, {}, "") and existing_payload.get(field) not in (None, {}, ""):
+                            merged_payload[field] = existing_payload[field]
                     try:
                         combined_snapshots[key] = ToolResultSnapshot.from_dict(
                             merged_payload
@@ -2154,7 +2147,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         used_tools: set[str] = set()
         existing_assistant_texts: set[str] = set()
 
-        for entry_index, timeline_entry in enumerate(ordered_timeline):
+        for _entry_index, timeline_entry in enumerate(ordered_timeline):
             if timeline_entry.kind == "llm_step":
                 step_payload = steps_by_index.get(timeline_entry.step_index or 0)
                 assistant_message = AgentChatPanel._assistant_message_from_step(
@@ -2228,10 +2221,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         role_value = message.get("role")
         role = str(role_value).strip() if role_value is not None else "tool"
         content_value = message.get("content")
-        if content_value is None:
-            content = ""
-        else:
-            content = str(content_value)
+        content = "" if content_value is None else str(content_value)
         formatted: dict[str, Any] = {"role": role or "tool", "content": content}
         call_value = message.get("tool_call_id")
         if isinstance(call_value, str) and call_value.strip():
@@ -2839,7 +2829,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             result_text=response_text,
             events=events,
             reasoning=list(reasoning_segments or ()),
-            tool_results=[snapshot for snapshot in tool_snapshots],
+            tool_results=list(tool_snapshots),
             llm_trace=llm_trace,
             error=ToolError(
                 message=cancellation_message,
@@ -3191,10 +3181,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 safe_calls = history_json_safe(tool_calls)
                 if safe_calls is None:
                     continue
-                if isinstance(safe_calls, list):
-                    planned = safe_calls
-                else:
-                    planned = [safe_calls]
+                planned = safe_calls if isinstance(safe_calls, list) else [safe_calls]
             return planned or None
 
         if isinstance(trace, Sequence) and not isinstance(

@@ -1,5 +1,4 @@
 """Write-oriented MCP tool implementations."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -245,7 +244,6 @@ def create_label(
     color: str | None = None,
 ) -> dict:
     """Create a new label definition for ``prefix`` document."""
-
     params = {
         "directory": str(directory),
         "prefix": prefix,
@@ -287,7 +285,6 @@ def update_label(
     propagate: bool = False,
 ) -> dict:
     """Update label ``key`` for ``prefix`` document."""
-
     params = {
         "directory": str(directory),
         "prefix": prefix,
@@ -336,7 +333,6 @@ def delete_label(
     remove_from_requirements: bool = False,
 ) -> dict:
     """Delete label ``key`` from ``prefix`` document."""
-
     params = {
         "directory": str(directory),
         "prefix": prefix,

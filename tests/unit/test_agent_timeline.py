@@ -519,7 +519,7 @@ def test_assess_timeline_integrity_detects_mismatch_and_gaps() -> None:
 def test_build_agent_events_fallback_renders_final_response_without_timeline() -> None:
     base_timestamp = TimestampInfo(
         raw="2024-01-01T00:00:00Z",
-        occurred_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
+        occurred_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
         formatted="",
         missing=False,
         source="test",
@@ -536,7 +536,7 @@ def test_build_agent_events_fallback_renders_final_response_without_timeline() -
         display_text="done",
         timestamp=TimestampInfo(
             raw="2024-01-01T00:00:05Z",
-            occurred_at=_dt.datetime(2024, 1, 1, 0, 0, 5, tzinfo=_dt.timezone.utc),
+            occurred_at=_dt.datetime(2024, 1, 1, 0, 0, 5, tzinfo=_dt.UTC),
             formatted="",
             missing=False,
             source="test",
@@ -550,7 +550,7 @@ def test_build_agent_events_fallback_renders_final_response_without_timeline() -
         raw_data=None,
         timestamp=TimestampInfo(
             raw="2024-01-01T00:00:02Z",
-            occurred_at=_dt.datetime(2024, 1, 1, 0, 0, 2, tzinfo=_dt.timezone.utc),
+            occurred_at=_dt.datetime(2024, 1, 1, 0, 0, 2, tzinfo=_dt.UTC),
             formatted="",
             missing=False,
             source="tool",

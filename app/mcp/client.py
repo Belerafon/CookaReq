@@ -145,7 +145,6 @@ class MCPClient:
 
     def _select_probe_prefix(self) -> str | None:
         """Return a requirements document prefix suitable for readiness probes."""
-
         base_path = self.settings.base_path
         if not base_path:
             return None
@@ -855,7 +854,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     def get_tool_schemas(self) -> dict[str, dict[str, Any]]:
         """Return schemas advertised by the MCP server."""
-
         if self._tool_schemas is not None:
             return dict(self._tool_schemas)
 
@@ -924,7 +922,6 @@ class MCPClient:
     # ------------------------------------------------------------------
     async def get_tool_schemas_async(self) -> dict[str, dict[str, Any]]:
         """Asynchronous counterpart to :meth:`get_tool_schemas`."""
-
         if self._tool_schemas is not None:
             return dict(self._tool_schemas)
 

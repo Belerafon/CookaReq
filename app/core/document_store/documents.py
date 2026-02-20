@@ -37,7 +37,6 @@ def diagnose_requirements_root(root: str | Path) -> str | None:
     child contains ``document.json`` and an ``items`` directory. The helper only
     performs shallow checks so it can run quickly during folder selection.
     """
-
     root_path = Path(root)
     if not root_path.is_dir():
         return None
@@ -97,7 +96,6 @@ def diagnose_requirements_root(root: str | Path) -> str | None:
 
 def is_new_requirements_directory(root: str | Path) -> bool:
     """Return ``True`` when ``root`` looks like a fresh directory without documents."""
-
     root_path = Path(root)
     if not root_path.is_dir():
         return False
@@ -106,12 +104,7 @@ def is_new_requirements_directory(root: str | Path) -> bool:
     children = [child for child in root_path.iterdir() if child.is_dir()]
     if any((child / "document.json").is_file() for child in children):
         return False
-    if any(
-        any((nested / "document.json").is_file() for nested in child.iterdir() if nested.is_dir())
-        for child in children
-    ):
-        return False
-    return True
+    return not any(any((nested / "document.json").is_file() for nested in child.iterdir() if nested.is_dir()) for child in children)
 
 
 def _read_json(path: Path) -> dict:

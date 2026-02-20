@@ -196,9 +196,8 @@ class AgentBatchRunner:
             item.requirement_edit_count = requirement_edit_count
         if error_count is not None:
             item.error_count = error_count
-        if token_count is not _METRIC_UNSET:
-            if token_count is None or isinstance(token_count, int):
-                item.token_count = token_count
+        if token_count is not _METRIC_UNSET and (token_count is None or isinstance(token_count, int)):
+            item.token_count = token_count
         if tokens_approximate is not None:
             item.tokens_approximate = tokens_approximate
         self._active_index = None

@@ -704,12 +704,15 @@ class MainFrameAgentMixin:
                         if key and new_key and new_key != key:
                             rename_map = change.setdefault("rename_map", {})
                             rename_map[key] = new_key
-                elif tool_name == "delete_label" and isinstance(arguments_payload, Mapping):
-                    if bool(arguments_payload.get("remove_from_requirements")):
-                        key_raw = arguments_payload.get("key")
-                        if isinstance(key_raw, str) and key_raw.strip():
-                            removal = change.setdefault("removal_keys", set())
-                            removal.add(key_raw.strip())
+                elif (
+                    tool_name == "delete_label"
+                    and isinstance(arguments_payload, Mapping)
+                    and bool(arguments_payload.get("remove_from_requirements"))
+                ):
+                    key_raw = arguments_payload.get("key")
+                    if isinstance(key_raw, str) and key_raw.strip():
+                        removal = change.setdefault("removal_keys", set())
+                        removal.add(key_raw.strip())
                 continue
             if tool_name in {
                 "update_requirement_field",

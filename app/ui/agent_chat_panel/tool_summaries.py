@@ -1015,7 +1015,6 @@ def _format_token_metric(result: TokenCountResult | None) -> str:
 __all__ = [
     "ToolCallSummary",
     "summarize_tool_results",
-    "summarize_tool_payload",
     "render_tool_summary_markdown",
     "render_tool_summaries_markdown",
     "render_tool_summaries_plain",

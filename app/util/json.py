@@ -1,5 +1,4 @@
 """JSON serialisation helpers."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -33,7 +32,6 @@ def make_json_safe(
     limits: JsonSanitizerLimits | None = None,
 ) -> Any:
     """Return a structure compatible with :func:`json.dumps`."""
-
     if default is None:
         default = repr
 

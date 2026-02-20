@@ -246,9 +246,7 @@ class AgentChatHistory:
                 return False
             updated = conversation.updated_at or ""
             created = conversation.created_at or ""
-            if updated and created and updated != created:
-                return False
-            return True
+            return not (updated and created and updated != created)
 
         removable: list[ChatConversation] = [
             conv for conv in self._conversations if _metadata_is_empty(conv)

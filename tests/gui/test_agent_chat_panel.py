@@ -4098,7 +4098,7 @@ def test_tool_calls_not_stacked_when_event_log_lacks_tool_events(wx_app):
 
 
 def test_transcript_orders_steps_and_tools_when_timeline_missing(wx_app):
-    wx = pytest.importorskip("wx")
+    pytest.importorskip("wx")
 
     steps: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = []
@@ -4175,9 +4175,8 @@ def test_transcript_orders_steps_and_tools_when_timeline_missing(wx_app):
         if event.kind == "response" and event.response is not None:
             if event.response.step_index is not None:
                 event_step_sequence.append(event.response.step_index)
-        elif event.kind == "tool" and event.tool_call is not None:
-            if event.tool_call.step_index is not None:
-                event_step_sequence.append(event.tool_call.step_index)
+        elif event.kind == "tool" and event.tool_call is not None and event.tool_call.step_index is not None:
+            event_step_sequence.append(event.tool_call.step_index)
 
     expected_sequence: list[int] = []
     for index in range(1, 11):
@@ -5975,7 +5974,7 @@ def test_agent_chat_panel_preserves_multistep_timeline(tmp_path, wx_app, monkeyp
             "Final combined answer",
         ]
         assert len(bubble_texts) >= len(expected_sequence)
-        for expected, actual in zip(expected_sequence, bubble_texts):
+        for expected, actual in zip(expected_sequence, bubble_texts, strict=False):
             assert expected in actual
 
         reasoning_texts = [

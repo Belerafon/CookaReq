@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum
-from typing import Iterable
+from enum import StrEnum
+from collections.abc import Iterable
 
 import wx
 
@@ -13,7 +13,7 @@ from ..i18n import _
 from ..services.requirements import Document
 
 
-class TransferMode(str, Enum):
+class TransferMode(StrEnum):
     """Supported transfer operations."""
 
     COPY = "copy"

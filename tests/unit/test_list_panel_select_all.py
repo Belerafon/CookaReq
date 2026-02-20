@@ -97,7 +97,6 @@ class _BaseFakeList:
 class FakeListCtrl(_BaseFakeList):
     """Fake ``wx.ListCtrl`` without native ``SelectAll`` support."""
 
-    pass
 
 
 class FakeListCtrlWithSelectAll(_BaseFakeList):

@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Iterable, Literal, Mapping, Protocol, Sequence
+from typing import Literal, Protocol
+from collections.abc import Iterable, Mapping, Sequence
 
 
 class _SupportsTimelineEntry(Protocol):

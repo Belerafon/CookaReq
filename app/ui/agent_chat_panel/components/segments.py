@@ -637,11 +637,10 @@ class MessageSegmentPanel(wx.Panel):
             for response in turn.streamed_responses:
                 if response.step_index is not None:
                     responses_by_step.setdefault(response.step_index, response)
-            if turn.final_response is not None:
-                if turn.final_response.step_index is not None:
-                    responses_by_step.setdefault(
-                        turn.final_response.step_index, turn.final_response
-                    )
+            if turn.final_response is not None and turn.final_response.step_index is not None:
+                responses_by_step.setdefault(
+                    turn.final_response.step_index, turn.final_response
+                )
         if turn is not None:
             shown_reasoning_steps: set[int] = set()
             if turn.reasoning and not turn.reasoning_by_step:
@@ -1277,7 +1276,7 @@ class TurnCard(wx.Panel):
             None,
         )
         system_entries: list[tuple[str, SystemMessage, str]] = []
-        for index, system_segment in enumerate(segments, start=1):
+        for _index, system_segment in enumerate(segments, start=1):
             if system_segment.kind != "system":
                 continue
             text = _summarize_system_message(system_segment.payload)
@@ -1301,9 +1300,7 @@ class TurnCard(wx.Panel):
             if not isinstance(window, wx.Window):
                 return False
             checker = getattr(window, "IsBeingDeleted", None)
-            if callable(checker) and checker():
-                return False
-            return True
+            return not (callable(checker) and checker())
 
         system_changed = False
         if len(system_map) != len(self._last_system_segments):
@@ -1386,7 +1383,7 @@ class TurnCard(wx.Panel):
         current_sections = self._system_sections if not system_changed else {}
         new_sections: dict[str, wx.CollapsiblePane] = {}
         ordered_panes: list[wx.CollapsiblePane] = []
-        for key, payload, text in system_entries:
+        for key, _payload, text in system_entries:
             pane = current_sections.get(key)
             if not _is_window_alive(pane):
                 pane = None

@@ -38,7 +38,10 @@ so you know which modules are involved and which regressions to guard against.
   length so stored requirements remain previewable and export-ready. Revision
   auto-increment is intentionally tied only to statement text changes: editing
   metadata fields (status, labels, links, etc.) keeps the current revision in
-  both GUI/CLI save flows and low-level update helpers.
+  both GUI/CLI save flows and low-level update helpers. Documents also keep a
+  monotonic `attributes.doc_revision` counter (default `1`) that increments on
+  requirement set changes (create/delete/move in/out) and on statement edits
+  that bump requirement revisions.
 * **Domain models** — `app/core/model.py` defines `Requirement` and supporting
   enums (status, priority, link types). The status set currently includes draft,
   in_review, approved, baselined, retired, rejected, deferred, superseded and
@@ -85,7 +88,9 @@ so you know which modules are involved and which regressions to guard against.
   renderers to keep translations synchronized across formats. The
   export dialog keeps a single field-selection list for all formats, and the
   selected fields are applied both to tabular exports and to card exports
-  (metadata/sections/links are filtered accordingly). For card-oriented formats
+  (metadata/sections/links are filtered accordingly). Export headers now also
+  include document revision metadata (`doc_revision`) so generated artifacts
+  clearly show the baseline state of each exported document. For card-oriented formats
   (TXT/HTML/DOCX) the dialog also exposes sort mode selection (by requirement
   number, labels, source, or title) and applies the selected ordering before
   rendering cards; when label sorting is selected, card exports can group
@@ -195,7 +200,10 @@ so you know which modules are involved and which regressions to guard against.
   `ApplicationContext.for_gui()` instance, then instantiates `MainFrame`.
 * **Panels and views**
   * `document_tree.py` and `list_panel.py` show documents and filtered lists of
-    requirements. The list panel exposes context-menu actions for cloning,
+    requirements. The requirements pane header includes active document metadata
+    (prefix/title plus document revision) so users see the current baseline
+    context directly in the main screen. The list panel exposes
+    context-menu actions for cloning,
     deriving, deleting and now transferring requirements between documents via
     a modal dialog that lets users choose between copy/move semantics and the
     destination document.

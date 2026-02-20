@@ -44,6 +44,35 @@ def test_render_requirements_html_renders_markdown_and_attachments(tmp_path: Pat
     assert "javascript:alert(1)" not in html
 
 
+
+
+def test_render_requirements_html_shows_document_revision_in_header(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System", attributes={"doc_revision": 5})
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=99,
+        title="Revision",
+        statement="Body",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS99",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(export)
+
+    assert "Document revisions: SYS rev 5." in html
+    assert "<h2>System (<code>SYS</code>, rev 5)</h2>" in html
+
+
 def test_render_requirements_html_renders_tables(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

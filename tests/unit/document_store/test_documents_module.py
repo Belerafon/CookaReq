@@ -3,8 +3,10 @@ from pathlib import Path
 
 from app.core.document_store import Document, DocumentLabels, LabelDef, ValidationError
 from app.core.document_store.documents import (
+    bump_document_revision,
     collect_label_defs,
     collect_labels,
+    get_document_revision,
     diagnose_requirements_root,
     is_ancestor,
     is_new_requirements_directory,
@@ -235,3 +237,28 @@ def test_is_new_requirements_directory_is_false_for_wrong_level(tmp_path: Path) 
     (doc_dir / "items").mkdir()
 
     assert is_new_requirements_directory(doc_dir) is False
+
+
+def test_document_revision_defaults_and_bumps(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+
+    loaded = load_documents(tmp_path)["SYS"]
+    assert get_document_revision(loaded) == 1
+
+    bumped = bump_document_revision(tmp_path, "SYS")
+    assert bumped == 2
+    loaded_after = load_documents(tmp_path)["SYS"]
+    assert get_document_revision(loaded_after) == 2
+
+
+def test_document_revision_validates_invalid_value(tmp_path: Path) -> None:
+    (tmp_path / "SYS").mkdir()
+    (tmp_path / "SYS" / "document.json").write_text(
+        '{"title": "System", "attributes": {"doc_revision": "oops"}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="document revision"):
+        loaded = load_documents(tmp_path)["SYS"]
+        get_document_revision(loaded)

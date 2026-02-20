@@ -6,7 +6,9 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ...i18n import _
-from .types import Document, LabelDef, ValidationError
+from .types import Document, DocumentNotFoundError, LabelDef, ValidationError
+
+DOCUMENT_REVISION_KEY = "doc_revision"
 
 
 def _is_document_directory(path: Path) -> bool:
@@ -153,6 +155,38 @@ def save_document(directory: str | Path, doc: Document) -> Path:
     with path.open("w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2, sort_keys=True)
     return path
+
+
+def get_document_revision(doc: Document) -> int:
+    """Return monotonically increasing document revision from ``doc`` attributes."""
+    raw = doc.attributes.get(DOCUMENT_REVISION_KEY)
+    if raw in (None, ""):
+        return 1
+    try:
+        revision = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("document revision must be an integer") from exc
+    if revision <= 0:
+        raise ValidationError("document revision must be positive")
+    return revision
+
+
+def bump_document_revision(
+    root: str | Path,
+    prefix: str,
+    docs: dict[str, Document] | None = None,
+) -> int:
+    """Increment and persist document revision for ``prefix`` returning the new value."""
+    root_path = Path(root)
+    docs_map = docs if docs is not None else load_documents(root_path)
+    document = docs_map.get(prefix)
+    if document is None:
+        raise DocumentNotFoundError(prefix)
+    current = get_document_revision(document)
+    new_revision = current + 1
+    document.attributes[DOCUMENT_REVISION_KEY] = new_revision
+    save_document(root_path / prefix, document)
+    return new_revision
 
 
 def load_documents(root: str | Path) -> dict[str, Document]:

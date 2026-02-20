@@ -21,7 +21,12 @@ from .types import (
     ValidationError,
 )
 from .layout import canonical_item_name
-from .documents import is_ancestor, load_documents, validate_labels
+from .documents import (
+    bump_document_revision,
+    is_ancestor,
+    load_documents,
+    validate_labels,
+)
 
 RID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(\d+)$")
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
@@ -462,6 +467,7 @@ def create_requirement(
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, req.to_mapping(), docs=docs_map)
+    bump_document_revision(root_path, prefix, docs_map)
     return req
 
 
@@ -525,6 +531,8 @@ def _update_requirement(
         raise ValidationError(str(exc)) from exc
     _update_link_suspicions(root_path, docs_map, req)
     save_item(directory, doc, req.to_mapping(), docs=docs_map)
+    if statement_changed:
+        bump_document_revision(root_path, prefix, docs_map)
     return req
 
 
@@ -715,6 +723,9 @@ def move_requirement(
     for directory, doc, item_payload in referencing_updates:
         save_item(directory, doc, item_payload, docs=docs_map)
 
+    bump_document_revision(root_path, prefix, docs_map)
+    bump_document_revision(root_path, new_prefix, docs_map)
+
     src_path = item_path(src_directory, src_doc, item_id)
     with suppress(FileNotFoundError):  # pragma: no cover - defensive
         src_path.unlink()
@@ -750,4 +761,6 @@ def delete_requirement(
     deleted = delete_item(root_path, canonical_rid, docs_map)
     if not deleted:  # pragma: no cover - defensive
         raise RequirementNotFoundError(canonical_rid)
+    prefix, _ = parse_rid(canonical_rid)
+    bump_document_revision(root_path, prefix, docs_map)
     return canonical_rid

@@ -8,7 +8,7 @@ from app.core.document_store import (
     RequirementNotFoundError,
     ValidationError,
 )
-from app.core.document_store.documents import load_documents, save_document
+from app.core.document_store.documents import get_document_revision, load_documents, save_document
 from app.core.document_store.items import (
     create_requirement,
     delete_requirement,
@@ -78,6 +78,7 @@ def test_create_update_and_delete_requirement(
         data={**_base_payload(), "labels": ["safety"]},
         docs=docs,
     )
+    assert get_document_revision(load_documents(tmp_path)["SYS"]) == 2
     assert created.rid == rid_for(_document, 1)
     assert parse_rid(created.rid) == ("SYS", 1)
 
@@ -90,6 +91,7 @@ def test_create_update_and_delete_requirement(
     )
     assert updated.statement == "Updated"
     assert updated.revision == created.revision + 1
+    assert get_document_revision(load_documents(tmp_path)["SYS"]) == 3
 
     relabeled = set_requirement_labels(
         tmp_path,
@@ -109,6 +111,7 @@ def test_create_update_and_delete_requirement(
     )
     assert status_updated.status.value == "approved"
     assert status_updated.revision == relabeled.revision
+    assert get_document_revision(load_documents(tmp_path)["SYS"]) == 3
 
     fetched = get_requirement(tmp_path, created.rid, docs=docs)
     assert fetched.statement == "Updated"
@@ -129,6 +132,7 @@ def test_create_update_and_delete_requirement(
     )
     assert deleted == created.rid
     assert not item_path(tmp_path / "SYS", _document, 1).exists()
+    assert get_document_revision(load_documents(tmp_path)["SYS"]) == 4
 
 
 def test_update_rejects_mismatched_case_rid(
@@ -338,6 +342,10 @@ def test_move_requirement_updates_links(tmp_path: Path) -> None:
         new_prefix="HLR",
         docs=docs,
     )
+
+    docs_after = load_documents(tmp_path)
+    assert get_document_revision(docs_after["SYS"]) == 3
+    assert get_document_revision(docs_after["HLR"]) == 2
 
     assert moved.rid == "HLR1"
     assert moved.revision == parent.revision

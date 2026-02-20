@@ -174,6 +174,7 @@ class RequirementsService:
         docs = self._ensure_documents()
         resolved_payload = dict(payload)
         item_id = resolved_payload.get("id")
+        bump_document_revision = False
         if isinstance(item_id, int):
             try:
                 existing, _mtime = doc_store.load_item(directory, doc, item_id)
@@ -194,7 +195,13 @@ class RequirementsService:
                 resolved_payload["revision"] = (
                     current_revision + 1 if statement_changed else current_revision
                 )
-        return doc_store.save_item(directory, doc, resolved_payload, docs=docs)
+                bump_document_revision = statement_changed
+            else:
+                bump_document_revision = True
+        path = doc_store.save_item(directory, doc, resolved_payload, docs=docs)
+        if bump_document_revision:
+            doc_store.bump_document_revision(self.root, prefix, docs)
+        return path
 
     def delete_requirement(self, rid: str) -> str:
         """Delete requirement ``rid`` enforcing revision semantics."""

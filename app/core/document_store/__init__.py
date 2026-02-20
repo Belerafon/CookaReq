@@ -14,8 +14,10 @@ from .types import (
     ValidationError,
 )
 from .documents import (
+    bump_document_revision,
     collect_label_defs,
     collect_labels,
+    get_document_revision,
     diagnose_requirements_root,
     is_new_requirements_directory,
     is_ancestor,
@@ -65,8 +67,10 @@ __all__ = [
     "DocumentLabels",
     "Document",
     "RequirementPage",
+    "bump_document_revision",
     "collect_label_defs",
     "collect_labels",
+    "get_document_revision",
     "diagnose_requirements_root",
     "is_new_requirements_directory",
     "is_ancestor",

@@ -18,6 +18,7 @@ from app.core.document_store import (
     save_item,
     load_item,
 )
+from app.core.document_store.documents import get_document_revision
 from app.core.model import (
     Requirement,
     RequirementType,
@@ -168,11 +169,13 @@ def test_save_requirement_increments_revision_only_for_statement_changes(tmp_pat
     controller.save_requirement("SYS", loaded)
     data_after_title, _ = load_item(doc_dir, doc, 1)
     assert data_after_title["revision"] == 1
+    assert get_document_revision(load_document(doc_dir)) == 1
 
     loaded.statement = "Changed statement"
     controller.save_requirement("SYS", loaded)
     data_after_statement, _ = load_item(doc_dir, doc, 1)
     assert data_after_statement["revision"] == 2
+    assert get_document_revision(load_document(doc_dir)) == 2
 
 
 def test_iter_links(tmp_path: Path):

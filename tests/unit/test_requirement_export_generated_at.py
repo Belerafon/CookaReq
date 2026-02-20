@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_render_requirements_markdown_formats_generated_timestamp_for_humans(tmp_path: Path) -> None:
-    doc = Document(prefix="SYS", title="System")
+    doc = Document(prefix="SYS", title="System", attributes={"doc_revision": 7})
     doc_dir = tmp_path / "SYS"
     save_document(doc_dir, doc)
     requirement = Requirement(
@@ -38,5 +38,7 @@ def test_render_requirements_markdown_formats_generated_timestamp_for_humans(tmp
     markdown = render_requirements_markdown(export)
 
     assert "Generated at 2026-02-10 07:05:03+00:00" in markdown
+    assert "Document revisions: SYS rev 7" in markdown
+    assert "## System (SYS, rev 7)" in markdown
     assert "T07:05:03" not in markdown
     assert "07:05:03.001866" not in markdown

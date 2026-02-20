@@ -2890,20 +2890,165 @@ msgstr ""
 "| --- | --- |\n"
 "| Элемент | Описание |"
 
-msgid "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
-msgstr "Не удалось загрузить папку требований.\nВыбранная папка: {path}\nПодробности: {error}"
+msgid ""
+"Failed to load requirements folder.\n"
+"Selected folder: {path}\n"
+"Details: {error}"
+msgstr ""
+"Не удалось загрузить папку требований.\n"
+"Выбранная папка: {path}\n"
+"Подробности: {error}"
 
-msgid "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
-msgstr "Вы выбрали подпапку \"{nested}\" документа \"{document}\" (\"{selected}\"); откройте корневую папку требований \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" is the \"{nested}\" subfolder of document "
+"\"{document}\"; open requirements root \"{target}\"."
+msgstr ""
+"Вы выбрали подпапку \"{nested}\" документа \"{document}\" (\"{selected}\"); "
+"откройте корневую папку требований \"{target}\"."
 
-msgid "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
-msgstr "Выбранная папка \"{selected}\" содержит служебные данные CookaReq; откройте родительскую папку \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" stores internal CookaReq data; open parent "
+"folder \"{target}\"."
+msgstr ""
+"Выбранная папка \"{selected}\" содержит служебные данные CookaReq; откройте "
+"родительскую папку \"{target}\"."
 
-msgid "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
-msgstr "Выбранная папка \"{selected}\" похожа на папку одного документа; откройте родительскую папку \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" looks like a single document; open parent "
+"folder \"{target}\"."
+msgstr ""
+"Выбранная папка \"{selected}\" похожа на папку одного документа; откройте "
+"родительскую папку \"{target}\"."
 
-msgid "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
-msgstr "Выбранная папка \"{selected}\" на уровень выше корня требований; откройте \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" is one level above requirements root; open "
+"\"{target}\"."
+msgstr ""
+"Выбранная папка \"{selected}\" на уровень выше корня требований; откройте "
+"\"{target}\"."
 
-msgid "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."
-msgstr "Выбранная папка \"{selected}\" находится выше нескольких корней требований ({options}); откройте точную папку, которая непосредственно содержит директории документов."
+msgid ""
+"Selected folder \"{selected}\" is above several requirement roots "
+"({options}); open the exact folder that directly contains document "
+"directories."
+msgstr ""
+"Выбранная папка \"{selected}\" находится выше нескольких корней требований "
+"({options}); откройте точную папку, которая непосредственно содержит "
+"директории документов."
+
+msgid "Automatic (OMML, then SVG/PNG fallback)"
+msgstr "Автоматически (OMML, затем резервно SVG/PNG)"
+
+msgid "Columns sort field"
+msgstr "Поле сортировки столбцов"
+
+msgid "Copy health"
+msgstr "Копировать отчёт о состоянии"
+
+msgid "Could not access clipboard"
+msgstr "Не удалось получить доступ к буферу обмена"
+
+msgid "Could not access the clipboard."
+msgstr "Не удалось получить доступ к буферу обмена."
+
+msgid ""
+"Coverage: {linked}/{total} cells ({coverage:.0%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.0%})\n"
+"Suspect links: {suspect_links}"
+msgstr ""
+"Покрытие: {linked}/{total} ячеек ({coverage:.0%})\n"
+"Подозрительные ячейки: {suspect_cells}/{linked} ({suspect_ratio:.0%})\n"
+"Подозрительные связи: {suspect_links}"
+
+msgid "Display and export options"
+msgstr "Параметры отображения и экспорта"
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Export trace matrix"
+msgstr "Экспортировать матрицу трассировки"
+
+msgid "Export…"
+msgstr "Экспорт…"
+
+msgid "Health report copied to clipboard"
+msgstr "Отчёт о состоянии скопирован в буфер обмена"
+
+msgid "Hide unlinked rows/columns"
+msgstr "Скрывать несвязанные строки/столбцы"
+
+msgid "Interactive matrix window"
+msgstr "Интерактивное окно матрицы"
+
+msgid "Linked from"
+msgstr "Связано из"
+
+msgid "Modified At"
+msgstr "Изменено"
+
+msgid "Orphan columns: {columns}"
+msgstr "Столбцы без связей: {columns}"
+
+msgid "Orphan rows: {rows}"
+msgstr "Строки без связей: {rows}"
+
+msgid "Output format"
+msgstr "Формат вывода"
+
+msgid "Requirement card fields (headers/details/export)"
+msgstr "Поля карточки требования (заголовки/детали/экспорт)"
+
+msgid "Rows sort field"
+msgstr "Поле сортировки строк"
+
+msgid "Settings file"
+msgstr "Файл настроек"
+
+msgid ""
+"Trace Matrix Health\n"
+"Coverage: {linked}/{total} cells ({coverage:.2%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.2%})\n"
+"Suspect links: {suspect_links}\n"
+"Orphan rows: {orphan_rows}\n"
+"Orphan columns: {orphan_columns}"
+msgstr ""
+"Состояние матрицы трассировки\n"
+"Покрытие: {linked}/{total} ячеек ({coverage:.2%})\n"
+"Подозрительные ячейки: {suspect_cells}/{linked} ({suspect_ratio:.2%})\n"
+"Подозрительные связи: {suspect_links}\n"
+"Строки без связей: {orphan_rows}\n"
+"Столбцы без связей: {orphan_columns}"
+
+msgid "Trace matrix exported"
+msgstr "Матрица трассировки экспортирована"
+
+msgid "Unsupported file extension"
+msgstr "Неподдерживаемое расширение файла"
+
+msgid "Use compact cell symbols (·/✓/!)"
+msgstr "Использовать компактные символы ячеек (·/✓/!)"
+
+msgid "Verification"
+msgstr "Проверка"
+
+msgid "filter by status"
+msgstr "фильтр по статусу"
+
+msgid "include linked parent requirement IDs"
+msgstr "включать ID связанных родительских требований"
+
+msgid "items per page"
+msgstr "элементов на страницу"
+
+msgid "list items"
+msgstr "элементы списка"
+
+msgid "none"
+msgstr "нет"
+
+msgid "outside exported scope"
+msgstr "вне экспортируемой области"
+
+msgid "page number"
+msgstr "номер страницы"

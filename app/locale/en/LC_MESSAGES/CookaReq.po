@@ -2868,20 +2868,165 @@ msgstr ""
 "| --- | --- |\n"
 "| Item | Description |"
 
-msgid "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
-msgstr "Failed to load requirements folder.\nSelected folder: {path}\nDetails: {error}"
+msgid ""
+"Failed to load requirements folder.\n"
+"Selected folder: {path}\n"
+"Details: {error}"
+msgstr ""
+"Failed to load requirements folder.\n"
+"Selected folder: {path}\n"
+"Details: {error}"
 
-msgid "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
-msgstr "Selected folder \"{selected}\" is the \"{nested}\" subfolder of document \"{document}\"; open requirements root \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" is the \"{nested}\" subfolder of document "
+"\"{document}\"; open requirements root \"{target}\"."
+msgstr ""
+"Selected folder \"{selected}\" is the \"{nested}\" subfolder of document "
+"\"{document}\"; open requirements root \"{target}\"."
 
-msgid "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
-msgstr "Selected folder \"{selected}\" stores internal CookaReq data; open parent folder \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" stores internal CookaReq data; open parent "
+"folder \"{target}\"."
+msgstr ""
+"Selected folder \"{selected}\" stores internal CookaReq data; open parent "
+"folder \"{target}\"."
 
-msgid "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
-msgstr "Selected folder \"{selected}\" looks like a single document; open parent folder \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" looks like a single document; open parent "
+"folder \"{target}\"."
+msgstr ""
+"Selected folder \"{selected}\" looks like a single document; open parent "
+"folder \"{target}\"."
 
-msgid "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
-msgstr "Selected folder \"{selected}\" is one level above requirements root; open \"{target}\"."
+msgid ""
+"Selected folder \"{selected}\" is one level above requirements root; open "
+"\"{target}\"."
+msgstr ""
+"Selected folder \"{selected}\" is one level above requirements root; open "
+"\"{target}\"."
 
-msgid "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."
-msgstr "Selected folder \"{selected}\" is above several requirement roots ({options}); open the exact folder that directly contains document directories."
+msgid ""
+"Selected folder \"{selected}\" is above several requirement roots "
+"({options}); open the exact folder that directly contains document "
+"directories."
+msgstr ""
+"Selected folder \"{selected}\" is above several requirement roots "
+"({options}); open the exact folder that directly contains document "
+"directories."
+
+msgid "Automatic (OMML, then SVG/PNG fallback)"
+msgstr "Automatic (OMML, then SVG/PNG fallback)"
+
+msgid "Columns sort field"
+msgstr "Columns sort field"
+
+msgid "Copy health"
+msgstr "Copy health"
+
+msgid "Could not access clipboard"
+msgstr "Could not access clipboard"
+
+msgid "Could not access the clipboard."
+msgstr "Could not access the clipboard."
+
+msgid ""
+"Coverage: {linked}/{total} cells ({coverage:.0%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.0%})\n"
+"Suspect links: {suspect_links}"
+msgstr ""
+"Coverage: {linked}/{total} cells ({coverage:.0%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.0%})\n"
+"Suspect links: {suspect_links}"
+
+msgid "Display and export options"
+msgstr "Display and export options"
+
+msgid "Done"
+msgstr "Done"
+
+msgid "Export trace matrix"
+msgstr "Export trace matrix"
+
+msgid "Export…"
+msgstr "Export…"
+
+msgid "Health report copied to clipboard"
+msgstr "Health report copied to clipboard"
+
+msgid "Hide unlinked rows/columns"
+msgstr "Hide unlinked rows/columns"
+
+msgid "Interactive matrix window"
+msgstr "Interactive matrix window"
+
+msgid "Linked from"
+msgstr "Linked from"
+
+msgid "Modified At"
+msgstr "Modified At"
+
+msgid "Orphan columns: {columns}"
+msgstr "Orphan columns: {columns}"
+
+msgid "Orphan rows: {rows}"
+msgstr "Orphan rows: {rows}"
+
+msgid "Output format"
+msgstr "Output format"
+
+msgid "Requirement card fields (headers/details/export)"
+msgstr "Requirement card fields (headers/details/export)"
+
+msgid "Rows sort field"
+msgstr "Rows sort field"
+
+msgid "Settings file"
+msgstr "Settings file"
+
+msgid ""
+"Trace Matrix Health\n"
+"Coverage: {linked}/{total} cells ({coverage:.2%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.2%})\n"
+"Suspect links: {suspect_links}\n"
+"Orphan rows: {orphan_rows}\n"
+"Orphan columns: {orphan_columns}"
+msgstr ""
+"Trace Matrix Health\n"
+"Coverage: {linked}/{total} cells ({coverage:.2%})\n"
+"Suspect cells: {suspect_cells}/{linked} ({suspect_ratio:.2%})\n"
+"Suspect links: {suspect_links}\n"
+"Orphan rows: {orphan_rows}\n"
+"Orphan columns: {orphan_columns}"
+
+msgid "Trace matrix exported"
+msgstr "Trace matrix exported"
+
+msgid "Unsupported file extension"
+msgstr "Unsupported file extension"
+
+msgid "Use compact cell symbols (·/✓/!)"
+msgstr "Use compact cell symbols (·/✓/!)"
+
+msgid "Verification"
+msgstr "Verification"
+
+msgid "filter by status"
+msgstr "filter by status"
+
+msgid "include linked parent requirement IDs"
+msgstr "include linked parent requirement IDs"
+
+msgid "items per page"
+msgstr "items per page"
+
+msgid "list items"
+msgstr "list items"
+
+msgid "none"
+msgstr "none"
+
+msgid "outside exported scope"
+msgstr "outside exported scope"
+
+msgid "page number"
+msgstr "page number"

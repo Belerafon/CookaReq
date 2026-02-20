@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-pytestmark = [pytest.mark.slow, pytest.mark.quality]
+pytestmark = [pytest.mark.slow, pytest.mark.quality_lint]
 
 
 def test_vulture_finds_no_dead_code():

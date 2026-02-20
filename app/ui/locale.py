@@ -73,6 +73,6 @@ def label_to_code(category: str, label: str) -> str:
         return label
     for code, msgid in mapping.items():
         localized = _(msgid)
-        if label == localized or label == msgid:
+        if label in (localized, msgid):
             return code
     return label

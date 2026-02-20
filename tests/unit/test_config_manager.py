@@ -699,7 +699,7 @@ def test_save_layout_persists_maximize_flag(tmp_path, wx_app):
     editor_splitter.SplitVertically(wx.Panel(editor_splitter), wx.Panel(editor_splitter))
     doc_splitter.SplitVertically(wx.Panel(doc_splitter), editor_splitter)
     panel = DummyListPanel()
-    log_console = wx.TextCtrl(main_splitter)
+    wx.TextCtrl(main_splitter)
 
     frame.Show()
     frame.IsMaximized = MethodType(lambda self: True, frame)

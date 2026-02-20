@@ -844,9 +844,8 @@ class MainFrameDocumentsMixin:
             ),
             _("Export completed"),
             style=wx.YES_NO | wx.ICON_QUESTION,
-        ) == wx.YES:
-            if not open_directory(export_path.parent):
-                wx.MessageBox(
+        ) == wx.YES and not open_directory(export_path.parent):
+            wx.MessageBox(
                     _("Could not open export folder:\n%s") % export_path.parent,
                     _("Export completed"),
                     wx.ICON_WARNING,

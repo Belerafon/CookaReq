@@ -1,5 +1,4 @@
 """Sorting helpers for requirement exports."""
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
@@ -14,7 +13,7 @@ def _labels_sort_key(labels: Sequence[str]) -> tuple[int, tuple[str, ...]]:
     normalized = tuple(sorted(label.strip().lower() for label in labels if label and label.strip()))
     if normalized:
         return (0, normalized)
-    return (1, tuple())
+    return (1, ())
 
 
 def sort_requirements_for_cards(
@@ -30,7 +29,6 @@ def sort_requirements_for_cards(
     - ``source``: source text, then requirement identifier.
     - ``title``: title text, then requirement identifier.
     """
-
     prepared = list(requirements)
 
     def key_by_id(requirement: Requirement) -> tuple[int]:

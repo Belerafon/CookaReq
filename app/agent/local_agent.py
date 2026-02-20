@@ -12,7 +12,8 @@ import asyncio
 import inspect
 import json
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
+from collections.abc import Callable, Mapping, Sequence
 
 from collections.abc import Awaitable
 
@@ -561,17 +562,19 @@ class LocalAgent:
 
     # ------------------------------------------------------------------
     def check_llm(self) -> Mapping[str, Any]:
-        """Synchronously verify the LLM backend."""
+        """Verify the LLM backend synchronously."""
         return self._run_sync(self.check_llm_async())
 
     async def check_llm_async(self) -> Mapping[str, Any]:
+        """Verify the LLM backend asynchronously."""
         return await self._llm.check_llm_async()
 
     def check_tools(self) -> Mapping[str, Any]:
-        """Synchronously verify MCP tool availability."""
+        """Verify MCP tool availability synchronously."""
         return self._run_sync(self.check_tools_async())
 
     async def check_tools_async(self) -> Mapping[str, Any]:
+        """Verify MCP tool availability asynchronously."""
         return await self._mcp.check_tools_async()
 
     # ------------------------------------------------------------------
@@ -894,6 +897,7 @@ class LocalAgent:
 
     @property
     def max_thought_steps(self) -> int | None:
+        """Return configured maximum number of LLM reasoning steps per run."""
         return self._max_thought_steps
 
     @staticmethod
@@ -916,6 +920,7 @@ class LocalAgent:
 
     @property
     def max_consecutive_tool_errors(self) -> int | None:
+        """Return limit of consecutive tool failures before aborting a run."""
         return self._max_consecutive_tool_errors
 
     # ------------------------------------------------------------------
@@ -1192,7 +1197,8 @@ class AgentLoopRunner:
         cancellation: CancellationEvent | None,
         on_tool_result: Callable[[Mapping[str, Any]], None] | None,
         on_llm_step: Callable[[Mapping[str, Any]], None] | None,
-    ) -> None:
+) -> None:
+        """Capture immutable run context and initialize loop counters."""
         self._agent = agent
         self._recorder = recorder
         self._conversation = conversation
@@ -1204,6 +1210,7 @@ class AgentLoopRunner:
         self._last_response: LLMResponse | None = None
 
     async def run(self) -> AgentRunPayload:
+        """Execute the agent loop until completion, cancellation, or safety limits."""
         while not self._reached_step_limit():
             self._agent._raise_if_cancelled(self._cancellation)
             iteration = await self._step_once()

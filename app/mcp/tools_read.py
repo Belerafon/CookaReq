@@ -1,5 +1,4 @@
 """Read-oriented MCP tool implementations."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -339,7 +338,6 @@ def search_requirements(
 
 def list_labels(directory: str | Path, *, prefix: str) -> dict:
     """Return label definitions accessible to document ``prefix``."""
-
     params = {"directory": str(directory), "prefix": prefix}
     service = get_requirements_service(directory)
     try:

@@ -22,6 +22,7 @@ from ...core.markdown_utils import (
     strip_markdown,
 )
 from ..text import normalize_for_display
+import contextlib
 
 
 try:  # pragma: no cover - platform specific
@@ -113,16 +114,16 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
     try:
         figure = plt.figure(figsize=(0.01, 0.01))
         figure.text(0.0, 0.0, f"${latex}$", fontsize=12)
-        buffer = tempfile.SpooledTemporaryFile()
-        figure.savefig(
-            buffer,
-            format="png",
-            bbox_inches="tight",
-            pad_inches=0.1,
-            transparent=True,
-        )
-        buffer.seek(0)
-        return buffer.read()
+        with tempfile.SpooledTemporaryFile() as buffer:
+            figure.savefig(
+                buffer,
+                format="png",
+                bbox_inches="tight",
+                pad_inches=0.1,
+                transparent=True,
+            )
+            buffer.seek(0)
+            return buffer.read()
     except Exception:  # pragma: no cover - rendering failures
         return None
     finally:
@@ -536,10 +537,8 @@ class MarkdownView(wx_html.HtmlWindow):
             self._pending_render = False
             self._pending_render_attempts = 0
             if self._render_retry is not None:
-                try:
+                with contextlib.suppress(Exception):  # pragma: no cover - defensive
                     self._render_retry.Stop()
-                except Exception:  # pragma: no cover - defensive
-                    pass
                 self._render_retry = None
             self._render_listeners.clear()
         event.Skip()
@@ -707,10 +706,8 @@ class MarkdownContent(wx.Panel):
         # Some GUI tests interrogate the plain-text value immediately after
         # construction; attempt a synchronous render so ``GetPlainText`` is
         # populated without waiting for deferred callbacks.
-        try:
+        with contextlib.suppress(Exception):
             self._view._try_render_pending_markup()
-        except Exception:
-            pass
 
     def DoSetFont(self, font: wx.Font | None) -> bool:  # noqa: N802 - wx naming convention
         changed = super().DoSetFont(font)
@@ -835,11 +832,10 @@ class MarkdownContent(wx.Panel):
                 except RuntimeError:
                     available_width = 0
 
-        view_width = min_width
         if available_width > 0:
-            view_width = max(min_width, min(available_width, content_width))
+            max(min_width, min(available_width, content_width))
         else:
-            view_width = min_width
+            pass
 
         max_visible = self._max_visible_height
         if max_visible <= 0:

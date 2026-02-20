@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.ui.agent_chat_panel.history_sync import HistorySynchronizer
 from app.ui.agent_chat_panel.session_controller import SessionConfig, SessionController
 from app.ui.agent_chat_panel.view_model import ConversationTimelineCache

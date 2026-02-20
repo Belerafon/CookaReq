@@ -623,7 +623,7 @@ class MessageBubble(wx.Panel):
             return
         if getattr(widget, "_message_bubble_handlers", False):
             return
-        setattr(widget, "_message_bubble_handlers", True)
+        widget._message_bubble_handlers = True
         widget.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         widget.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         for child in widget.GetChildren():

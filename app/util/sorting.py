@@ -10,13 +10,10 @@ _NUMERIC_SPLIT = re.compile(r"(\d+)")
 
 def natural_sort_key(value: Any) -> tuple[int, tuple[tuple[int, object], ...]]:
     """Return a natural sorting key for strings with numeric segments."""
-    if value is None:
-        text = ""
-    else:
-        text = str(value)
+    text = "" if value is None else str(value)
     text = text.strip()
     if not text:
-        return (1, tuple())
+        return (1, ())
     parts = _NUMERIC_SPLIT.split(text)
     key: list[tuple[int, object]] = []
     for part in parts:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from http.client import HTTPConnection
 
 from ..settings import MCPSettings
@@ -14,7 +14,7 @@ from .server import start_server, stop_server
 logger = logging.getLogger(__name__)
 
 
-class MCPStatus(str, Enum):
+class MCPStatus(StrEnum):
     """Status values returned by :class:`MCPController`."""
 
     NOT_RUNNING = "not running"

@@ -1192,7 +1192,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     @contextmanager
     def _suspend_selection_events(self) -> Iterator[bool]:
         """Temporarily block selection events from bubbling to observers."""
-
         evt_handler_cls = getattr(wx, "EvtHandler", None)
         push = getattr(self.list, "PushEventHandler", None)
         pop = getattr(self.list, "PopEventHandler", None)
@@ -1244,7 +1243,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         with self._suspend_selection_events() as events_blocked:
             handled = False
             if hasattr(self.list, "SelectAll"):
-                select_all = getattr(self.list, "SelectAll")
+                select_all = self.list.SelectAll
                 if callable(select_all):
                     try:
                         select_all()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Callable, Mapping
+from collections.abc import Callable, Mapping
 
 from ...llm.spec import SYSTEM_PROMPT
 from ...llm.tokenizer import (
@@ -190,10 +190,7 @@ class SessionController:
                 model=tokens.model,
             )
             limit_text = format_token_quantity(limit_tokens)
-            tokens_text = "{used} / {limit}".format(
-                used=tokens_text,
-                limit=limit_text,
-            )
+            tokens_text = f"{tokens_text} / {limit_text}"
         return tokens_text
 
     # ------------------------------------------------------------------

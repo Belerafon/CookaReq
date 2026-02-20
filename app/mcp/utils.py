@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from enum import Enum
+from enum import StrEnum
 from json import JSONDecodeError
 from typing import Any
 
@@ -84,7 +84,7 @@ def log_tool(
     return result
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Standardized error codes for MCP tools."""
 
     VALIDATION_ERROR = "VALIDATION_ERROR"

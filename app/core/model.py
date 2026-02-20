@@ -5,14 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 from collections.abc import Mapping, Sequence
 
 from ..util.time import normalize_timestamp
 
 
-class RequirementType(str, Enum):
+class RequirementType(StrEnum):
     """Enumerate supported requirement categories."""
 
     REQUIREMENT = "requirement"
@@ -20,7 +20,7 @@ class RequirementType(str, Enum):
     INTERFACE = "interface"
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     """Enumerate requirement lifecycle states."""
 
     DRAFT = "draft"
@@ -34,7 +34,7 @@ class Status(str, Enum):
     NEEDS_CLARIFICATION = "needs_clarification"
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     """Enumerate requirement priority levels."""
 
     LOW = "low"
@@ -42,7 +42,7 @@ class Priority(str, Enum):
     HIGH = "high"
 
 
-class Verification(str, Enum):
+class Verification(StrEnum):
     """Enumerate possible verification methods."""
 
     NOT_DEFINED = "not_defined"

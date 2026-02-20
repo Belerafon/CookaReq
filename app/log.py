@@ -13,6 +13,7 @@ from typing import Any
 
 from .util.system_open import open_directory
 from .util.time import utc_now_iso
+import contextlib
 
 LOG_DIR_ENV = "COOKAREQ_LOG_DIR"
 _DEFAULT_HOME_DIR = ".cookareq"
@@ -228,27 +229,22 @@ def install_exception_hooks() -> None:
     """
 
     def _excepthook(exc_type, exc_value, exc_traceback):
-        try:
+        with contextlib.suppress(Exception):
             logger.critical(
                 "Uncaught exception",
                 exc_info=(exc_type, exc_value, exc_traceback),
             )
-        except Exception:
-            # Last-resort fallback: avoid breaking the default handler chain
-            pass
 
     sys.excepthook = _excepthook
 
     if hasattr(threading, "excepthook"):
         def _thread_excepthook(args: threading.ExceptHookArgs) -> None:  # type: ignore[attr-defined]
-            try:
+            with contextlib.suppress(Exception):
                 logger.critical(
                     "Uncaught thread exception (thread=%s)",
                     getattr(args, "thread", None),
                     exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
                 )
-            except Exception:
-                pass
 
         threading.excepthook = _thread_excepthook  # type: ignore[assignment]
 

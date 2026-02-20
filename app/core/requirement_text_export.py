@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from .markdown_utils import render_markdown_plain_text, strip_markdown
+from .markdown_utils import render_markdown_plain_text
 
 __all__ = ["render_requirement_cards_txt"]
 

@@ -97,7 +97,7 @@ def confirm_requirement_update(prompt: RequirementUpdatePrompt) -> ConfirmDecisi
     return decision
 
 
-def _call_in_wx_main_thread(
+def _call_in_wx_main_thread[**P, T](
     func: Callable[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs
 ) -> _T:
     """Execute *func* on the wx main thread and return its result."""

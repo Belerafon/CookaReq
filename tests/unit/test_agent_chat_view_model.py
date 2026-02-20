@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.agent.run_contract import (
-    AgentEvent,
     AgentEventLog,
     AgentRunPayload,
     AgentTimelineEntry,

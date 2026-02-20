@@ -4,7 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import datetime
 import json
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Literal
+from collections.abc import Mapping, Sequence
 
 from ..util.time import utc_now_iso
 from .timeline_utils import timeline_checksum
@@ -29,7 +30,7 @@ class ToolTimelineEvent:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ToolTimelineEvent":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ToolTimelineEvent:
         kind = payload.get("kind")
         if kind not in {"started", "update", "completed", "failed"}:
             raise ValueError(f"invalid tool event kind: {kind!r}")
@@ -58,7 +59,7 @@ class ToolMetrics:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ToolMetrics":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ToolMetrics:
         duration_value = payload.get("duration_seconds")
         duration = (
             float(duration_value)
@@ -67,10 +68,7 @@ class ToolMetrics:
         )
         cost_payload = payload.get("cost")
         cost: Mapping[str, Any] | None
-        if isinstance(cost_payload, Mapping):
-            cost = dict(cost_payload)
-        else:
-            cost = None
+        cost = dict(cost_payload) if isinstance(cost_payload, Mapping) else None
         return cls(duration_seconds=duration, cost=cost)
 
 
@@ -91,7 +89,7 @@ class ToolError:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ToolError":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ToolError:
         message_raw = payload.get("message")
         message = str(message_raw) if message_raw is not None else ""
         if not message:
@@ -177,7 +175,7 @@ class ToolResultSnapshot:
                 return "pending"
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ToolResultSnapshot":
+    def from_dict(cls, payload: Mapping[str, Any]) -> ToolResultSnapshot:
         status = payload.get("status")
         if status not in {"pending", "running", "succeeded", "failed"}:
             ok_flag = payload.get("ok")
@@ -357,7 +355,7 @@ class AgentTimelineEntry:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentTimelineEntry":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AgentTimelineEntry:
         kind = payload.get("kind")
         if kind not in {"llm_step", "tool_call", "agent_finished"}:
             raise ValueError(f"invalid timeline entry kind: {kind!r}")
@@ -414,7 +412,7 @@ class LlmStep:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "LlmStep":
+    def from_dict(cls, payload: Mapping[str, Any]) -> LlmStep:
         index_value = payload.get("index")
         if not isinstance(index_value, (int, float)):
             raise ValueError("llm step payload is missing numeric index")
@@ -464,7 +462,7 @@ class LlmTrace:
         return step
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "LlmTrace":
+    def from_dict(cls, payload: Mapping[str, Any]) -> LlmTrace:
         steps_payload = payload.get("steps")
         steps: list[LlmStep] = []
         if isinstance(steps_payload, Sequence) and not isinstance(
@@ -506,7 +504,7 @@ class AgentEvent:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentEvent":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AgentEvent:
         kind = payload.get("kind")
         if kind not in {
             "llm_step",
@@ -521,10 +519,7 @@ class AgentEvent:
             raise ValueError("agent event missing occurred_at")
         payload_value = payload.get("payload")
         mapping: Mapping[str, Any]
-        if isinstance(payload_value, Mapping):
-            mapping = payload_value
-        else:
-            mapping = {}
+        mapping = payload_value if isinstance(payload_value, Mapping) else {}
         sequence = payload.get("sequence")
         try:
             sequence_value = int(sequence) if sequence is not None else None
@@ -558,7 +553,7 @@ class AgentEventLog:
         return {"events": [event.to_dict() for event in self.events]}
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentEventLog":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AgentEventLog:
         events_payload = payload.get("events")
         events: list[AgentEvent] = []
         if isinstance(events_payload, Sequence) and not isinstance(
@@ -637,7 +632,7 @@ class AgentRunPayload:
         return self.to_dict(include_diagnostic_event_log=False)
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "AgentRunPayload":
+    def from_dict(cls, payload: Mapping[str, Any]) -> AgentRunPayload:
         ok = bool(payload.get("ok"))
         status_value = payload.get("status")
         status = "succeeded" if status_value == "succeeded" else "failed"

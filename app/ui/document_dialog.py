@@ -93,10 +93,7 @@ class DocumentPropertiesDialog(wx.Dialog):
         parent_label = wx.StaticText(self, label=_("Parent"))
         grid.Add(parent_label, 0, wx.ALIGN_CENTER_VERTICAL)
         choices: list[tuple[str | None, str]]
-        if parent_choices:
-            choices = list(parent_choices)
-        else:
-            choices = [(None, _("(top-level)"))]
+        choices = list(parent_choices) if parent_choices else [(None, _("(top-level)"))]
         self._parent_values = [value for value, _ in choices]
         parent_labels = [label for _, label in choices]
         self.parent_ctrl = wx.Choice(self, choices=parent_labels)

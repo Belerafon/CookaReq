@@ -287,7 +287,7 @@ def test_update_label_propagates_when_requested(tmp_path: Path) -> None:
         tmp_path / "SYS",
         Document(prefix="SYS", title="Doc", labels=DocumentLabels(defs=[LabelDef("legacy", "Legacy")])),
     )
-    created = tools_write.create_requirement(
+    tools_write.create_requirement(
         tmp_path,
         prefix="SYS",
         data={**_base_req(), "labels": ["legacy"]},

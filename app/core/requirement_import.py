@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 import re
 from typing import Any
@@ -47,7 +47,7 @@ class RequirementImportRowError(RequirementImportError):
 class DuplicateIdentifierError(RequirementImportRowError):
     """Raised when a requirement id collides with existing data."""
 
-class TabularFileFormat(str, Enum):
+class TabularFileFormat(StrEnum):
     """Supported spreadsheet formats."""
 
     CSV = "csv"

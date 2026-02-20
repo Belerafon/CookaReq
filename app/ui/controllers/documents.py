@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-import re
-from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
-
-_UNSET = object()
+from dataclasses import dataclass
+from pathlib import Path
+import re
+from typing import Any
 
 from ...services.requirements import (
     RequirementsService,
@@ -21,6 +20,8 @@ from ...services.requirements import (
 )
 from ...core.model import Requirement
 from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
+
+_UNSET = object()
 
 
 @dataclass

@@ -1,10 +1,9 @@
 """Heuristics for classifying unstable textual representations."""
-
 from __future__ import annotations
 
 from enum import StrEnum
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 __all__ = [
     "TextUnstableReason",
@@ -57,7 +56,6 @@ def classify_unstable_text(
     binary_ratio_threshold: float = 0.1,
 ) -> TextUnstableReason | None:
     """Return instability reason for *text* or ``None`` when it looks safe."""
-
     if not text:
         return None
 
@@ -82,5 +80,4 @@ def classify_unstable_text(
 
 def is_unstable_text(text: str, **kwargs: object) -> bool:
     """Return ``True`` when :func:`classify_unstable_text` detects an issue."""
-
     return classify_unstable_text(text, **kwargs) is not None

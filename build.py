@@ -126,6 +126,7 @@ def main() -> None:
         "reportlab",
         "typer",
         "python_multipart",
+        "latex2mathml",
         
         # Core dependencies
         "pydantic",
@@ -191,6 +192,8 @@ def main() -> None:
         "matplotlib.pyplot",
         "matplotlib.backends.backend_agg",
         "matplotlib.mathtext",
+        "latex2mathml",
+        "latex2mathml.converter",
     ]
 
     # Add all required packages to hidden imports
@@ -208,6 +211,8 @@ def main() -> None:
         "typer",
         # Required for formula rendering in wx HtmlWindow previews.
         "matplotlib",
+        # Fallback formula rendering path (MathML conversion).
+        "latex2mathml",
     ]
 
     excluded_modules = [

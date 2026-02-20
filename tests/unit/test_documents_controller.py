@@ -149,6 +149,32 @@ def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
         controller.save_requirement("SYS", existing)
 
 
+def test_save_requirement_increments_revision_only_for_statement_changes(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+
+    original = _req(1)
+    original.revision = 1
+    save_item(doc_dir, doc, original.to_mapping())
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+    loaded = model.get_all()[0]
+
+    loaded.title = "Changed title"
+    controller.save_requirement("SYS", loaded)
+    data_after_title, _ = load_item(doc_dir, doc, 1)
+    assert data_after_title["revision"] == 1
+
+    loaded.statement = "Changed statement"
+    controller.save_requirement("SYS", loaded)
+    data_after_statement, _ = load_item(doc_dir, doc, 1)
+    assert data_after_statement["revision"] == 2
+
+
 def test_iter_links(tmp_path: Path):
     sys_doc = Document(prefix="SYS", title="System")
     hlr_doc = Document(prefix="HLR", title="High", parent="SYS")

@@ -478,6 +478,19 @@ def _next_revision(raw: Any) -> int:
     return current + 1
 
 
+def _current_revision(raw: Any) -> int:
+    if raw in (None, ""):
+        current = 1
+    else:
+        try:
+            current = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("revision must be an integer") from exc
+    if current <= 0:
+        raise ValidationError("revision must be positive")
+    return current
+
+
 def _update_requirement(
     root: str | Path,
     rid: str,
@@ -492,7 +505,12 @@ def _update_requirement(
     payload = dict(data)
     mutate(payload, prefix, doc)
     payload["id"] = item_id
-    payload["revision"] = _next_revision(payload.get("revision"))
+    statement_changed = payload.get("statement", "") != data.get("statement", "")
+    payload["revision"] = (
+        _next_revision(data.get("revision"))
+        if statement_changed
+        else _current_revision(data.get("revision"))
+    )
     labels = _normalize_labels(payload.get("labels", []))
     err = validate_labels(prefix, labels, docs_map)
     if err:

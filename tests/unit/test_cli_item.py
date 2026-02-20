@@ -95,6 +95,32 @@ def test_item_edit_updates_fields(tmp_path, capsys, cli_context):
     assert data["status"] == Status.APPROVED.value
     assert data["statement"] == "Updated statement"
     assert data["id"] == 1
+    assert data["revision"] == 2
+
+
+@pytest.mark.unit
+def test_item_edit_keeps_revision_when_statement_not_changed(tmp_path, capsys, cli_context):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path), prefix="SYS", title="Login", statement="Initial", labels=None
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        status=Status.APPROVED.value,
+    )
+    commands.cmd_item_edit(edit_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["status"] == Status.APPROVED.value
+    assert data["revision"] == 1
 
 
 @pytest.mark.unit

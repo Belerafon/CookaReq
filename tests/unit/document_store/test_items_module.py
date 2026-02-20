@@ -98,7 +98,17 @@ def test_create_update_and_delete_requirement(
         docs=docs,
     )
     assert relabeled.labels == []
-    assert relabeled.revision == updated.revision + 1
+    assert relabeled.revision == updated.revision
+
+    status_updated = update_requirement_field(
+        tmp_path,
+        created.rid,
+        field="status",
+        value="approved",
+        docs=docs,
+    )
+    assert status_updated.status.value == "approved"
+    assert status_updated.revision == relabeled.revision
 
     fetched = get_requirement(tmp_path, created.rid, docs=docs)
     assert fetched.statement == "Updated"

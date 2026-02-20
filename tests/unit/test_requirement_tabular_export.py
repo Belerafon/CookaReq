@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.model import Link, Priority, Requirement, RequirementType, Status, Verification
-from app.core.requirement_tabular_export import render_tabular_html
+from app.core.requirement_tabular_export import render_tabular_delimited, render_tabular_html
 from app.core.requirement_text_export import render_requirement_cards_txt
 from app.ui.requirement_exporter import build_tabular_export
 
@@ -110,3 +110,38 @@ def test_build_tabular_export_formats_special_fields():
         "3",
         "7",
     ]]
+
+
+@pytest.mark.unit
+def test_render_requirement_cards_txt_includes_header_lines():
+    headers = ["Title"]
+    rows = [["A"]]
+    text = render_requirement_cards_txt(headers, rows, header_lines=["Document revision: rev 4"])
+
+    assert text.splitlines()[0] == "Document revision: rev 4"
+    assert text.splitlines()[2] == "Title: A"
+
+
+@pytest.mark.unit
+def test_render_tabular_delimited_includes_header_comment_lines():
+    headers = ["Title"]
+    rows = [["A"]]
+
+    text = render_tabular_delimited(
+        headers,
+        rows,
+        delimiter=",",
+        header_lines=["Document revision: rev 4"],
+    )
+
+    assert text.splitlines()[0] == "# Document revision: rev 4"
+    assert text.splitlines()[1] == "Title"
+
+
+@pytest.mark.unit
+def test_render_tabular_html_includes_header_lines():
+    headers = ["Title"]
+    rows = [["A"]]
+    html = render_tabular_html(headers, rows, title="Export", header_lines=["Document revision: rev 4"])
+
+    assert "<p><em>Document revision: rev 4</em></p>" in html

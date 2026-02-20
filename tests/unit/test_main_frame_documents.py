@@ -2,6 +2,7 @@ from pathlib import Path
 
 from types import SimpleNamespace
 
+from app.core.document_store import Document
 from app.settings import MCPSettings
 from app.ui.main_frame.documents import MainFrameDocumentsMixin
 
@@ -114,3 +115,23 @@ def test_default_export_scope_falls_back_to_all() -> None:
     frame = _ScopeFrame(selected_ids=[], has_filters=False)
 
     assert frame._default_export_scope() == "all"
+
+
+class _SummaryFrame(MainFrameDocumentsMixin):
+    def __init__(self) -> None:
+        self.current_doc_prefix = "SYS"
+        self.docs_controller = SimpleNamespace(
+            documents={
+                "SYS": Document(
+                    prefix="SYS",
+                    title="System",
+                    attributes={"doc_revision": 5},
+                )
+            }
+        )
+
+
+def test_current_document_summary_includes_revision() -> None:
+    frame = _SummaryFrame()
+
+    assert frame._current_document_summary() == "SYS: System (rev 5)"

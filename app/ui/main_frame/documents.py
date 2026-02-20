@@ -15,6 +15,7 @@ from ...services.requirements import (
     RequirementIDCollisionError,
     ValidationError,
 )
+from ...core.document_store import get_document_revision
 from ...core.requirement_import import SequentialIDAllocator, build_requirements
 from ...core.requirement_tabular_export import (
     render_tabular_delimited,
@@ -77,13 +78,39 @@ class MainFrameDocumentsMixin:
             return prefix
         prefix_text = document.prefix.strip()
         title_text = document.title.strip()
+        revision_text = self._format_document_revision(document)
+        if prefix_text and title_text and revision_text:
+            return f"{prefix_text}: {title_text} ({revision_text})"
         if prefix_text and title_text:
             return f"{prefix_text}: {title_text}"
         if title_text:
             return title_text
+        if prefix_text and revision_text:
+            return f"{prefix_text} ({revision_text})"
         if prefix_text:
             return prefix_text
         return prefix
+
+    def _format_document_revision(self: MainFrame, document: object | None) -> str | None:
+        """Return localized document revision label for UI summaries."""
+        if document is None:
+            return None
+        attributes = getattr(document, "attributes", None)
+        if attributes is None:
+            return None
+        try:
+            revision = get_document_revision(document)
+        except ValidationError:
+            return None
+        return _("rev {revision}").format(revision=revision)
+
+    def _export_header_lines(self: MainFrame, document: object) -> list[str]:
+        """Build metadata lines shown in exported document headers."""
+        lines: list[str] = []
+        revision_label = self._format_document_revision(document)
+        if revision_label:
+            lines.append(_("Document revision: {value}").format(value=revision_label))
+        return lines
 
     def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
@@ -585,6 +612,9 @@ class MainFrameDocumentsMixin:
         summary_parts = [doc.prefix]
         if doc.title.strip():
             summary_parts.append(doc.title.strip())
+        revision_label = self._format_document_revision(doc)
+        if revision_label:
+            summary_parts.append(revision_label)
         document_label = " — ".join(summary_parts)
         dlg = RequirementImportDialog(
             self,
@@ -704,6 +734,9 @@ class MainFrameDocumentsMixin:
         summary_parts = [doc.prefix]
         if doc.title.strip():
             summary_parts.append(doc.title.strip())
+        revision_label = self._format_document_revision(doc)
+        if revision_label:
+            summary_parts.append(revision_label)
         document_label = " — ".join(summary_parts)
         saved_state = self.config.get_export_dialog_state(self.current_dir)
         default_path = self.current_dir / f"{doc.prefix}_requirements.txt"
@@ -809,10 +842,15 @@ class MainFrameDocumentsMixin:
                     header_style=header_style,
                     value_style=value_style,
                 )
+                header_lines = self._export_header_lines(doc)
                 if plan.format == ExportFormat.CSV:
-                    content = render_tabular_delimited(headers, rows, delimiter=",")
+                    content = render_tabular_delimited(
+                        headers, rows, delimiter=",", header_lines=header_lines
+                    )
                 elif plan.format == ExportFormat.TSV:
-                    content = render_tabular_delimited(headers, rows, delimiter="\t")
+                    content = render_tabular_delimited(
+                        headers, rows, delimiter="\t", header_lines=header_lines
+                    )
                 else:
                     placeholder_label = _("(not set)")
                     empty_placeholder = (
@@ -823,6 +861,7 @@ class MainFrameDocumentsMixin:
                         rows,
                         empty_field_placeholder=empty_placeholder,
                         strip_markdown_text=True,
+                        header_lines=header_lines,
                     )
 
         assets_source = self.current_dir / doc.prefix / "assets"

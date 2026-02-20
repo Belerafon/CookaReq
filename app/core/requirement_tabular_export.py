@@ -17,9 +17,15 @@ def render_tabular_delimited(
     rows: Iterable[Sequence[str]],
     *,
     delimiter: str,
+    header_lines: Sequence[str] | None = None,
 ) -> str:
     """Render tabular export using CSV/TSV formatting."""
     buffer = StringIO()
+    if header_lines:
+        for line in header_lines:
+            text = str(line).strip()
+            if text:
+                buffer.write(f"# {text}\n")
     writer = csv.writer(buffer, delimiter=delimiter, lineterminator="\n")
     writer.writerow([str(header) for header in headers])
     for row in rows:
@@ -38,6 +44,7 @@ def render_tabular_html(
     rows: Iterable[Sequence[str]],
     *,
     title: str | None = None,
+    header_lines: Sequence[str] | None = None,
 ) -> str:
     """Render tabular export as standalone HTML."""
     heading = title or "Requirements export"
@@ -56,9 +63,16 @@ def render_tabular_html(
         "</style>",
         "</head><body>",
         f"<h1>{html.escape(heading)}</h1>",
+    ]
+    if header_lines:
+        for line in header_lines:
+            text = str(line).strip()
+            if text:
+                parts.append(f"<p><em>{html.escape(text)}</em></p>")
+    parts.extend([
         "<table>",
         "<thead><tr>",
-    ]
+    ])
     for header in headers:
         parts.append(f"<th>{_html_cell(str(header))}</th>")
     parts.append("</tr></thead><tbody>")

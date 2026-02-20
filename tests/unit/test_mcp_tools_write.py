@@ -5,6 +5,7 @@ from app.core.document_store import (
     Document,
     DocumentLabels,
     LabelDef,
+    load_document,
     save_document,
 )
 from app.mcp import tools_read, tools_write
@@ -36,14 +37,16 @@ def test_create_update_delete(tmp_path: Path) -> None:
         value="N",
     )
     assert res2["title"] == "N"
-    assert res2["revision"] == 2
+    assert res2["revision"] == 1
     assert res2["field_change"] == {
         "field": "title",
         "previous": "T",
         "current": "N",
     }
+    assert load_document(tmp_path / "SYS").attributes["doc_revision"] == 2
     res3 = tools_write.delete_requirement(tmp_path, "SYS1")
     assert res3 == {"rid": "SYS1"}
+    assert load_document(tmp_path / "SYS").attributes["doc_revision"] == 3
 
 
 def test_delete_requirement_reports_revision_error(tmp_path: Path) -> None:

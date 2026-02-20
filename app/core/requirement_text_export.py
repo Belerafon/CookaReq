@@ -38,9 +38,16 @@ def render_requirement_cards_txt(
     *,
     empty_field_placeholder: str | None = None,
     strip_markdown_text: bool = False,
+    header_lines: Sequence[str] | None = None,
 ) -> str:
     """Render requirements as a plain text card list."""
     cards: list[str] = []
+    header_parts: list[str] = []
+    if header_lines:
+        for line in header_lines:
+            text = str(line).strip()
+            if text:
+                header_parts.append(text)
     for row in rows:
         fields = []
         for header, cell in zip(headers, row, strict=False):
@@ -54,4 +61,7 @@ def render_requirement_cards_txt(
                 _format_card_field(label, value, strip_markdown_text=strip_markdown_text)
             )
         cards.append("\n".join(fields))
-    return "\n\n".join(cards) + "\n"
+    body = "\n\n".join(cards) + "\n"
+    if not header_parts:
+        return body
+    return "\n".join(header_parts) + "\n\n" + body

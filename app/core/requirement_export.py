@@ -33,7 +33,13 @@ from docx.shared import Inches, RGBColor
 
 from ..i18n import _
 from ..util.time import format_datetime_for_humans
-from .document_store import Document, DocumentNotFoundError, load_documents, load_requirements
+from .document_store import (
+    Document,
+    DocumentNotFoundError,
+    get_document_revision,
+    load_documents,
+    load_requirements,
+)
 from .document_store import label_color as resolved_label_color
 from .markdown_utils import (
     convert_markdown_math,
@@ -438,6 +444,19 @@ def _render_generated_at(export: RequirementExport) -> str:
     return format_datetime_for_humans(export.generated_at)
 
 
+def _document_revision_label(document: Document) -> str:
+    revision = get_document_revision(document)
+    return _("rev {revision}").format(revision=revision)
+
+
+def _export_revisions_summary(export: RequirementExport) -> str:
+    parts = [
+        f"{doc_export.document.prefix} {_document_revision_label(doc_export.document)}"
+        for doc_export in export.documents
+    ]
+    return ", ".join(parts)
+
+
 def render_requirements_markdown(
     export: RequirementExport,
     *,
@@ -455,6 +474,7 @@ def render_requirements_markdown(
     parts.append(
         f"_{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
+    parts.append(f"_{_('Document revisions')}: {_export_revisions_summary(export)}._")
     parts.append("")
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
@@ -469,7 +489,9 @@ def render_requirements_markdown(
             parts.append("")
 
     for doc in export.documents:
-        parts.append(f"## {doc.document.title} ({doc.document.prefix})")
+        parts.append(
+            f"## {doc.document.title} ({doc.document.prefix}, {_document_revision_label(doc.document)})"
+        )
         parts.append("")
         if group_by_labels:
             group_iter = _group_requirement_views_by_labels(
@@ -861,6 +883,7 @@ def render_requirements_html(
         "</head><body>",
         f"<h1>{_escape_html(heading)}</h1>",
         f"<p><em>{_escape_html(_('Generated at'))} {_render_generated_at(export)} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
+        f"<p><em>{_escape_html(_('Document revisions'))}: {_escape_html(_export_revisions_summary(export))}.</em></p>",
     ]
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
@@ -890,7 +913,7 @@ def render_requirements_html(
         doc_prefix = _escape_html(doc.document.prefix)
         parts.append(f"<section class='document' id='doc-{doc_prefix}'>")
         parts.append(
-            f"<h2>{_escape_html(doc.document.title)} (<code>{doc_prefix}</code>)</h2>"
+            f"<h2>{_escape_html(doc.document.title)} (<code>{doc_prefix}</code>, {_escape_html(_document_revision_label(doc.document))})</h2>"
         )
         if group_by_labels:
             group_iter = _group_requirement_views_by_labels(
@@ -1353,6 +1376,9 @@ def render_requirements_docx(
     document.add_paragraph(
         f"{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}."
     )
+    document.add_paragraph(
+        f"{_('Document revisions')}: {_export_revisions_summary(export)}."
+    )
     image_width = 5.5
     palette = _label_palette(export) if colorize_label_backgrounds else {}
     if _should_render_field(selected_fields, "labels"):
@@ -1381,7 +1407,7 @@ def render_requirements_docx(
 
     for doc_export in export.documents:
         document.add_heading(
-            f"{doc_export.document.title} ({doc_export.document.prefix})",
+            f"{doc_export.document.title} ({doc_export.document.prefix}, {_document_revision_label(doc_export.document)})",
             level=1,
         )
         if group_by_labels:
@@ -1537,12 +1563,20 @@ def render_requirements_pdf(
             styles["BodyText"],
         )
     )
+    story.append(
+        Paragraph(
+            xml_escape(f"{_('Document revisions')}: {_export_revisions_summary(export)}."),
+            styles["BodyText"],
+        )
+    )
     story.append(Spacer(1, 12))
 
     for doc_export in export.documents:
         story.append(
             Paragraph(
-                xml_escape(f"{doc_export.document.title} ({doc_export.document.prefix})"),
+                xml_escape(
+                    f"{doc_export.document.title} ({doc_export.document.prefix}, {_document_revision_label(doc_export.document)})"
+                ),
                 styles["Heading2"],
             )
         )

@@ -152,9 +152,9 @@
       "control": "text",
       "multiline": false,
       "help": [
-        "Manual revision identifier that teams adjust themselves.",
-        "Update it whenever you want to mark a new baseline for the requirement.",
-        "CookaReq does not change this value automatically."
+        "Revision number for the requirement baseline.",
+        "By default CookaReq increments it when the statement text changes.",
+        "You can also set another positive integer manually before saving if your process requires a specific revision value."
       ]
     }
   ],

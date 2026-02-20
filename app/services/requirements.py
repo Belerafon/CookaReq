@@ -188,13 +188,27 @@ class RequirementsService:
                     raise ValidationError("revision must be an integer") from exc
                 if current_revision <= 0:
                     raise ValidationError("revision must be positive")
+
+                incoming_revision_raw = resolved_payload.get("revision", current_revision)
+                try:
+                    incoming_revision = int(incoming_revision_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError("revision must be an integer") from exc
+                if incoming_revision <= 0:
+                    raise ValidationError("revision must be positive")
+
                 statement_changed = (
                     resolved_payload.get("statement", "")
                     != existing.get("statement", "")
                 )
-                resolved_payload["revision"] = (
-                    current_revision + 1 if statement_changed else current_revision
-                )
+
+                manual_revision_override = incoming_revision != current_revision
+                if manual_revision_override:
+                    resolved_payload["revision"] = incoming_revision
+                else:
+                    resolved_payload["revision"] = (
+                        current_revision + 1 if statement_changed else current_revision
+                    )
                 bump_document_revision = statement_changed
             else:
                 bump_document_revision = True

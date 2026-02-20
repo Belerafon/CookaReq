@@ -36,9 +36,11 @@ so you know which modules are involved and which regressions to guard against.
   Requirement statements are validated as Markdown (table structure, safe HTML
   subset, and URI schemes) and rejected if they exceed the maximum statement
   length so stored requirements remain previewable and export-ready. Revision
-  auto-increment is intentionally tied only to statement text changes: editing
-  metadata fields (status, labels, links, etc.) keeps the current revision in
-  both GUI/CLI save flows and low-level update helpers. Documents also keep a
+  auto-increment is intentionally tied only to statement text changes by
+  default: editing metadata fields (status, labels, links, etc.) keeps the
+  current revision in both GUI/CLI save flows and low-level update helpers.
+  Users can still override the requirement revision manually by saving a
+  different positive integer in the revision field. Documents also keep a
   monotonic `attributes.doc_revision` counter (default `1`) that increments on
   requirement set changes (create/delete/move in/out) and on statement edits
   that bump requirement revisions.

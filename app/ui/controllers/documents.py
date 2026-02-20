@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 import re
 from typing import Any
 
@@ -177,8 +176,8 @@ class DocumentsController:
         req.rid = rid_for(doc, req.id)
         self.model.add(req)
 
-    def save_requirement(self, prefix: str, req: Requirement) -> Path:
-        """Persist ``req`` within document ``prefix`` and return file path."""
+    def save_requirement(self, prefix: str, req: Requirement) -> Requirement:
+        """Persist ``req`` within document ``prefix`` and return saved requirement."""
         doc = self._get_document(prefix)
         original_rid = getattr(req, "rid", "")
         original_id = self._parse_original_id(doc, original_rid)
@@ -192,7 +191,12 @@ class DocumentsController:
         req.doc_prefix = prefix
         req.rid = rid_for(doc, req.id)
         data = req.to_mapping()
-        return self.service.save_requirement_payload(prefix, data)
+        self.service.save_requirement_payload(prefix, data)
+        saved_payload, _ = self.service.load_item(prefix, req.id)
+        saved_requirement = Requirement.from_mapping(saved_payload)
+        saved_requirement.doc_prefix = prefix
+        saved_requirement.rid = rid_for(doc, saved_requirement.id)
+        return saved_requirement
 
     def delete_requirement(self, prefix: str, req_id: int) -> str:
         """Remove requirement ``req_id`` from document ``prefix``."""

@@ -119,7 +119,7 @@ class MainFrameEditorMixin:
         if not prefix:
             return None
         try:
-            editor_panel.save(prefix)
+            requirement = editor_panel.save(prefix)
         except RequirementIDCollisionError:
             return None
         except Exception as exc:  # pragma: no cover - GUI event
@@ -127,7 +127,6 @@ class MainFrameEditorMixin:
 
             show_error_dialog(self, str(exc), title=_("Error"))
             return None
-        requirement = editor_panel.get_data()
         requirement.doc_prefix = prefix or requirement.doc_prefix
         self.model.update(requirement)
         if hasattr(self.model, "clear_unsaved"):

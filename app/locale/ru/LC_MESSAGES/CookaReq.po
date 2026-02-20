@@ -271,6 +271,12 @@ msgstr "Требования"
 msgid "Requirements - {document}"
 msgstr "Требования - {document}"
 
+msgid "Document revision: {value}"
+msgstr "Ревизия документа: {value}"
+
+msgid "Document revisions"
+msgstr "Ревизии документов"
+
 msgid "Editor"
 msgstr "Редактор"
 
@@ -297,6 +303,9 @@ msgstr "Ошибка"
 
 msgid "(Copy)"
 msgstr "(Копия)"
+
+msgid "rev {revision}"
+msgstr "рев. {revision}"
 
 # Settings dialog
 msgid "Open last folder on startup"

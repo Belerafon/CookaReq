@@ -176,6 +176,7 @@ def test_save_requirement_increments_revision_only_for_statement_changes(tmp_pat
     data_after_statement, _ = load_item(doc_dir, doc, 1)
     assert data_after_statement["revision"] == 2
     assert get_document_revision(load_document(doc_dir)) == 2
+    assert get_document_revision(controller.documents["SYS"]) == 2
 
 
 
@@ -271,6 +272,22 @@ def test_delete_requirement_with_invalid_revision(tmp_path: Path) -> None:
         controller.delete_requirement("SYS", 1)
     assert "revision" in str(excinfo.value).lower()
     assert path.exists()
+
+
+def test_delete_requirement_refreshes_cached_document_revision(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    save_item(doc_dir, doc, _req(1).to_mapping())
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    assert get_document_revision(controller.documents["SYS"]) == 1
+
+    controller.delete_requirement("SYS", 1)
+
+    assert get_document_revision(controller.documents["SYS"]) == 2
 
 
 def test_delete_document_recursively(tmp_path: Path):

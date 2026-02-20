@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import hashlib
 import html as html_lib
 import logging
+from collections import Counter
 from pathlib import Path
 import re
 import tempfile
@@ -17,7 +18,6 @@ import wx
 import wx.html as wx_html
 
 from ...core.markdown_utils import (
-    convert_markdown_math,
     normalize_escaped_newlines,
     sanitize_html,
     strip_markdown,
@@ -27,6 +27,47 @@ import contextlib
 
 
 _FORMULA_LOG = logging.getLogger(__name__)
+
+
+@dataclass
+class _FormulaRenderStats:
+    total: int = 0
+    rendered_as_png: int = 0
+    fallback_to_text: int = 0
+    fallback_reasons: Counter[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.fallback_reasons is None:
+            self.fallback_reasons = Counter()
+
+    def mark_png(self) -> None:
+        self.total += 1
+        self.rendered_as_png += 1
+
+    def mark_text_fallback(self, *, reason: str) -> None:
+        self.total += 1
+        self.fallback_to_text += 1
+        self.fallback_reasons[reason] += 1
+
+    def log_summary(self) -> None:
+        if self.total == 0:
+            return
+        if self.fallback_to_text == 0:
+            _FORMULA_LOG.info(
+                "Formula preview renderer summary: all %d formulas rendered as PNG images.",
+                self.total,
+            )
+            return
+        reason_summary = ", ".join(
+            f"{reason}={count}" for reason, count in sorted(self.fallback_reasons.items())
+        )
+        _FORMULA_LOG.info(
+            "Formula preview renderer summary: total=%d, png=%d, text_fallback=%d (reasons: %s).",
+            self.total,
+            self.rendered_as_png,
+            self.fallback_to_text,
+            reason_summary,
+        )
 
 
 try:  # pragma: no cover - platform specific
@@ -86,8 +127,12 @@ def _render_markdown(markdown_text: str, *, allow_html: bool, render_math: bool)
     renderer.reset()
     prepared = normalize_escaped_newlines(markdown_text or "")
     if render_math:
-        prepared = _replace_markdown_formulas_with_images(prepared)
-        prepared = convert_markdown_math(prepared)
+        # wx.html.HtmlWindow cannot render MathML reliably on Windows builds.
+        # Render formulas as PNG <img> tags where possible and keep source
+        # markers as text when image rendering is unavailable.
+        formula_stats = _FormulaRenderStats()
+        prepared = _replace_markdown_formulas_with_images(prepared, stats=formula_stats)
+        formula_stats.log_summary()
     markup = renderer.convert(prepared)
     return sanitize_html(markup)
 
@@ -106,7 +151,7 @@ def _looks_like_formula(candidate: str) -> bool:
     )
 
 
-def _latex_to_png_bytes(latex: str) -> bytes | None:
+def _latex_to_png_bytes_with_reason(latex: str) -> tuple[bytes | None, str | None]:
     try:
         import matplotlib
         from matplotlib import pyplot as plt
@@ -114,7 +159,7 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
         _FORMULA_LOG.warning(
             "Formula preview PNG renderer is unavailable: matplotlib is not installed."
         )
-        return None
+        return None, "matplotlib_not_installed"
 
     matplotlib.use("Agg", force=True)
     figure = None
@@ -130,33 +175,42 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
                 transparent=True,
             )
             buffer.seek(0)
-            return buffer.read()
+            return buffer.read(), None
     except Exception:  # pragma: no cover - rendering failures
         _FORMULA_LOG.exception("Failed to render formula preview image for LaTeX expression.")
-        return None
+        return None, "png_render_exception"
     finally:
         if figure is not None:
             plt.close(figure)
 
 
-def _formula_image_uri(latex: str) -> str | None:
-    png_bytes = _latex_to_png_bytes(latex)
+def _latex_to_png_bytes(latex: str) -> bytes | None:
+    png_bytes, _reason = _latex_to_png_bytes_with_reason(latex)
+    return png_bytes
+
+
+def _formula_image_uri(latex: str) -> tuple[str | None, str | None]:
+    png_bytes, reason = _latex_to_png_bytes_with_reason(latex)
     if not png_bytes:
-        return None
+        return None, reason or "png_bytes_unavailable"
     cache_dir = Path(tempfile.gettempdir()) / "cookareq-formula-preview"
     cache_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(latex.encode("utf-8")).hexdigest()
     target = cache_dir / f"{digest}.png"
     if not target.exists():
         target.write_bytes(png_bytes)
-    return target.as_uri()
+    return target.as_uri(), None
 
 
-def _formula_img_tag(latex: str, *, display: str) -> str:
-    uri = _formula_image_uri(latex)
+def _formula_img_tag(latex: str, *, display: str, stats: _FormulaRenderStats | None = None) -> str:
+    uri, reason = _formula_image_uri(latex)
     if not uri:
+        if stats is not None:
+            stats.mark_text_fallback(reason=reason or "unknown")
         escaped = latex.replace("\\", "\\\\")
         return f"$${escaped}$$" if display == "block" else f"\\({escaped}\\)"
+    if stats is not None:
+        stats.mark_png()
     escaped_latex = html_lib.escape(latex, quote=True)
     class_name = "math-formula-block" if display == "block" else "math-formula-inline"
     return (
@@ -165,7 +219,7 @@ def _formula_img_tag(latex: str, *, display: str) -> str:
     )
 
 
-def _replace_inline_formulas(text: str) -> str:
+def _replace_inline_formulas(text: str, *, stats: _FormulaRenderStats | None = None) -> str:
     parts = text.split("`")
     for idx, part in enumerate(parts):
         if idx % 2:
@@ -175,20 +229,24 @@ def _replace_inline_formulas(text: str) -> str:
             latex = match.group(1).strip()
             if not latex:
                 return match.group(0)
-            return _formula_img_tag(latex, display="inline")
+            return _formula_img_tag(latex, display="inline", stats=stats)
 
         def _inline_dollar_repl(match: re.Match[str]) -> str:
             latex = match.group(1).strip()
             if not _looks_like_formula(latex):
                 return match.group(0)
-            return _formula_img_tag(latex, display="inline")
+            return _formula_img_tag(latex, display="inline", stats=stats)
 
         converted = _INLINE_FORMULA_RE.sub(_inline_repl, part)
         parts[idx] = _INLINE_DOLLAR_FORMULA_RE.sub(_inline_dollar_repl, converted)
     return "`".join(parts)
 
 
-def _replace_markdown_formulas_with_images(value: str) -> str:
+def _replace_markdown_formulas_with_images(
+    value: str,
+    *,
+    stats: _FormulaRenderStats | None = None,
+) -> str:
     if not value or ("\\(" not in value and "$$" not in value and "$" not in value):
         return value
 
@@ -219,8 +277,8 @@ def _replace_markdown_formulas_with_images(value: str) -> str:
                 before, _sep, after = line.partition("$$")
                 block_lines.append(before)
                 latex = "\n".join(block_lines).strip()
-                rendered = _formula_img_tag(latex, display="block") if latex else ""
-                tail = _replace_inline_formulas(after) if after else ""
+                rendered = _formula_img_tag(latex, display="block", stats=stats) if latex else ""
+                tail = _replace_inline_formulas(after, stats=stats) if after else ""
                 output.append(f"{rendered}{tail}")
                 block_lines = []
                 in_block = False
@@ -231,17 +289,17 @@ def _replace_markdown_formulas_with_images(value: str) -> str:
             before, _sep, after = line.partition("$$")
             if "$$" in after:
                 latex, _sep2, rest = after.partition("$$")
-                replacement = _formula_img_tag(latex.strip(), display="block")
+                replacement = _formula_img_tag(latex.strip(), display="block", stats=stats)
                 output.append(
-                    f"{_replace_inline_formulas(before)}{replacement}{_replace_inline_formulas(rest)}"
+                    f"{_replace_inline_formulas(before, stats=stats)}{replacement}{_replace_inline_formulas(rest, stats=stats)}"
                 )
             else:
                 if before:
-                    output.append(_replace_inline_formulas(before))
+                    output.append(_replace_inline_formulas(before, stats=stats))
                 block_lines = [after]
                 in_block = True
             continue
-        output.append(_replace_inline_formulas(line))
+        output.append(_replace_inline_formulas(line, stats=stats))
 
     if in_block:
         output.append("$$" + "\n".join(block_lines))

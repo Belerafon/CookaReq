@@ -76,7 +76,7 @@ def test_markdown_view_render_markdown_supports_single_dollar_formulas() -> None
     rendered = _render_markdown("Energy: $E = mc^2$", allow_html=True, render_math=True)
 
     assert "$E = mc^2$" not in rendered
-    assert "math-formula-inline" in rendered or "<math" in rendered
+    assert "math-formula-inline" in rendered
 
 
 def test_markdown_view_render_markdown_normalizes_escaped_newlines() -> None:
@@ -89,4 +89,48 @@ def test_markdown_view_render_markdown_normalizes_escaped_newlines() -> None:
     )
 
     assert r"\n\n" not in rendered
-    assert "math-formula-inline" in rendered or "<math" in rendered
+    assert "math-formula-inline" in rendered
+
+
+def test_markdown_view_formula_fallback_keeps_source_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ui.widgets import markdown_view
+
+    monkeypatch.setattr(
+        markdown_view,
+        "_latex_to_png_bytes_with_reason",
+        lambda _latex: (None, "forced_for_test"),
+    )
+
+    rendered = markdown_view._render_markdown(
+        "Fallback: $E = mc^2$ and \\(a+b\\)",
+        allow_html=True,
+        render_math=True,
+    )
+
+    assert "math-formula-inline" not in rendered
+    assert "<math" not in rendered
+    assert "E = mc^2" in rendered
+    assert "a+b" in rendered
+
+
+def test_markdown_view_logs_formula_renderer_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.ui.widgets import markdown_view
+
+    monkeypatch.setattr(
+        markdown_view,
+        "_latex_to_png_bytes_with_reason",
+        lambda latex: (None, "forced_for_test") if "mc" in latex else (b"png", None),
+    )
+
+    with caplog.at_level("INFO"):
+        markdown_view._render_markdown(
+            "One: $E = mc^2$; two: \\(a+b\\)",
+            allow_html=True,
+            render_math=True,
+        )
+
+    assert "Formula preview renderer summary" in caplog.text
+    assert "forced_for_test=1" in caplog.text

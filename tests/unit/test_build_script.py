@@ -11,14 +11,16 @@ def test_build_pyinstaller_args_keeps_formula_preview_dependencies() -> None:
         script=root / 'app' / '__main__.py',
         root=root,
         icon=root / 'app' / 'resources' / 'app.ico',
-        hidden_imports=['matplotlib.backends.backend_agg'],
-        collect_packages=['matplotlib'],
+        hidden_imports=['matplotlib.backends.backend_agg', 'latex2mathml.converter'],
+        collect_packages=['matplotlib', 'latex2mathml'],
         excluded_modules=['scipy'],
         onefile=False,
     )
 
     assert '--collect-all=matplotlib' in args
     assert '--hidden-import=matplotlib.backends.backend_agg' in args
+    assert '--collect-all=latex2mathml' in args
+    assert '--hidden-import=latex2mathml.converter' in args
     assert '--exclude-module=matplotlib' not in args
     assert '--exclude-module=numpy' not in args
 

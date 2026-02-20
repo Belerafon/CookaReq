@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import html as html_lib
+import logging
 from pathlib import Path
 import re
 import tempfile
@@ -23,6 +24,9 @@ from ...core.markdown_utils import (
 )
 from ..text import normalize_for_display
 import contextlib
+
+
+_FORMULA_LOG = logging.getLogger(__name__)
 
 
 try:  # pragma: no cover - platform specific
@@ -107,6 +111,9 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
         import matplotlib
         from matplotlib import pyplot as plt
     except ImportError:  # pragma: no cover - optional runtime dependency
+        _FORMULA_LOG.warning(
+            "Formula preview PNG renderer is unavailable: matplotlib is not installed."
+        )
         return None
 
     matplotlib.use("Agg", force=True)
@@ -125,6 +132,7 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
             buffer.seek(0)
             return buffer.read()
     except Exception:  # pragma: no cover - rendering failures
+        _FORMULA_LOG.exception("Failed to render formula preview image for LaTeX expression.")
         return None
     finally:
         if figure is not None:

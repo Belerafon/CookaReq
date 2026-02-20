@@ -13,6 +13,7 @@ reportlab>=3.6.0
 bleach>=6.1
 python-docx>=1.1
 latex2mathml>=3.77
+matplotlib>=3.8
 # mathml2omml>=0.2  # Commented out - not available on PyPI
 mcp>=0.1.0  # Local package
 typer>=0.12.0

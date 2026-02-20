@@ -12,9 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import PyInstaller.__main__  # type: ignore
-
-
 def get_git_commit_date() -> str | None:
     """Get the date of the last commit from git."""
     try:
@@ -56,8 +53,49 @@ def clean_build_dirs() -> None:
             shutil.rmtree(dir_path, ignore_errors=True)
 
 
+def _build_pyinstaller_args(
+    *,
+    script: Path,
+    root: Path,
+    icon: Path,
+    hidden_imports: list[str],
+    collect_packages: list[str],
+    excluded_modules: list[str],
+    onefile: bool,
+) -> list[str]:
+    """Return PyInstaller CLI arguments for the current build configuration."""
+    args: list[str] = [
+        str(script),
+        "--name=CookaReq",
+        "--noconfirm",
+        "--windowed",
+        "--onedir",
+        f"--paths={root}",
+        *[f"--hidden-import={pkg}" for pkg in hidden_imports],
+        *[f"--collect-all={pkg}" for pkg in collect_packages],
+        f"--add-data={(root / 'app' / 'resources')}{os.pathsep}app/resources",
+        f"--add-data={(root / 'app' / 'ui' / 'resources')}{os.pathsep}app/ui/resources",
+        f"--add-data={(root / 'app' / 'locale')}{os.pathsep}app/locale",
+        f"--icon={icon}",
+        "--clean",
+        "--noconsole",
+        *[f"--exclude-module={module}" for module in excluded_modules],
+        "--hidden-import=wx.lib.pubsub.setupkwargs",
+        "--hidden-import=wx.lib.pubsub.core",
+        "--hidden-import=wx.lib.pubsub.core.arg1",
+        "--hidden-import=wx.lib.pubsub.core.kwargs",
+        "--hidden-import=wx.lib.pubsub.utils",
+    ]
+
+    if onefile:
+        return [a for a in args if a != "--onedir"] + ["--onefile"]
+    return args
+
+
 def main() -> None:
     """Build project executables using PyInstaller."""
+    import PyInstaller.__main__  # type: ignore
+
     # Update version.json with current git commit date
     update_version_json()
     
@@ -149,64 +187,51 @@ def main() -> None:
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
+        "matplotlib",
+        "matplotlib.pyplot",
+        "matplotlib.backends.backend_agg",
+        "matplotlib.mathtext",
     ]
 
     # Add all required packages to hidden imports
     hidden_imports.extend(required_packages)
 
-    # Build PyInstaller arguments
-    args: list[str] = [
-        str(script),
-        "--name=CookaReq",
-        "--noconfirm",
-        "--windowed",
-        # Default to one-folder; can be overridden by --onefile passed to this script
-        "--onedir",
-        # Add the app directory to the Python path in the executable
-        f"--paths={root}",
-        
-        # Include all required packages
-        *[f"--hidden-import={pkg}" for pkg in hidden_imports],
-        
-        # Collect package data/binaries that may be needed
-        *[f"--collect-all={pkg}" for pkg in [
-            "wx", "jsonschema", "fastapi", "uvicorn", "openai", 
-            "markdown", "reportlab", "mcp", "typer"
-        ]],
-        
-        # Add resources
-        f"--add-data={(root / 'app' / 'resources')}{os.pathsep}app/resources",
-        f"--add-data={(root / 'app' / 'ui' / 'resources')}{os.pathsep}app/ui/resources",
-        f"--add-data={(root / 'app' / 'locale')}{os.pathsep}app/locale",
-        f"--icon={icon}",
-        
-        # Additional PyInstaller options for better compatibility
-        "--clean",
-        "--noconsole",
-        "--exclude-module=_tkinter",
-        "--exclude-module=unittest",
-        "--exclude-module=test",
-        "--exclude-module=setuptools",
-        "--exclude-module=pip",
-        "--exclude-module=numpy",
-        "--exclude-module=matplotlib",
-        "--exclude-module=scipy",
-        "--exclude-module=pandas",
-        "--exclude-module=sklearn",
-        "--exclude-module=torch",
-        
-        # Handle wxPython deprecation warning
-        "--hidden-import=wx.lib.pubsub.setupkwargs",
-        "--hidden-import=wx.lib.pubsub.core",
-        "--hidden-import=wx.lib.pubsub.core.arg1",
-        "--hidden-import=wx.lib.pubsub.core.kwargs",
-        "--hidden-import=wx.lib.pubsub.utils",
+    collect_packages = [
+        "wx",
+        "jsonschema",
+        "fastapi",
+        "uvicorn",
+        "openai",
+        "markdown",
+        "reportlab",
+        "mcp",
+        "typer",
+        # Required for formula rendering in wx HtmlWindow previews.
+        "matplotlib",
     ]
 
-    # Allow switching to a single EXE if user passes "--onefile"
-    if any(a == "--onefile" for a in sys.argv[1:]):
-        # Replace --onedir with --onefile
-        args = [a for a in args if a != "--onedir"] + ["--onefile"]
+    excluded_modules = [
+        "_tkinter",
+        "unittest",
+        "test",
+        "setuptools",
+        "pip",
+        # Keep scientific stack exclusions except modules used by formula preview.
+        "scipy",
+        "pandas",
+        "sklearn",
+        "torch",
+    ]
+
+    args = _build_pyinstaller_args(
+        script=script,
+        root=root,
+        icon=icon,
+        hidden_imports=hidden_imports,
+        collect_packages=collect_packages,
+        excluded_modules=excluded_modules,
+        onefile=any(a == "--onefile" for a in sys.argv[1:]),
+    )
 
     PyInstaller.__main__.run(args)
 

@@ -331,7 +331,9 @@ so you know which modules are involved and which regressions to guard against.
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
   PyInstaller, reusing resources under `app/resources/` and localisation assets
-  from `app/locale/`.
+  from `app/locale/`. Runtime dependencies for statement formula previews
+  (`matplotlib` with `backend_agg`) are packaged explicitly so Windows bundles
+  keep rendering LaTeX snippets inside requirement preview forms.
 
 ## Data flows
 

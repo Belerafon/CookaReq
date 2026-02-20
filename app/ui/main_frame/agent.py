@@ -802,6 +802,15 @@ class MainFrameAgentMixin:
             except Exception:  # pragma: no cover - defensive
                 logger.exception("Failed to restore selection after agent update")
 
+        try:
+            self.docs_controller.refresh_document(current_prefix)
+            self._update_requirements_label()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception(
+                "Failed to refresh document metadata after agent tool updates for %s",
+                current_prefix,
+            )
+
     @staticmethod
     def _extract_result_rid(result_payload: Any) -> str | None:
         if isinstance(result_payload, Mapping):

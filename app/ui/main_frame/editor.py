@@ -151,6 +151,9 @@ class MainFrameEditorMixin:
                 else None
             )
             self.panel.refresh(select_id=select_id)
+        if self.current_doc_prefix == prefix:
+            self.docs_controller.refresh_document(prefix)
+            self._update_requirements_label()
         return requirement
 
     def _on_editor_save(self: MainFrame) -> None:

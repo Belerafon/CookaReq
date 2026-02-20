@@ -85,6 +85,12 @@ msgstr "Demonstration"
 msgid "Draft"
 msgstr "Draft"
 
+msgid "Document revision: {value}"
+msgstr "Document revision: {value}"
+
+msgid "Document revisions"
+msgstr "Document revisions"
+
 msgid "E&xit"
 msgstr "E&xit"
 
@@ -117,6 +123,9 @@ msgstr "ID must be positive"
 
 msgid "Revision must be a positive integer"
 msgstr "Revision must be a positive integer"
+
+msgid "rev {revision}"
+msgstr "rev {revision}"
 
 msgid "In review"
 msgstr "In review"

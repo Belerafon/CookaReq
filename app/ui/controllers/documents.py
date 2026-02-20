@@ -115,6 +115,12 @@ class DocumentsController:
         self.documents[prefix] = doc
         return doc
 
+    def refresh_document(self, prefix: str) -> Document:
+        """Reload document metadata for ``prefix`` and update cache."""
+        doc = self.service.get_document(prefix)
+        self.documents[prefix] = doc
+        return doc
+
     @staticmethod
     def _parse_original_id(doc: Document, rid: str | None) -> int | None:
         if not rid:
@@ -194,6 +200,7 @@ class DocumentsController:
         self.service.save_requirement_payload(prefix, data)
         saved_payload, _ = self.service.load_item(prefix, req.id)
         saved_requirement = Requirement.from_mapping(saved_payload)
+        doc = self.refresh_document(prefix)
         saved_requirement.doc_prefix = prefix
         saved_requirement.rid = rid_for(doc, saved_requirement.id)
         return saved_requirement
@@ -210,6 +217,7 @@ class DocumentsController:
             canonical = self.service.delete_requirement(rid)
         except ValidationError as exc:
             raise ValidationError(f"{rid}: {exc}") from exc
+        self.refresh_document(prefix)
         self.model.delete(req_id, doc_prefix=prefix)
         return canonical
 

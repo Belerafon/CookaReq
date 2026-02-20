@@ -172,7 +172,29 @@ class RequirementsService:
         doc = self.get_document(prefix)
         directory = self.root / prefix
         docs = self._ensure_documents()
-        return doc_store.save_item(directory, doc, payload, docs=docs)
+        resolved_payload = dict(payload)
+        item_id = resolved_payload.get("id")
+        if isinstance(item_id, int):
+            try:
+                existing, _mtime = doc_store.load_item(directory, doc, item_id)
+            except FileNotFoundError:
+                existing = None
+            if existing is not None:
+                current_revision_raw = existing.get("revision", 1)
+                try:
+                    current_revision = int(current_revision_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError("revision must be an integer") from exc
+                if current_revision <= 0:
+                    raise ValidationError("revision must be positive")
+                statement_changed = (
+                    resolved_payload.get("statement", "")
+                    != existing.get("statement", "")
+                )
+                resolved_payload["revision"] = (
+                    current_revision + 1 if statement_changed else current_revision
+                )
+        return doc_store.save_item(directory, doc, resolved_payload, docs=docs)
 
     def delete_requirement(self, rid: str) -> str:
         """Delete requirement ``rid`` enforcing revision semantics."""

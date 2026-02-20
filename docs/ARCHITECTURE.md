@@ -35,7 +35,10 @@ so you know which modules are involved and which regressions to guard against.
   counters, validates JSON payloads and hides filesystem concerns from callers.
   Requirement statements are validated as Markdown (table structure, safe HTML
   subset, and URI schemes) and rejected if they exceed the maximum statement
-  length so stored requirements remain previewable and export-ready.
+  length so stored requirements remain previewable and export-ready. Revision
+  auto-increment is intentionally tied only to statement text changes: editing
+  metadata fields (status, labels, links, etc.) keeps the current revision in
+  both GUI/CLI save flows and low-level update helpers.
 * **Domain models** — `app/core/model.py` defines `Requirement` and supporting
   enums (status, priority, link types). The status set currently includes draft,
   in_review, approved, baselined, retired, rejected, deferred, superseded and

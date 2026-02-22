@@ -183,18 +183,19 @@ so you know which modules are involved and which regressions to guard against.
   synthesise assistant text from reasoning segments when the model responds with
   tool calls only. The package is designed so new providers can be introduced
   behind the same `LLMClient` API.
-* **MCP server (`app/mcp/`)** — `server.py` exposes HTTP endpoints for tool
-  execution, `controller.py` launches and monitors the server from the GUI,
-  `client.py` issues requests with idempotent confirmation tokens, while
-  `tools_read.py` and `tools_write.py` implement read/write primitives against
-  the document store. Label management tools (`list_labels`, `create_label`,
-  `update_label`, `delete_label`) reuse the same service helpers so renames can
-  optionally cascade to requirement payloads. `events.py` broadcasts completion notifications that let
-  the UI refresh without reloading the entire document tree. `server.py`
-  maintains a thread-safe cache of `RequirementsService` objects scoped by the
-  configured base directory so repeated tool calls reuse a single instance; the
-  cache is flushed automatically when the server stops or the base path
-  changes.
+* **MCP server (`app/mcp/`)** — `server.py` now focuses on FastAPI endpoint
+  wiring, auth middleware, and uvicorn lifecycle. Supporting infrastructure is
+  split into `service_cache.py` (thread-safe `RequirementsService` cache by base
+  directory), `request_logging.py` (dedicated request logger setup/emission and
+  handler cleanup), and `tool_registry.py` (MCP tool definitions + schemas
+  bound to runtime state providers). `controller.py` launches and monitors the
+  server from the GUI, `client.py` issues requests with idempotent confirmation
+  tokens, while `tools_read.py` and `tools_write.py` implement read/write
+  primitives against the document store. Label management tools (`list_labels`,
+  `create_label`, `update_label`, `delete_label`) reuse the same service helpers
+  so renames can optionally cascade to requirement payloads. `events.py`
+  broadcasts completion notifications that let the UI refresh without reloading
+  the entire document tree.
 
 ## Graphical interface
 

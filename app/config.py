@@ -76,6 +76,7 @@ class ExportDialogState:
     card_label_group_mode: str | None = None
     export_scope: str | None = None
     colorize_label_backgrounds: bool = False
+    docx_include_requirement_heading: bool = True
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -506,6 +507,9 @@ class ConfigManager:
         colorize_label_backgrounds = payload.get("colorize_label_backgrounds")
         if not isinstance(colorize_label_backgrounds, bool):
             colorize_label_backgrounds = False
+        docx_include_requirement_heading = payload.get("docx_include_requirement_heading")
+        if not isinstance(docx_include_requirement_heading, bool):
+            docx_include_requirement_heading = True
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
@@ -517,6 +521,7 @@ class ConfigManager:
             card_label_group_mode=card_label_group_mode,
             export_scope=export_scope,
             colorize_label_backgrounds=colorize_label_backgrounds,
+            docx_include_requirement_heading=docx_include_requirement_heading,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -535,6 +540,7 @@ class ConfigManager:
             "card_label_group_mode": state.card_label_group_mode,
             "export_scope": state.export_scope,
             "colorize_label_backgrounds": state.colorize_label_backgrounds,
+            "docx_include_requirement_heading": state.docx_include_requirement_heading,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

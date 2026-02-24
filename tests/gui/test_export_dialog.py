@@ -47,6 +47,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert dialog.docx_formula_box.IsShown()
         assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
+        assert dialog.docx_include_requirement_heading_checkbox.GetValue() is True
 
         dialog.format_choice.SetSelection(0)
         dialog._update_text_options_visibility()
@@ -139,10 +140,12 @@ def test_export_dialog_default_scope_from_context(wx_app):
         assert plan is not None
         assert plan.export_scope == "all"
         assert plan.colorize_label_backgrounds is True
+        assert plan.docx_include_requirement_heading is True
 
         state = dialog.get_state()
         assert state.export_scope == "all"
         assert state.colorize_label_backgrounds is True
+        assert state.docx_include_requirement_heading is True
     finally:
         dialog.Destroy()
         wx_app.Yield()
@@ -163,14 +166,31 @@ def test_export_dialog_docx_formula_default_is_auto(wx_app):
         dialog._on_format_changed(pytest.importorskip("wx").CommandEvent())
         assert dialog.docx_formula_choice.GetSelection() == 0
 
+        dialog._on_clear(pytest.importorskip("wx").CommandEvent())
+        assert dialog.get_plan() is None
+
+        dialog.docx_include_requirement_heading_checkbox.SetValue(True)
+        dialog._on_docx_heading_toggle(pytest.importorskip("wx").CommandEvent())
         dialog.file_picker.SetPath("/tmp/export.docx")
+        plan_with_compact_mode = dialog.get_plan()
+        assert plan_with_compact_mode is not None
+        assert plan_with_compact_mode.columns == []
+
+        dialog.docx_include_requirement_heading_checkbox.SetValue(False)
+        dialog._on_docx_heading_toggle(pytest.importorskip("wx").CommandEvent())
+        plan = dialog.get_plan()
+        assert plan is None
+
+        dialog._on_select_all(pytest.importorskip("wx").CommandEvent())
         plan = dialog.get_plan()
         assert plan is not None
         assert plan.format == ExportFormat.DOCX
         assert plan.docx_formula_renderer == "auto"
+        assert plan.docx_include_requirement_heading is False
 
         state = dialog.get_state()
         assert state.docx_formula_renderer == "auto"
+        assert state.docx_include_requirement_heading is False
     finally:
         dialog.Destroy()
         wx_app.Yield()

@@ -38,6 +38,7 @@ class RequirementExportPlan:
     card_label_group_mode: str
     export_scope: Literal["all", "visible", "selected"]
     colorize_label_backgrounds: bool
+    docx_include_requirement_heading: bool
 
 
 DEFAULT_EXPORT_FIELD_ORDER: tuple[str, ...] = (
@@ -133,6 +134,11 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._colorize_label_backgrounds = (
             bool(saved_state.colorize_label_backgrounds) if saved_state else False
+        )
+        self._docx_include_requirement_heading = (
+            bool(saved_state.docx_include_requirement_heading)
+            if saved_state
+            else True
         )
         self._default_export_scope: Literal["all", "visible", "selected"] = (
             default_export_scope
@@ -331,6 +337,13 @@ class RequirementExportDialog(wx.Dialog):
                 _("Plain text"),
             ],
         )
+        self.docx_include_requirement_heading_checkbox = wx.CheckBox(
+            self.docx_formula_box,
+            label=_("Print requirement heading before each card"),
+        )
+        self.docx_include_requirement_heading_checkbox.SetValue(
+            self._docx_include_requirement_heading
+        )
         self._apply_docx_formula_choice()
 
         buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
@@ -357,6 +370,10 @@ class RequirementExportDialog(wx.Dialog):
         self.move_down_btn.Bind(wx.EVT_BUTTON, lambda _evt: self._move_column(1))
         self.select_all_btn.Bind(wx.EVT_BUTTON, self._on_select_all)
         self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear)
+        self.docx_include_requirement_heading_checkbox.Bind(
+            wx.EVT_CHECKBOX,
+            self._on_docx_heading_toggle,
+        )
         self.Bind(wx.EVT_BUTTON, self._on_ok, id=wx.ID_OK)
 
     def _arrange_layout(self) -> None:
@@ -397,6 +414,12 @@ class RequirementExportDialog(wx.Dialog):
 
         docx_options_sizer = wx.StaticBoxSizer(self.docx_formula_box, wx.VERTICAL)
         docx_options_sizer.Add(self.docx_formula_choice, 0, wx.ALL, 6)
+        docx_options_sizer.Add(
+            self.docx_include_requirement_heading_checkbox,
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            6,
+        )
         main_sizer.Add(docx_options_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         columns_sizer = wx.StaticBoxSizer(self.columns_box, wx.VERTICAL)
@@ -456,9 +479,15 @@ class RequirementExportDialog(wx.Dialog):
             return
         path = self.file_picker.GetPath()
         has_path = bool(path)
-        require_columns = True
+        require_columns = not self._can_export_without_columns()
         has_columns = bool(self._checked_fields()) if require_columns else True
         self.ok_button.Enable(has_path and has_columns)
+
+    def _can_export_without_columns(self) -> bool:
+        return (
+            self._current_format() == ExportFormat.DOCX
+            and self.docx_include_requirement_heading_checkbox.GetValue()
+        )
 
     def _update_text_options_visibility(self) -> None:
         show_options = self._current_format() in {
@@ -618,6 +647,9 @@ class RequirementExportDialog(wx.Dialog):
     def _on_card_sort_changed(self, _event: wx.CommandEvent) -> None:
         self._update_label_grouping_state()
 
+    def _on_docx_heading_toggle(self, _event: wx.CommandEvent) -> None:
+        self._update_ok_state()
+
     def _move_column(self, delta: int) -> None:
         idx = self.column_list.GetSelection()
         if idx == wx.NOT_FOUND:
@@ -671,7 +703,7 @@ class RequirementExportDialog(wx.Dialog):
         if not self.file_picker.GetPath():
             wx.MessageBox(_("Select export file first."), _("Export blocked"))
             return
-        if not self._checked_fields():
+        if not self._checked_fields() and not self._can_export_without_columns():
             wx.MessageBox(_("Choose at least one column to export."), _("Export blocked"))
             return
         event.Skip()
@@ -682,7 +714,7 @@ class RequirementExportDialog(wx.Dialog):
         if not path:
             return None
         columns = self._checked_fields()
-        if not columns:
+        if not columns and not self._can_export_without_columns():
             return None
         docx_renderer = None
         if self._current_format() == ExportFormat.DOCX:
@@ -705,6 +737,7 @@ class RequirementExportDialog(wx.Dialog):
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
+            docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -732,4 +765,5 @@ class RequirementExportDialog(wx.Dialog):
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
+            docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
         )

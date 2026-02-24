@@ -799,6 +799,7 @@ class MainFrameDocumentsMixin:
                 group_by_labels=labels_grouped,
                 label_group_mode=label_group_mode,
                 colorize_label_backgrounds=plan.colorize_label_backgrounds,
+                include_requirement_heading=plan.docx_include_requirement_heading,
             )
         else:
             if plan.format == ExportFormat.HTML:

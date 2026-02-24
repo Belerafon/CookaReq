@@ -2703,6 +2703,9 @@ msgstr "Одна группа на точный набор меток"
 msgid "DOCX formulas"
 msgstr "Формулы DOCX"
 
+msgid "Print requirement heading before each card"
+msgstr "Печатать заголовок требования перед каждой карточкой"
+
 msgid "Plain text"
 msgstr "Обычный текст"
 

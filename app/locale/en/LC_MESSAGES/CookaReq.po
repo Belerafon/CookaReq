@@ -2681,6 +2681,9 @@ msgstr "One group per exact label set"
 msgid "DOCX formulas"
 msgstr "DOCX formulas"
 
+msgid "Print requirement heading before each card"
+msgstr "Print requirement heading before each card"
+
 msgid "Plain text"
 msgstr "Plain text"
 

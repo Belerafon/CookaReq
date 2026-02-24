@@ -142,6 +142,91 @@ def test_render_requirements_docx_shows_empty_fields_placeholder(tmp_path: Path)
         assert "(not set)" in document_xml
 
 
+def test_render_requirements_docx_can_skip_requirement_heading(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=41,
+        title="Heading toggle",
+        statement="Body text",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS41",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    with_heading = render_requirements_docx(export, include_requirement_heading=True)
+    without_heading = render_requirements_docx(export, include_requirement_heading=False)
+
+    with ZipFile(io.BytesIO(with_heading)) as archive:
+        with_heading_xml = archive.read("word/document.xml").decode("utf-8")
+    with ZipFile(io.BytesIO(without_heading)) as archive:
+        without_heading_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "SYS41 — Heading toggle" in with_heading_xml
+    assert "SYS41 — Heading toggle" not in without_heading_xml
+    assert "Body text" in without_heading_xml
+
+
+def test_render_requirements_docx_renders_compact_list_when_no_fields_selected(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    first = Requirement(
+        id=51,
+        title="First title",
+        statement="First body",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS51",
+    )
+    second = Requirement(
+        id=52,
+        title="Second title",
+        statement="Second body",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS52",
+    )
+    save_item(doc_dir, doc, first.to_mapping())
+    save_item(doc_dir, doc, second.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(
+        export,
+        fields=[],
+        include_requirement_heading=True,
+    )
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "SYS51 - First title" in document_xml
+    assert "SYS52 - Second title" in document_xml
+    assert "First body" not in document_xml
+    assert "Requirement RID" not in document_xml
+
+
 def test_render_requirements_docx_renders_formula_omml(tmp_path: Path) -> None:
     pytest.importorskip("latex2mathml")
     pytest.importorskip("mathml2omml")

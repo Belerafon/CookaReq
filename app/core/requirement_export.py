@@ -1367,9 +1367,11 @@ def render_requirements_docx(
     unlabeled_group_title: str | None = None,
     label_group_mode: str = "per_label",
     colorize_label_backgrounds: bool = False,
+    include_requirement_heading: bool = True,
 ) -> bytes:
     """Render export data as a DOCX document."""
     selected_fields = _normalize_export_fields(fields)
+    compact_heading_list = selected_fields == set() and include_requirement_heading
     heading = title or _('Requirements export')
     document = docx.Document()
     document.add_heading(heading, level=0)
@@ -1420,13 +1422,22 @@ def render_requirements_docx(
             group_iter = [("", list(doc_export.requirements))]
 
         for group_title, group_views in group_iter:
+            if compact_heading_list:
+                if group_by_labels:
+                    document.add_heading(f"{_('Labels')}: {group_title}", level=2)
+                for view in group_views:
+                    req = view.requirement
+                    paragraph = document.add_paragraph()
+                    paragraph.add_run(f"{req.rid} - {req.title or _('(no title)')}")
+                continue
             heading_level = 2
             if group_by_labels:
                 document.add_heading(f"{_('Labels')}: {group_title}", level=2)
                 heading_level = 3
             for view in group_views:
                 req = view.requirement
-                document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
+                if include_requirement_heading:
+                    document.add_heading(_requirement_heading(req, selected_fields), level=heading_level)
                 field_rows: list[tuple[str, str | None, tuple[str, ...] | None]] = []
                 field_rows.append(("Requirement RID", req.rid, None))
                 if _should_render_field(selected_fields, "title"):

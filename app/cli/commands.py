@@ -1017,22 +1017,30 @@ def add_link_arguments(p: argparse.ArgumentParser) -> None:
     )
 
 
-def _open_trace_output(path: str | None) -> tuple[TextIO, bool]:
+def _encoding_for_text_output(path: str | None, *, excel_compatible: bool = False) -> str:
+    if excel_compatible and path:
+        suffix = Path(path).suffix.lower()
+        if suffix in {".csv", ".tsv"}:
+            return "utf-8-sig"
+    return "utf-8"
+
+
+def _open_trace_output(path: str | None, *, encoding: str = "utf-8") -> tuple[TextIO, bool]:
     if not path:
         return sys.stdout, False
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    return out_path.open("w", encoding="utf-8", newline=""), True
+    return out_path.open("w", encoding=encoding, newline=""), True
 
 
-def _open_export_output(path: str | None, *, binary: bool) -> tuple[Any, bool]:
+def _open_export_output(path: str | None, *, binary: bool, encoding: str = "utf-8") -> tuple[Any, bool]:
     if not path:
         return (sys.stdout.buffer if binary else sys.stdout), False
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if binary:
         return out_path.open("wb"), True
-    return out_path.open("w", encoding="utf-8"), True
+    return out_path.open("w", encoding=encoding), True
 
 
 def cmd_trace(
@@ -1065,7 +1073,11 @@ def cmd_trace(
         return 1
 
     fmt = getattr(args, "format", "pairs")
-    out, close_out = _open_trace_output(getattr(args, "output", None))
+    output_path = getattr(args, "output", None)
+    out, close_out = _open_trace_output(
+        output_path,
+        encoding=_encoding_for_text_output(output_path, excel_compatible=(fmt == "matrix-csv")),
+    )
     try:
         if fmt == "pairs":
             _write_trace_pairs(out, matrix)

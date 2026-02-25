@@ -21,6 +21,7 @@ from ..core.trace_matrix import (
     TraceMatrixConfig,
 )
 from ..i18n import _
+from .export_helpers import text_export_encoding
 
 if TYPE_CHECKING:  # pragma: no cover - import for typing only
     from .controllers.documents import DocumentsController
@@ -821,7 +822,7 @@ def _describe_links(cell: TraceMatrixCell | None, direction: TraceDirection) -> 
 
 
 def _write_matrix_csv(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
-    with path.open("w", encoding="utf-8", newline="") as out:
+    with path.open("w", encoding=text_export_encoding(path), newline="") as out:
         writer = csv.writer(out)
         header = [field.upper() for field in options.selected_fields]
         header.extend(column.rid for column in matrix.columns)

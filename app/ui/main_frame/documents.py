@@ -27,7 +27,7 @@ from ...core.requirement_export import (
 )
 from ...core.requirement_text_export import render_requirement_cards_txt
 from ...core.requirement_sorting import sort_requirements_for_cards
-from ..export_helpers import prepare_export_destination
+from ..export_helpers import prepare_export_destination, text_export_encoding
 from ...i18n import _
 from ...log import logger
 from ...util.system_open import open_directory
@@ -871,7 +871,7 @@ class MainFrameDocumentsMixin:
             if plan.format == ExportFormat.DOCX:
                 export_path.write_bytes(content)
             else:
-                export_path.write_text(content, encoding="utf-8")
+                export_path.write_text(content, encoding=text_export_encoding(export_path))
         except OSError as exc:
             logger.exception("Failed to export requirements to %s", export_path)
             wx.MessageBox(str(exc), _("Export failed"), wx.ICON_ERROR)

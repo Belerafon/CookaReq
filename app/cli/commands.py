@@ -81,6 +81,7 @@ class ItemPayload:
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
     attachments: list[Any] = field(default_factory=list)
+    context_docs: list[str] = field(default_factory=list)
     approved_at: str | None = None
     notes: str = ""
     links: list[str] = field(default_factory=list)
@@ -121,6 +122,13 @@ class ItemPayload:
                     break
                 if not attachment.get("path"):
                     errors.append(_("attachment path is required"))
+                    break
+        if not isinstance(self.context_docs, list):
+            errors.append(_("context_docs must be a list"))
+        else:
+            for path in self.context_docs:
+                if not isinstance(path, str):
+                    errors.append(_("context_docs must be a list of strings"))
                     break
         if self.revision is not None and not isinstance(self.revision, int):
             errors.append(_("revision must be an integer"))
@@ -493,6 +501,24 @@ def _resolve_attachments(
     return deepcopy(base_value)
 
 
+def _resolve_context_docs(
+    args: argparse.Namespace, base: Mapping[str, Any], default: list[str]
+) -> list[str]:
+    sentinel = object()
+    arg_value = getattr(args, "context_docs", sentinel)
+    if arg_value not in (sentinel, None, ""):
+        parsed = json.loads(arg_value)
+        if not isinstance(parsed, list):
+            raise ValidationError(_("context_docs must be a list"))
+        return [str(item) for item in parsed if str(item).strip()]
+    base_value = base.get("context_docs")
+    if base_value is None:
+        return list(default)
+    if not isinstance(base_value, list):
+        raise ValidationError(_("context_docs must be a list"))
+    return [str(item) for item in deepcopy(base_value) if str(item).strip()]
+
+
 def _resolve_revision(
     args: argparse.Namespace, base: Mapping[str, Any]
 ) -> int | None:
@@ -523,6 +549,8 @@ def build_item_payload(
             values[field_def.name] = _resolve_links(args, base_data, default)
         elif field_def.name == "attachments":
             values[field_def.name] = _resolve_attachments(args, base_data, default)
+        elif field_def.name == "context_docs":
+            values[field_def.name] = _resolve_context_docs(args, base_data, default)
         elif field_def.name in {"acceptance", "approved_at"}:
             values[field_def.name] = _resolve_optional_field(
                 args, base_data, field_def.name, default
@@ -816,6 +844,7 @@ def _add_item_payload_arguments(
     parser.add_argument("--approved-at", dest="approved_at")
     parser.add_argument("--notes")
     parser.add_argument("--attachments", help=_("JSON list of attachments"))
+    parser.add_argument("--context-docs", dest="context_docs", help=_("JSON list of context markdown paths"))
     parser.add_argument(
         "--labels", dest="labels", help=_("comma-separated labels")
     )
@@ -853,6 +882,7 @@ def cmd_item_list(
                 "status": req.status.value,
                 "labels": list(req.labels),
                 "links": [link.rid for link in getattr(req, "links", [])],
+                "context_docs": list(getattr(req, "context_docs", []) or []),
             }
             for req in page.items
         ]

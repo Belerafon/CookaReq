@@ -97,6 +97,7 @@ def test_item_list_json_format(tmp_path, capsys, cli_context):
             "labels": ["system"],
             "status": "approved",
             "links": [],
+            "context_docs": ["related/ctx.md"],
         },
     )
 
@@ -117,3 +118,5 @@ def test_item_list_json_format(tmp_path, capsys, cli_context):
     assert rc == 0
     assert '"rid": "SYS1"' in out
     assert '"status": "approved"' in out
+    assert '"context_docs": [' in out
+    assert '"related/ctx.md"' in out

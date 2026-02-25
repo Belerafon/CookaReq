@@ -593,3 +593,33 @@ def test_render_requirements_html_marks_links_outside_export_scope(tmp_path: Pat
 
     assert "outside exported scope" in html
     assert "href='#SYS1'" not in html
+
+
+def test_render_requirements_html_includes_context_preface(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    req = Requirement(
+        id=1,
+        title="Req",
+        statement="Body",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    save_item(tmp_path / "SYS", doc, req.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    html = render_requirements_html(
+        export,
+        context_preface=[("related/math/overview.md", "# Overview\n\nText")],
+    )
+
+    assert "Context documents" in html
+    assert "related/math/overview.md" in html
+    assert "Overview" in html

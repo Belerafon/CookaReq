@@ -26,6 +26,7 @@ FIELD_LABEL_MSGIDS = {
     "derived_count": "Derived count",
     "derived_from": "Derived from",
     "attachments": "Attachments",
+    "context_docs": "Context docs",
     "approved_at": "Approved at",
     "notes": "Notes",
     "links": "Links",

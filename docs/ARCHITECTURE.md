@@ -23,6 +23,10 @@ so you know which modules are involved and which regressions to guard against.
 | `tests/` | End-to-end, GUI, services and core suites (see `tests/README.md`). |
 | `tools/` | Development helpers such as `run_wx.py` for running wx scripts under a virtual display. |
 
+Design alternatives for larger product changes are tracked in standalone docs
+under `docs/`. For generalized contextual-artifact linking and context-centric
+requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
+
 ## Core domain: requirements and traceability
 
 * **On-disk layout** — each document lives under `requirements/<PREFIX>/`.
@@ -52,6 +56,9 @@ so you know which modules are involved and which regressions to guard against.
   sync with the JSON representation and migrations for existing files.
   Attachments are stored as `{id, path, note}` entries, where `id` is referenced
   from Markdown statements and `path` points to the document-local assets file.
+  Requirements can also include `context_docs` (relative Markdown paths under the
+  current document directory) so exports can prepend shared context sections
+  before requirement cards while reporting unresolved references.
   Trace links keep a `revision` snapshot of the target requirement and are marked
   suspect when the stored revision differs from the current target revision (or
   when the target cannot be resolved).
@@ -69,7 +76,10 @@ so you know which modules are involved and which regressions to guard against.
   UTF-8 BOM (`utf-8-sig`) so Microsoft Excel detects Cyrillic text correctly
   across locale-specific default code pages, while the text helper builds the
   plain-text card exports used by the GUI export dialog and renders Markdown
-  tables as ASCII grids for readability. The HTML export cards render Markdown
+  tables as ASCII grids for readability. Card exports now support sorting by
+  `context_docs`; when that mode is selected the export dialog can prepend the
+  resolved `context_docs` Markdown snippets before the requirement list.
+  The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert
   LaTeX-style formulas (`\(...\)`, `$...$`, and `$$...$$`) into MathML, and
   resolve attachment links to the stored asset paths. Before Markdown/formula

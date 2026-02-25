@@ -25,6 +25,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
         assert not dialog.colorize_label_backgrounds_checkbox.IsEnabled()
+        assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(1)
@@ -36,6 +37,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
         assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
+        assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(2)
@@ -47,6 +49,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert dialog.docx_formula_box.IsShown()
         assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
+        assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog.docx_include_requirement_heading_checkbox.GetValue() is True
 
         dialog.format_choice.SetSelection(0)
@@ -58,6 +61,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.columns_box.IsShown()
         assert not dialog.docx_formula_box.IsShown()
         assert not dialog.colorize_label_backgrounds_checkbox.IsEnabled()
+        assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog._selected_export_scope() == "all"
     finally:
         dialog.Destroy()
@@ -92,6 +96,7 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
         assert dialog._selected_export_scope() == "visible"
         assert dialog._selected_card_label_group_mode() == "per_label"
         assert not dialog.card_label_group_choice.IsEnabled()
+        assert not dialog.context_docs_preface_checkbox.IsShown()
 
         dialog.card_sort_choice.SetSelection(1)
         dialog._on_card_sort_changed(_wx.CommandEvent())
@@ -108,6 +113,18 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
         state = dialog.get_state()
         assert state.card_sort_mode == "labels"
         assert state.card_label_group_mode == "label_set"
+
+        dialog.card_sort_choice.SetSelection(4)
+        dialog._on_card_sort_changed(_wx.CommandEvent())
+        assert dialog._selected_card_sort_mode() == "context_docs"
+        assert dialog.context_docs_preface_checkbox.IsShown()
+        dialog.context_docs_preface_checkbox.SetValue(True)
+        plan = dialog.get_plan()
+        assert plan is not None
+        assert plan.generate_context_docs_preface is True
+
+        state = dialog.get_state()
+        assert state.generate_context_docs_preface is True
     finally:
         dialog.Destroy()
         wx_app.Yield()

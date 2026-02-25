@@ -626,3 +626,52 @@ def test_item_delete_reports_revision_error(tmp_path, capsys, cli_context):
     assert "revision" in out.lower()
     assert "SYS1" in out
     assert path.exists()
+
+
+@pytest.mark.unit
+def test_item_add_accepts_context_docs(tmp_path, capsys, cli_context):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Login",
+        statement="Context aware",
+        context_docs='["related/math/overview.md", "related/math/details.md"]',
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+    assert rid == "SYS1"
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["context_docs"] == ["related/math/overview.md", "related/math/details.md"]
+
+
+@pytest.mark.unit
+def test_item_edit_updates_context_docs(tmp_path, capsys, cli_context):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Login",
+        statement="Initial",
+        context_docs='["related/one.md"]',
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        context_docs='["related/two.md"]',
+    )
+    commands.cmd_item_edit(edit_args, cli_context)
+    capsys.readouterr()
+
+    path = item_path(tmp_path / "SYS", doc, 1)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["context_docs"] == ["related/two.md"]

@@ -39,6 +39,7 @@ class RequirementExportPlan:
     export_scope: Literal["all", "visible", "selected"]
     colorize_label_backgrounds: bool
     docx_include_requirement_heading: bool
+    generate_context_docs_preface: bool
 
 
 DEFAULT_EXPORT_FIELD_ORDER: tuple[str, ...] = (
@@ -139,6 +140,9 @@ class RequirementExportDialog(wx.Dialog):
             bool(saved_state.docx_include_requirement_heading)
             if saved_state
             else True
+        )
+        self._generate_context_docs_preface = (
+            bool(saved_state.generate_context_docs_preface) if saved_state else False
         )
         self._default_export_scope: Literal["all", "visible", "selected"] = (
             default_export_scope
@@ -305,6 +309,7 @@ class RequirementExportDialog(wx.Dialog):
                 _("Labels"),
                 _("Source"),
                 _("Title"),
+                _("Context docs"),
             ],
         )
         self._apply_card_sort_choice()
@@ -325,6 +330,11 @@ class RequirementExportDialog(wx.Dialog):
             label=_("Color label backgrounds (HTML/DOCX)"),
         )
         self.colorize_label_backgrounds_checkbox.SetValue(self._colorize_label_backgrounds)
+        self.context_docs_preface_checkbox = wx.CheckBox(
+            self.txt_options_box,
+            label=_("Generate context_docs content before requirements list"),
+        )
+        self.context_docs_preface_checkbox.SetValue(self._generate_context_docs_preface)
 
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
@@ -406,6 +416,12 @@ class RequirementExportDialog(wx.Dialog):
         txt_options_sizer.Add(label_group_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
         txt_options_sizer.Add(
             self.colorize_label_backgrounds_checkbox,
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            6,
+        )
+        txt_options_sizer.Add(
+            self.context_docs_preface_checkbox,
             0,
             wx.LEFT | wx.RIGHT | wx.BOTTOM,
             6,
@@ -497,6 +513,7 @@ class RequirementExportDialog(wx.Dialog):
         }
         self._main_sizer.Show(self._txt_options_sizer, show_options, recursive=True)
         self._update_label_grouping_state()
+        self._update_context_docs_preface_state()
         self._update_colorize_labels_state()
         self._main_sizer.Layout()
 
@@ -531,7 +548,7 @@ class RequirementExportDialog(wx.Dialog):
         return "all"
 
     def _coerce_card_sort_mode(self, value: str | None) -> str:
-        if value in {"id", "labels", "source", "title"}:
+        if value in {"id", "labels", "source", "title", "context_docs"}:
             return value
         return "id"
 
@@ -541,6 +558,7 @@ class RequirementExportDialog(wx.Dialog):
             "labels": 1,
             "source": 2,
             "title": 3,
+            "context_docs": 4,
         }
         self.card_sort_choice.SetSelection(selection_map.get(self._card_sort_mode, 0))
 
@@ -552,6 +570,8 @@ class RequirementExportDialog(wx.Dialog):
             return "source"
         if selection == 3:
             return "title"
+        if selection == 4:
+            return "context_docs"
         return "id"
 
 
@@ -579,6 +599,13 @@ class RequirementExportDialog(wx.Dialog):
         enabled = self._selected_card_sort_mode() == "labels"
         self.card_label_group_label.Enable(enabled)
         self.card_label_group_choice.Enable(enabled)
+
+    def _update_context_docs_preface_state(self) -> None:
+        enabled = self._selected_card_sort_mode() == "context_docs"
+        self.context_docs_preface_checkbox.Enable(enabled)
+        self.context_docs_preface_checkbox.Show(enabled)
+        if not enabled:
+            self.context_docs_preface_checkbox.SetValue(False)
 
     def _update_colorize_labels_state(self) -> None:
         enabled = self._current_format() in {ExportFormat.HTML, ExportFormat.DOCX}
@@ -646,6 +673,8 @@ class RequirementExportDialog(wx.Dialog):
 
     def _on_card_sort_changed(self, _event: wx.CommandEvent) -> None:
         self._update_label_grouping_state()
+        self._update_context_docs_preface_state()
+        self._main_sizer.Layout()
 
     def _on_docx_heading_toggle(self, _event: wx.CommandEvent) -> None:
         self._update_ok_state()
@@ -738,6 +767,7 @@ class RequirementExportDialog(wx.Dialog):
             export_scope=self._selected_export_scope(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
+            generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -766,4 +796,5 @@ class RequirementExportDialog(wx.Dialog):
             export_scope=self._selected_export_scope(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
+            generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),
         )

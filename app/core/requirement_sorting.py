@@ -28,6 +28,7 @@ def sort_requirements_for_cards(
     - ``labels``: lexicographic order of full labels set (requirements without labels last).
     - ``source``: source text, then requirement identifier.
     - ``title``: title text, then requirement identifier.
+    - ``context_docs``: linked context markdown paths, then requirement identifier.
     """
     prepared = list(requirements)
 
@@ -44,10 +45,16 @@ def sort_requirements_for_cards(
     def key_by_title(requirement: Requirement) -> tuple[str, int]:
         return (requirement.title.strip().lower(), requirement.id)
 
+    def key_by_context_docs(requirement: Requirement) -> tuple[tuple[object, ...], int]:
+        docs = getattr(requirement, "context_docs", []) or []
+        normalized = tuple(natural_sort_key(str(doc).strip().lower()) for doc in docs if str(doc).strip())
+        return (normalized, requirement.id)
+
     key_lookup = {
         "labels": key_by_labels,
         "source": key_by_source,
         "title": key_by_title,
+        "context_docs": key_by_context_docs,
         "id": key_by_id,
     }
     key_func = key_lookup.get(sort_mode, key_by_id)

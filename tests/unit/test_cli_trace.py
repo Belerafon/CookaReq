@@ -109,6 +109,8 @@ def test_trace_output_creates_parent_dirs(tmp_path, capsys, cli_context):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert out_file.exists()
-    data = out_file.read_text().splitlines()
+    raw = out_file.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    data = out_file.read_text(encoding="utf-8-sig").splitlines()
     assert data[0] == "RID,Title,Document,Status,SYS1 (System)"
     assert data[1] == "HLR1,H,High,approved,linked"

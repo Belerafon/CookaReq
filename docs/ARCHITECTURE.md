@@ -62,7 +62,9 @@ so you know which modules are involved and which regressions to guard against.
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all
   persistence to the document store. The tabular helper renders the
-  selectable-column CSV/TSV exports, while the text helper builds the
+  selectable-column CSV/TSV exports, and the UI/CLI write those files with
+  UTF-8 BOM (`utf-8-sig`) so Microsoft Excel detects Cyrillic text correctly
+  across locale-specific default code pages, while the text helper builds the
   plain-text card exports used by the GUI export dialog and renders Markdown
   tables as ASCII grids for readability. The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert

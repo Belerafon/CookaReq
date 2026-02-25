@@ -6,6 +6,21 @@ import shutil
 from pathlib import Path
 
 
+EXCEL_FRIENDLY_TEXT_SUFFIXES = frozenset({".csv", ".tsv"})
+
+
+def text_export_encoding(path: Path) -> str:
+    """Return encoding for text exports.
+
+    CSV/TSV exports use UTF-8 BOM so Excel autodetects Unicode reliably
+    on Windows locales with legacy ANSI defaults.
+    """
+
+    if path.suffix.lower() in EXCEL_FRIENDLY_TEXT_SUFFIXES:
+        return "utf-8-sig"
+    return "utf-8"
+
+
 def prepare_export_destination(
     target_path: Path,
     *,

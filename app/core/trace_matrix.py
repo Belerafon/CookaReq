@@ -54,7 +54,7 @@ class TraceMatrixLinkView:
     source_rid: str
     target_rid: str
     suspect: bool
-    fingerprint: str | None
+    revision: int | None
 
 
 @dataclass(frozen=True)
@@ -285,7 +285,7 @@ def _build_cells(
                         source_rid=source_rid,
                         target_rid=target_rid,
                         suspect=raw_link.suspect,
-                        fingerprint=raw_link.fingerprint,
+                        revision=raw_link.revision,
                     )
                 )
     else:
@@ -303,7 +303,7 @@ def _build_cells(
                         source_rid=source_rid,
                         target_rid=target_rid,
                         suspect=raw_link.suspect,
-                        fingerprint=raw_link.fingerprint,
+                        revision=raw_link.revision,
                     )
                 )
 
@@ -314,7 +314,7 @@ def _build_cells(
             key=lambda item: (
                 item.source_rid,
                 item.target_rid,
-                item.fingerprint or "",
+                item.revision or 0,
                 item.suspect,
             ),
         )

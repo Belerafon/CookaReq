@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum, StrEnum
 from typing import Any
@@ -300,41 +298,12 @@ class Requirement:
         return data
 
 
-FINGERPRINT_FIELDS = (
-    "title",
-    "statement",
-    "conditions",
-    "rationale",
-    "assumptions",
-    "acceptance",
-)
-
-
-def _fingerprint_value(payload: Requirement | Mapping[str, Any], field: str) -> str:
-    if isinstance(payload, Mapping):
-        value = payload.get(field, "")
-    else:
-        value = getattr(payload, field, "")
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    return str(value)
-
-
-def requirement_fingerprint(payload: Requirement | Mapping[str, Any]) -> str:
-    """Compute fingerprint for ``payload`` based on key textual fields."""
-    data = {field: _fingerprint_value(payload, field) for field in FINGERPRINT_FIELDS}
-    serialized = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-
 @dataclass
 class Link:
     """Represent relationship to a parent requirement."""
 
     rid: str
-    fingerprint: str | None = None
+    revision: int | None = None
     suspect: bool = False
 
     @classmethod
@@ -350,13 +319,16 @@ class Link:
             if not isinstance(rid, str) or not rid.strip():
                 raise ValueError("link entry missing rid")
             rid = rid.strip()
-            fingerprint_raw = raw.get("fingerprint")
-            if fingerprint_raw in (None, ""):
-                fingerprint = None
-            elif isinstance(fingerprint_raw, str):
-                fingerprint = fingerprint_raw
+            revision_raw = raw.get("revision")
+            if revision_raw in (None, ""):
+                revision = None
             else:
-                fingerprint = str(fingerprint_raw)
+                try:
+                    revision = int(revision_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("link revision must be a positive integer") from exc
+                if revision <= 0:
+                    raise ValueError("link revision must be a positive integer")
             suspect_raw = raw.get("suspect", False)
             if isinstance(suspect_raw, bool):
                 suspect = suspect_raw
@@ -366,14 +338,14 @@ class Link:
                 suspect = suspect_raw.strip().lower() in {"1", "true", "yes", "on"}
             else:
                 suspect = bool(suspect_raw)
-            return cls(rid=rid, fingerprint=fingerprint, suspect=suspect)
+            return cls(rid=rid, revision=revision, suspect=suspect)
         raise TypeError("link entry must be a string or mapping")
 
     def to_dict(self) -> dict[str, Any]:
         """Return JSON-friendly representation of the link."""
         data: dict[str, Any] = {"rid": self.rid}
-        if self.fingerprint:
-            data["fingerprint"] = self.fingerprint
+        if self.revision is not None:
+            data["revision"] = self.revision
         if self.suspect:
             data["suspect"] = self.suspect
         return data

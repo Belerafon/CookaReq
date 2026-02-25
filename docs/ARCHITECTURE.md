@@ -52,6 +52,9 @@ so you know which modules are involved and which regressions to guard against.
   sync with the JSON representation and migrations for existing files.
   Attachments are stored as `{id, path, note}` entries, where `id` is referenced
   from Markdown statements and `path` points to the document-local assets file.
+  Trace links keep a `revision` snapshot of the target requirement and are marked
+  suspect when the stored revision differs from the current target revision (or
+  when the target cannot be resolved).
 * **Search and filtering** — `app/core/search.py` provides predicates used by
   the wx models in `app/ui/requirement_model.py` to filter by text, labels and
   status. Sorting also happens in these layers.

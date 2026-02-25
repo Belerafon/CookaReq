@@ -15,7 +15,7 @@ from ...services.requirements import (
     ValidationError,
     rid_for,
 )
-from ...core.model import Link, Requirement, requirement_fingerprint
+from ...core.model import Link, Requirement
 from ...i18n import _
 from ...log import logger
 from ..transfer_dialog import (
@@ -150,7 +150,7 @@ class MainFrameRequirementsMixin:
         for entry in getattr(source, "links", []):
             if isinstance(entry, Link):
                 existing_links.append(
-                    Link(rid=entry.rid, fingerprint=entry.fingerprint, suspect=entry.suspect)
+                    Link(rid=entry.rid, revision=entry.revision, suspect=entry.suspect)
                 )
                 continue
             try:
@@ -164,7 +164,7 @@ class MainFrameRequirementsMixin:
 
         parent_link = Link(
             rid=parent_rid,
-            fingerprint=requirement_fingerprint(source),
+            revision=source.revision,
             suspect=False,
         )
         new_links = [*existing_links, parent_link]

@@ -23,7 +23,6 @@ from app.core.document_store.items import (
     update_requirement_field,
 )
 from app.core.markdown_utils import MAX_STATEMENT_LENGTH
-from app.core.model import requirement_fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -355,4 +354,4 @@ def test_move_requirement_updates_links(tmp_path: Path) -> None:
     updated_child = get_requirement(tmp_path, child.rid, docs=docs)
     assert [link.rid for link in updated_child.links] == [moved.rid]
     assert all(not link.suspect for link in updated_child.links)
-    assert updated_child.links[0].fingerprint == requirement_fingerprint(moved)
+    assert updated_child.links[0].revision == moved.revision

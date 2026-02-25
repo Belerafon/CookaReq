@@ -30,7 +30,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_fingerprint,
 )
 from app.core.trace_matrix import (
     TraceDirection,
@@ -386,7 +385,7 @@ def _write_trace_matrix_json(out: TextIO, matrix: TraceMatrix) -> None:
                         "source": link.source_rid,
                         "target": link.target_rid,
                         "suspect": link.suspect,
-                        "fingerprint": link.fingerprint,
+                        "revision": link.revision,
                     }
                     for link in cell.links
                 ],
@@ -993,9 +992,17 @@ def cmd_link(
     if args.replace:
         existing_links.clear()
     for rid, parent_data in parent_payloads.items():
+        try:
+            parent_revision = int(parent_data.get("revision", 1))
+        except (TypeError, ValueError):
+            sys.stdout.write(_("invalid revision for linked item: {rid}\n").format(rid=rid))
+            return 1
+        if parent_revision <= 0:
+            sys.stdout.write(_("invalid revision for linked item: {rid}\n").format(rid=rid))
+            return 1
         existing_links[rid] = Link(
             rid=rid,
-            fingerprint=requirement_fingerprint(parent_data),
+            revision=parent_revision,
             suspect=False,
         )
     req.links = [existing_links[rid] for rid in sorted(existing_links)]

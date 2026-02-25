@@ -3108,3 +3108,27 @@ msgstr "context_docs должен быть списком"
 
 msgid "context_docs must be a list of strings"
 msgstr "context_docs должен быть списком строк"
+
+msgid "Select a document before adding context docs."
+msgstr "Выберите документ перед добавлением context_docs."
+
+msgid "Document folder does not exist: {path}"
+msgstr "Папка документа не существует: {path}"
+
+msgid "Select context Markdown file"
+msgstr "Выберите Markdown-файл контекста"
+
+msgid "Markdown files (*.md)|*.md"
+msgstr "Markdown-файлы (*.md)|*.md"
+
+msgid "Selected file must be inside the current document folder."
+msgstr "Выбранный файл должен находиться внутри папки текущего документа."
+
+msgid "Relative paths to Markdown files with shared context for this requirement."
+msgstr "Относительные пути к Markdown-файлам с общим контекстом для этого требования."
+
+msgid "Store documents inside the current requirement document folder (for example, related/overview.md) so exports and reviews can resolve them reliably."
+msgstr "Храните документы внутри папки текущего документа требований (например, related/overview.md), чтобы экспорт и ревью стабильно разрешали ссылки."
+
+msgid "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
+msgstr "Используйте context_docs для фона, доменных ограничений и справочных заметок, которые должны быть доступны до чтения формулировок требований."

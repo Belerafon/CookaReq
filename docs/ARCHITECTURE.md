@@ -331,8 +331,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   clear all export columns but keep heading rendering enabled for DOCX, export
   switches to a compact one-line list (`RID - title`) without card tables.
   `EditorPanel` keeps the requirement form in an explicit two-stage sequence: a
-  primary block (ID/title/statement/context/rationale/notes/source/status/labels
-  and attachments) followed by extended metadata (acceptance, assumptions,
+  primary block (ID/title/statement/context/rationale/notes/source/status/labels,
+  attachments and a context-docs picker that stores relative Markdown paths under
+  the current document) followed by extended metadata (acceptance, assumptions,
   ownership/revision links, classification enums and approval date). Requirement
   switching now applies batched autosize/layout updates under a frozen content
   panel, so keyboard navigation through the list no longer triggers a visible

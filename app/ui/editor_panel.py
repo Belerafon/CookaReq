@@ -84,6 +84,7 @@ class EditorPanel(wx.Panel):
         self._insert_formula_btn: wx.Button | None = None
         self._insert_heading_btn: wx.Button | None = None
         self._insert_bold_btn: wx.Button | None = None
+        self._context_docs_list: AutoHeightListCtrl | None = None
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
         self._requirement_selected = True
@@ -270,6 +271,30 @@ class EditorPanel(wx.Panel):
         a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
         content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
+        # context docs section -------------------------------------------
+        c_sizer = HelpStaticBox(
+            content,
+            locale.field_label("context_docs"),
+            self._help_texts["context_docs"],
+        )
+        c_box = c_sizer.GetStaticBox()
+        self.context_docs_list = AutoHeightListCtrl(
+            c_box,
+            style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
+        )
+        self.context_docs_list.InsertColumn(0, _("Path"))
+        self._context_docs_list = self.context_docs_list
+        context_btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.add_context_doc_btn = wx.Button(c_box, label=_("Add"))
+        self.remove_context_doc_btn = wx.Button(c_box, label=_("Remove"))
+        self.add_context_doc_btn.Bind(wx.EVT_BUTTON, self._on_add_context_doc)
+        self.remove_context_doc_btn.Bind(wx.EVT_BUTTON, self._on_remove_context_doc)
+        context_btn_row.Add(self.add_context_doc_btn, 0)
+        context_btn_row.Add(self.remove_context_doc_btn, 0, wx.LEFT, 5)
+        c_sizer.Add(self.context_docs_list, 0, wx.EXPAND | wx.TOP, border)
+        c_sizer.Add(context_btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        content_sizer.Add(c_sizer, 0, wx.EXPAND | wx.TOP, border)
+
         for name in ("acceptance", "assumptions"):
             add_text_field(name)
 
@@ -330,6 +355,7 @@ class EditorPanel(wx.Panel):
         self.SetSizer(root_sizer)
 
         self.attachments: list[dict[str, str]] = []
+        self.context_docs: list[str] = []
         self.extra: dict[str, Any] = {
             "labels": [],
             "approved_at": None,
@@ -339,6 +365,7 @@ class EditorPanel(wx.Panel):
         self.mtime: float | None = None
         self._refresh_labels_display()
         self._refresh_attachments()
+        self._refresh_context_docs()
         self.mark_clean()
 
     def set_requirement_selected(self, selected: bool) -> None:
@@ -845,6 +872,7 @@ class EditorPanel(wx.Panel):
             for name, choice in self.enums.items():
                 choice.SetStringSelection(defaults[name])
             self.attachments = []
+            self.context_docs = []
             self.links = []
             self.current_path = None
             self.mtime = None
@@ -861,6 +889,7 @@ class EditorPanel(wx.Panel):
             self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
+            self._refresh_context_docs()
             self.links_list.DeleteAllItems()
             self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
@@ -892,6 +921,11 @@ class EditorPanel(wx.Panel):
             for name, ctrl in self.fields.items():
                 ctrl.ChangeValue(str(data.get(name, "")))
             self.attachments = list(data.get("attachments", []))
+            raw_context_docs = data.get("context_docs", [])
+            if isinstance(raw_context_docs, list):
+                self.context_docs = [str(path).strip() for path in raw_context_docs if str(path).strip()]
+            else:
+                self.context_docs = []
             raw_links = data.get("links", [])
             parsed_links: list[dict[str, Any]] = []
             if isinstance(raw_links, list):
@@ -945,6 +979,7 @@ class EditorPanel(wx.Panel):
                 self.approved_picker.SetValue(wx.DefaultDateTime)
             self.notes_ctrl.ChangeValue(self.extra.get("notes", ""))
             self._refresh_attachments()
+            self._refresh_context_docs()
             self.current_path = Path(path) if path else None
             self.mtime = mtime
             self._refresh_labels_display()
@@ -1017,6 +1052,7 @@ class EditorPanel(wx.Panel):
             "modified_at": self.fields["modified_at"].GetValue(),
             "labels": list(self.extra.get("labels", [])),
             "attachments": list(self.attachments),
+            "context_docs": list(self.context_docs),
         }
         revision_ctrl = self.fields.get("revision")
         revision_text = revision_ctrl.GetValue().strip() if revision_ctrl else ""
@@ -1656,6 +1692,7 @@ class EditorPanel(wx.Panel):
             for name, choice in self.enums.items()
         }
         attachments_state = [dict(att) for att in self.attachments]
+        context_docs_state = list(self.context_docs)
         links_state = [dict(link) for link in self.links]
         dt = self.approved_picker.GetValue()
         approved_at = dt.FormatISODate() if dt.IsValid() else None
@@ -1663,6 +1700,7 @@ class EditorPanel(wx.Panel):
             "fields": fields_state,
             "enums": enums_state,
             "attachments": attachments_state,
+            "context_docs": context_docs_state,
             "links": links_state,
             "labels": list(self.extra.get("labels", [])),
             "approved_at": approved_at,
@@ -1694,7 +1732,7 @@ class EditorPanel(wx.Panel):
         for name, choice in self.enums.items():
             if choice.GetStringSelection() != defaults[name]:
                 return True
-        if self.attachments or self.links:
+        if self.attachments or self.links or self.context_docs:
             return True
         if self.extra.get("labels"):
             return True
@@ -1740,6 +1778,12 @@ class EditorPanel(wx.Panel):
 
             self.attachments = [dict(att) for att in state.get("attachments", [])]
             self._refresh_attachments()
+            self.context_docs = [
+                str(path).strip()
+                for path in state.get("context_docs", [])
+                if str(path).strip()
+            ]
+            self._refresh_context_docs()
 
             if hasattr(self, "links"):
                 links_state = [dict(link) for link in state.get("links", [])]
@@ -1786,3 +1830,76 @@ class EditorPanel(wx.Panel):
                 path,
             )
             self.attachments_list.SetItem(idx, 1, note)
+
+    def _refresh_context_docs(self) -> None:
+        list_ctrl = self._context_docs_list
+        if list_ctrl is None:
+            return
+        list_ctrl.Freeze()
+        try:
+            list_ctrl.DeleteAllItems()
+            for rel_path in self.context_docs:
+                list_ctrl.InsertItem(list_ctrl.GetItemCount(), rel_path)
+        finally:
+            list_ctrl.Thaw()
+        list_ctrl.InvalidateBestSize()
+        visible = bool(self.context_docs)
+        sizer = list_ctrl.GetContainingSizer()
+        if sizer is not None:
+            sizer.Show(list_ctrl, visible)
+            parent = list_ctrl.GetParent()
+            if parent:
+                parent.Layout()
+        list_ctrl.Show(visible)
+        if visible:
+            list_ctrl.SendSizeEvent()
+        if hasattr(self, "_content_panel") and self._content_panel:
+            self._content_panel.FitInside()
+
+    def _on_add_context_doc(self, _event: wx.Event) -> None:
+        prefix = self._effective_prefix()
+        service = self._service
+        if service is None or not prefix:
+            wx.MessageBox(
+                _("Select a document before adding context docs."),
+                _("Context docs"),
+                style=wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+        root_dir = service.root / prefix
+        if not root_dir.exists():
+            wx.MessageBox(
+                _("Document folder does not exist: {path}").format(path=root_dir),
+                _("Error"),
+                style=wx.OK | wx.ICON_ERROR,
+            )
+            return
+        with wx.FileDialog(
+            self,
+            _("Select context Markdown file"),
+            defaultDir=str(root_dir),
+            wildcard=_("Markdown files (*.md)|*.md"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            selected = Path(dlg.GetPath()).resolve()
+        try:
+            rel_path = selected.relative_to(root_dir.resolve())
+        except ValueError:
+            wx.MessageBox(
+                _("Selected file must be inside the current document folder."),
+                _("Error"),
+                style=wx.OK | wx.ICON_ERROR,
+            )
+            return
+        rel_posix = rel_path.as_posix()
+        if rel_posix not in self.context_docs:
+            self.context_docs.append(rel_posix)
+            self._refresh_context_docs()
+
+    def _on_remove_context_doc(self, _event: wx.Event) -> None:
+        idx = self.context_docs_list.GetFirstSelected()
+        if idx >= 0:
+            del self.context_docs[idx]
+            self._refresh_context_docs()

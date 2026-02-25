@@ -64,11 +64,13 @@ def test_editor_panel_discard_changes_without_storage_restores_form_state(wx_app
         panel.fields["title"].ChangeValue("Original")
         panel.notes_ctrl.ChangeValue("Base note")
         panel.attachments = [{"id": "att-1", "path": "doc.txt", "note": "ref"}]
+        panel.context_docs = ["related/base.md"]
         panel.mark_clean()
 
         panel.fields["title"].ChangeValue("Changed")
         panel.notes_ctrl.ChangeValue("New note")
         panel.attachments.clear()
+        panel.context_docs = []
         assert panel.is_dirty() is True
 
         panel.discard_changes()
@@ -76,7 +78,55 @@ def test_editor_panel_discard_changes_without_storage_restores_form_state(wx_app
         assert panel.fields["title"].GetValue() == "Original"
         assert panel.notes_ctrl.GetValue() == "Base note"
         assert panel.attachments == [{"id": "att-1", "path": "doc.txt", "note": "ref"}]
+        assert panel.context_docs == ["related/base.md"]
         assert panel.is_dirty() is False
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_editor_panel_get_data_includes_context_docs(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        panel.fields["id"].ChangeValue("7")
+        panel.fields["statement"].ChangeValue("Requirement")
+        panel.context_docs = ["related/a.md", "related/b.md"]
+
+        req = panel.get_data()
+
+        assert req.context_docs == ["related/a.md", "related/b.md"]
+    finally:
+        frame.Destroy()
+
+
+def test_editor_panel_load_populates_context_docs(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.model import Requirement
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        req = Requirement.from_mapping(
+            {
+                "id": 9,
+                "statement": "Loaded requirement",
+                "context_docs": ["related/one.md", "related/two.md"],
+            }
+        )
+
+        panel.load(req)
+
+        assert panel.context_docs == ["related/one.md", "related/two.md"]
+        assert panel.context_docs_list.GetItemCount() == 2
     finally:
         frame.Destroy()
 

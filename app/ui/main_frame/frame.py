@@ -207,6 +207,7 @@ class MainFrame(
         ) = self._create_section(
             self.splitter,
             label=_("Requirements"),
+            show_label=False,
             factory=lambda parent: ListPanel(
                 parent,
                 model=self.model,

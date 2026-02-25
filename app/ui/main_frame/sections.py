@@ -37,6 +37,7 @@ class MainFrameSectionsMixin:
         factory: Callable[[wx.Window], wx.Window],
         header_factory: Callable[[wx.Window], Sequence[wx.Window]] | None = None,
         allow_label_shrink: bool = False,
+        show_label: bool = True,
         padding: int = 0,
     ) -> tuple[wx.Panel, wx.StaticText, wx.Window]:
         """Build a titled container holding the widget returned by ``factory``."""
@@ -54,7 +55,9 @@ class MainFrameSectionsMixin:
             best = label_ctrl.GetBestSize()
             min_height = best.height if best.height > 0 else -1
             label_ctrl.SetMinSize(wx.Size(0, min_height))
-        if header_factory is not None:
+        if not show_label:
+            label_ctrl.Hide()
+        elif header_factory is not None:
             header = wx.BoxSizer(wx.HORIZONTAL)
             header.Add(label_ctrl, 1, wx.ALIGN_CENTER_VERTICAL)
             for ctrl in header_factory(container):
@@ -62,7 +65,7 @@ class MainFrameSectionsMixin:
                     ctrl.SetBackgroundColour(background)
                 header.Add(ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 4)
             sizer.Add(header, 0, wx.EXPAND | wx.TOP, border)
-        else:
+        elif show_label:
             sizer.Add(label_ctrl, 0, wx.TOP, border)
         content = factory(container)
         if border:

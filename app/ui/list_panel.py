@@ -380,6 +380,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._document_header: str | None = None
         self._context_menu_open = False
         self._ignore_next_context_menu = False
+        self._context_menu_suppression_point: tuple[int, int] | None = None
         self._setup_columns()
         sizer.Add(btn_row, 0, wx.EXPAND, 0)
         sizer.Add(self.list, 1, wx.EXPAND | top_flag, vertical_pad)
@@ -1062,6 +1063,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
     def _on_right_click(self, event: ListEvent) -> None:  # pragma: no cover - GUI event
         self._ignore_next_context_menu = True
         x, y = event.GetPoint()
+        dragged_point = getattr(event, "m_pointDrag", None)
+        if dragged_point is not None and getattr(dragged_point, "x", None) is not None:
+            x, y = dragged_point.x, dragged_point.y
+        self._context_menu_suppression_point = (x, y)
         if hasattr(self.list, "HitTestSubItem"):
             _, _, col = self.list.HitTestSubItem((x, y))
         else:  # pragma: no cover - fallback for older wx
@@ -1074,8 +1079,16 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         event: ContextMenuEvent,
     ) -> None:  # pragma: no cover - GUI event
         if self._ignore_next_context_menu:
+            pos = event.GetPosition()
             self._ignore_next_context_menu = False
-            return
+            suppression_point = self._context_menu_suppression_point
+            self._context_menu_suppression_point = None
+            if pos == wx.DefaultPosition:
+                return
+            pt = self.list.ScreenToClient(pos)
+            point = (pt.x, pt.y) if hasattr(pt, "x") else tuple(pt)
+            if suppression_point == point:
+                return
         pos = event.GetPosition()
         if pos == wx.DefaultPosition:
             pos = wx.GetMousePosition()

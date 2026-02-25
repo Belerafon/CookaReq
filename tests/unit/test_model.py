@@ -170,3 +170,35 @@ def test_requirement_from_mapping_rejects_invalid_revision():
     }
     with pytest.raises(TypeError):
         Requirement.from_mapping(data)
+
+
+def test_requirement_context_docs_roundtrip():
+    req = Requirement(
+        id=10,
+        title="Context",
+        statement="Body",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        context_docs=["related/math/overview.md", "related/math/limits.md"],
+    )
+
+    payload = req.to_mapping()
+    assert payload["context_docs"] == ["related/math/overview.md", "related/math/limits.md"]
+
+    restored = Requirement.from_mapping(payload)
+    assert restored.context_docs == ["related/math/overview.md", "related/math/limits.md"]
+
+
+def test_requirement_context_docs_requires_list():
+    with pytest.raises(TypeError):
+        Requirement.from_mapping(
+            {
+                "id": 1,
+                "statement": "Body",
+                "context_docs": "related/one.md",
+            }
+        )

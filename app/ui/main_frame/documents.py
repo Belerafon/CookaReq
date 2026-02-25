@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -118,6 +118,79 @@ class MainFrameDocumentsMixin:
         if revision_label:
             lines.append(_("Document revision: {value}").format(value=revision_label))
         return lines
+
+    def _collect_context_preface(
+        self: MainFrame,
+        requirements: Sequence[object],
+        *,
+        doc_root: Path,
+    ) -> tuple[list[tuple[str, str]], list[str]]:
+        """Collect markdown context files linked from exported requirements."""
+        root_resolved = doc_root.resolve()
+        used_paths: dict[str, Path] = {}
+        missing_map: dict[str, set[str]] = {}
+
+        for req in requirements:
+            rid = str(getattr(req, "rid", getattr(req, "id", "?")))
+            raw_context_docs = getattr(req, "context_docs", [])
+            if raw_context_docs in (None, ""):
+                continue
+            if not isinstance(raw_context_docs, Sequence) or isinstance(
+                raw_context_docs, (str, bytes)
+            ):
+                missing_map.setdefault(rid, set()).add(_("invalid context_docs format"))
+                continue
+            for raw_path in raw_context_docs:
+                rel_path = str(raw_path).strip()
+                if not rel_path:
+                    continue
+                candidate = (doc_root / rel_path).resolve()
+                try:
+                    candidate.relative_to(root_resolved)
+                except ValueError:
+                    missing_map.setdefault(rid, set()).add(
+                        _("outside document root: {path}").format(path=rel_path)
+                    )
+                    continue
+                if candidate.suffix.lower() != ".md":
+                    missing_map.setdefault(rid, set()).add(
+                        _("not a Markdown file: {path}").format(path=rel_path)
+                    )
+                    continue
+                if not candidate.is_file():
+                    missing_map.setdefault(rid, set()).add(
+                        _("file not found: {path}").format(path=rel_path)
+                    )
+                    continue
+                used_paths[rel_path] = candidate
+
+        context_preface: list[tuple[str, str]] = []
+        for rel_path in sorted(used_paths):
+            path = used_paths[rel_path]
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            context_preface.append((rel_path, text))
+
+        missing_messages = [
+            _("{rid}: {details}").format(rid=rid, details=", ".join(sorted(details)))
+            for rid, details in sorted(missing_map.items())
+        ]
+        return context_preface, missing_messages
+
+    def _render_context_preface_txt(
+        self: MainFrame,
+        context_preface: Sequence[tuple[str, str]],
+    ) -> str:
+        """Render context markdown snippets for TXT export preface."""
+        if not context_preface:
+            return ""
+        blocks = [_("Context documents")]
+        for rel_path, markdown_text in context_preface:
+            blocks.append(f"\n## {rel_path}\n")
+            blocks.append(markdown_text.strip())
+        return "\n".join(blocks).strip() + "\n\n"
 
     def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
@@ -775,6 +848,19 @@ class MainFrameDocumentsMixin:
             wx.MessageBox(_("No requirements to export."), _("Export"))
             return
 
+        should_generate_context_preface = (
+            plan.card_sort_mode == "context_docs"
+            and plan.generate_context_docs_preface
+        )
+        context_preface: list[tuple[str, str]] = []
+        context_missing: list[str] = []
+        if should_generate_context_preface:
+            doc_root = self.current_dir / doc.prefix
+            context_preface, context_missing = self._collect_context_preface(
+                requirements,
+                doc_root=doc_root,
+            )
+
         labels_grouped = plan.card_sort_mode == "labels"
         label_group_mode = plan.card_label_group_mode
         card_export_requirements = sort_requirements_for_cards(
@@ -805,6 +891,7 @@ class MainFrameDocumentsMixin:
                 label_group_mode=label_group_mode,
                 colorize_label_backgrounds=plan.colorize_label_backgrounds,
                 include_requirement_heading=plan.docx_include_requirement_heading,
+                context_preface=context_preface,
             )
         else:
             if plan.format == ExportFormat.HTML:
@@ -831,6 +918,7 @@ class MainFrameDocumentsMixin:
                     trace_mode="hierarchical",
                     link_preview=True,
                     include_incoming_links=True,
+                    context_preface=context_preface,
                 )
             else:
                 derived_map = getattr(self.panel, "derived_map", {}) or {}
@@ -872,6 +960,8 @@ class MainFrameDocumentsMixin:
                         strip_markdown_text=True,
                         header_lines=header_lines,
                     )
+                    if context_preface:
+                        content = self._render_context_preface_txt(context_preface) + content
 
         assets_source = self.current_dir / doc.prefix / "assets"
         export_path = prepare_export_destination(plan.path, assets_source=assets_source)
@@ -898,6 +988,16 @@ class MainFrameDocumentsMixin:
                     _("Export completed"),
                     wx.ICON_WARNING,
                 )
+
+        if context_missing:
+            details = "\n".join(f"• {line}" for line in context_missing)
+            wx.MessageBox(
+                _("Export finished with missing context files:\n\n{details}").format(
+                    details=details
+                ),
+                _("Export completed"),
+                wx.ICON_WARNING,
+            )
 
     def on_manage_labels(self: MainFrame, _event: wx.Event) -> None:
         """Open dialog to manage defined labels."""

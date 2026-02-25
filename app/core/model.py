@@ -101,6 +101,7 @@ class Requirement:
     modified_at: str = ""
     labels: list[str] = field(default_factory=list)
     attachments: list[Attachment] = field(default_factory=list)
+    context_docs: list[str] = field(default_factory=list)
     revision: int = 1
     approved_at: str | None = None
     notes: str = ""
@@ -198,6 +199,14 @@ class Requirement:
                 raise TypeError("labels must be a list")
             labels = [str(label) for label in labels_data]
 
+        context_docs_data = data.get("context_docs")
+        if context_docs_data in (None, ""):
+            context_docs = []
+        else:
+            if not isinstance(context_docs_data, list):
+                raise TypeError("context_docs must be a list")
+            context_docs = [str(path) for path in context_docs_data if str(path).strip()]
+
         try:
             req_id = int(data["id"])
         except (TypeError, ValueError) as exc:
@@ -256,6 +265,7 @@ class Requirement:
             modified_at=modified_at,
             labels=labels,
             attachments=attachments,
+            context_docs=context_docs,
             revision=revision,
             approved_at=approved_at,
             notes=notes,

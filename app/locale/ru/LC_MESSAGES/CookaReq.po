@@ -3075,3 +3075,36 @@ msgstr "вне экспортируемой области"
 
 msgid "page number"
 msgstr "номер страницы"
+
+msgid "Context documents"
+msgstr "Контекстные документы"
+
+msgid "invalid context_docs format"
+msgstr "некорректный формат context_docs"
+
+msgid "outside document root: {path}"
+msgstr "путь вне корня документа: {path}"
+
+msgid "not a Markdown file: {path}"
+msgstr "не Markdown-файл: {path}"
+
+msgid "file not found: {path}"
+msgstr "файл не найден: {path}"
+
+msgid "Export finished with missing context files:\n\n{details}"
+msgstr "Экспорт завершён с отсутствующими контекстными файлами:\n\n{details}"
+
+msgid "Context docs"
+msgstr "Контекстные документы"
+
+msgid "Generate context_docs content before requirements list"
+msgstr "Генерировать содержимое context_docs перед списком требований"
+
+msgid "JSON list of context markdown paths"
+msgstr "JSON-список путей к контекстным Markdown-файлам"
+
+msgid "context_docs must be a list"
+msgstr "context_docs должен быть списком"
+
+msgid "context_docs must be a list of strings"
+msgstr "context_docs должен быть списком строк"

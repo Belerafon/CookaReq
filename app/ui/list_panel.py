@@ -951,6 +951,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     )
                     self.list.SetItem(index, col, value)
                     continue
+                if field == "context_docs":
+                    value = ", ".join(str(path) for path in getattr(req, "context_docs", []) or [])
+                    self.list.SetItem(index, col, value)
+                    continue
                 if field == "statement":
                     value = self._statement_preview_text(getattr(req, "statement", ""))
                     self.list.SetItem(index, col, value)

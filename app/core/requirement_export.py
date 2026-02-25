@@ -273,6 +273,7 @@ _EXPORT_META_FIELDS: tuple[tuple[str, str, bool], ...] = (
     ("owner", "Owner", False),
     ("labels", "Labels", False),
     ("source", "Source", False),
+    ("context_docs", "Context docs", False),
     ("modified_at", "Modified at", False),
     ("approved_at", "Approved at", False),
     ("revision", "Revision", False),
@@ -308,6 +309,9 @@ def _meta_field_value(req: Requirement, field: str) -> str | None:
         return ", ".join(sorted(req.labels)) if req.labels else None
     if field == "source":
         return req.source or None
+    if field == "context_docs":
+        docs = [str(path).strip() for path in getattr(req, "context_docs", []) if str(path).strip()]
+        return ", ".join(docs) if docs else None
     if field == "modified_at":
         return req.modified_at or None
     if field == "approved_at":
@@ -857,6 +861,7 @@ def render_requirements_html(
     link_preview: bool = True,
     include_incoming_links: bool = False,
     max_preview_statement_chars: int = 220,
+    context_preface: Sequence[tuple[str, str]] | None = None,
 ) -> str:
     """Render export data as standalone HTML."""
     selected_fields = _normalize_export_fields(fields)
@@ -894,6 +899,12 @@ def render_requirements_html(
         f"<p><em>{_escape_html(_('Document revisions'))}: {_escape_html(_export_revisions_summary(export))}.</em></p>",
         f"<p><em>{_escape_html(_('Requirements count: {count}').format(count=_export_requirements_count(export)))}.</em></p>",
     ]
+    if context_preface:
+        parts.append(f"<h2>{_escape_html(_('Context documents'))}</h2>")
+        for rel_path, markdown_text in context_preface:
+            parts.append(f"<h3>{_escape_html(rel_path)}</h3>")
+            rendered_preface = _render_markdown(markdown_text)
+            parts.append(rendered_preface or "<p></p>")
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
         if label_rows:
@@ -1377,6 +1388,7 @@ def render_requirements_docx(
     label_group_mode: str = "per_label",
     colorize_label_backgrounds: bool = False,
     include_requirement_heading: bool = True,
+    context_preface: Sequence[tuple[str, str]] | None = None,
 ) -> bytes:
     """Render export data as a DOCX document."""
     selected_fields = _normalize_export_fields(fields)
@@ -1396,6 +1408,12 @@ def render_requirements_docx(
         )
         + "."
     )
+    if context_preface:
+        document.add_heading(_('Context documents'), level=1)
+        for rel_path, markdown_text in context_preface:
+            document.add_heading(rel_path, level=2)
+            document.add_paragraph(strip_markdown(markdown_text))
+        document.add_paragraph("")
     image_width = 5.5
     palette = _label_palette(export) if colorize_label_backgrounds else {}
     if _should_render_field(selected_fields, "labels"):

@@ -636,3 +636,36 @@ def test_render_requirements_docx_auto_formula_renderer_falls_back_to_png(monkey
     xml = paragraph._p.xml
     assert "a:blip" in xml
     assert calls == ["omml:a/b", "svg:a/b", "png:a/b"]
+
+
+def test_render_requirements_docx_includes_context_preface(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=1,
+        title="Docx req",
+        statement="Statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+    export = build_requirement_export(tmp_path)
+
+    payload = render_requirements_docx(
+        export,
+        context_preface=[("related/math/overview.md", "# Overview\n\nContext text")],
+    )
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+    assert "Context documents" in document_xml
+    assert "related/math/overview.md" in document_xml
+    assert "Overview" in document_xml

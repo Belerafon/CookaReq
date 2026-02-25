@@ -12,6 +12,7 @@ def _make_requirement(
     title: str,
     source: str,
     labels: list[str],
+    context_docs: list[str] | None = None,
 ) -> Requirement:
     return Requirement(
         id=req_id,
@@ -24,6 +25,7 @@ def _make_requirement(
         source=source,
         verification=Verification.NOT_DEFINED,
         labels=labels,
+        context_docs=context_docs or [],
     )
 
 
@@ -51,3 +53,14 @@ def test_sort_requirements_for_cards_by_source_and_title():
 
     by_title = sort_requirements_for_cards(reqs, sort_mode="title")
     assert [req.id for req in by_title] == [2, 3, 5, 4]
+
+
+def test_sort_requirements_for_cards_by_context_docs():
+    reqs = [
+        _make_requirement(3, title="c", source="z", labels=[], context_docs=["related/z.md"]),
+        _make_requirement(1, title="a", source="x", labels=[], context_docs=["related/a.md"]),
+        _make_requirement(2, title="b", source="y", labels=[], context_docs=[]),
+    ]
+
+    sorted_reqs = sort_requirements_for_cards(reqs, sort_mode="context_docs")
+    assert [req.id for req in sorted_reqs] == [2, 1, 3]

@@ -135,3 +135,26 @@ def test_current_document_summary_includes_revision() -> None:
     frame = _SummaryFrame()
 
     assert frame._current_document_summary() == "SYS: System (rev 5)"
+
+
+class _ExportFrame(MainFrameDocumentsMixin):
+    pass
+
+
+def test_collect_context_preface_collects_unique_markdown_and_missing(tmp_path: Path) -> None:
+    doc_root = tmp_path / "SYS"
+    related = doc_root / "related"
+    related.mkdir(parents=True)
+    (related / "a.md").write_text("# A", encoding="utf-8")
+
+    req1 = SimpleNamespace(rid="SYS1", context_docs=["related/a.md", "related/missing.md"])
+    req2 = SimpleNamespace(rid="SYS2", context_docs=["related/a.md", "../escape.md"])
+    req3 = SimpleNamespace(rid="SYS3", context_docs="bad")
+
+    frame = _ExportFrame()
+    preface, missing = frame._collect_context_preface([req1, req2, req3], doc_root=doc_root)
+
+    assert preface == [("related/a.md", "# A")]
+    assert any("SYS1" in line and "related/missing.md" in line for line in missing)
+    assert any("SYS2" in line and "outside document root" in line for line in missing)
+    assert any("SYS3" in line and "invalid context_docs format" in line for line in missing)

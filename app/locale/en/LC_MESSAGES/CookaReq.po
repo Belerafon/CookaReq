@@ -3053,3 +3053,36 @@ msgstr "outside exported scope"
 
 msgid "page number"
 msgstr "page number"
+
+msgid "Context documents"
+msgstr "Context documents"
+
+msgid "invalid context_docs format"
+msgstr "invalid context_docs format"
+
+msgid "outside document root: {path}"
+msgstr "outside document root: {path}"
+
+msgid "not a Markdown file: {path}"
+msgstr "not a Markdown file: {path}"
+
+msgid "file not found: {path}"
+msgstr "file not found: {path}"
+
+msgid "Export finished with missing context files:\n\n{details}"
+msgstr "Export finished with missing context files:\n\n{details}"
+
+msgid "Context docs"
+msgstr "Context docs"
+
+msgid "Generate context_docs content before requirements list"
+msgstr "Generate context_docs content before requirements list"
+
+msgid "JSON list of context markdown paths"
+msgstr "JSON list of context markdown paths"
+
+msgid "context_docs must be a list"
+msgstr "context_docs must be a list"
+
+msgid "context_docs must be a list of strings"
+msgstr "context_docs must be a list of strings"

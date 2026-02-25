@@ -77,6 +77,7 @@ class ExportDialogState:
     export_scope: str | None = None
     colorize_label_backgrounds: bool = False
     docx_include_requirement_heading: bool = True
+    generate_context_docs_preface: bool = False
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -510,6 +511,9 @@ class ConfigManager:
         docx_include_requirement_heading = payload.get("docx_include_requirement_heading")
         if not isinstance(docx_include_requirement_heading, bool):
             docx_include_requirement_heading = True
+        generate_context_docs_preface = payload.get("generate_context_docs_preface")
+        if not isinstance(generate_context_docs_preface, bool):
+            generate_context_docs_preface = False
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
@@ -522,6 +526,7 @@ class ConfigManager:
             export_scope=export_scope,
             colorize_label_backgrounds=colorize_label_backgrounds,
             docx_include_requirement_heading=docx_include_requirement_heading,
+            generate_context_docs_preface=generate_context_docs_preface,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -541,6 +546,7 @@ class ConfigManager:
             "export_scope": state.export_scope,
             "colorize_label_backgrounds": state.colorize_label_backgrounds,
             "docx_include_requirement_heading": state.docx_include_requirement_heading,
+            "generate_context_docs_preface": state.generate_context_docs_preface,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

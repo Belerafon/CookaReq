@@ -260,6 +260,7 @@ class EditorPanel(wx.Panel):
         )
         self.attachments_list.InsertColumn(0, _("File"))
         self.attachments_list.InsertColumn(1, _("Note"))
+        attachment_row = wx.BoxSizer(wx.HORIZONTAL)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_attachment_btn = wx.Button(a_box, label=_("Add"))
         self.remove_attachment_btn = wx.Button(a_box, label=_("Remove"))
@@ -267,8 +268,9 @@ class EditorPanel(wx.Panel):
         self.remove_attachment_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
         btn_row.Add(self.add_attachment_btn, 0)
         btn_row.Add(self.remove_attachment_btn, 0, wx.LEFT, 5)
-        a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.TOP, border)
-        a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        attachment_row.Add(self.attachments_list, 1, wx.EXPAND | wx.RIGHT, border)
+        attachment_row.Add(btn_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        a_sizer.Add(attachment_row, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         # context docs section -------------------------------------------
@@ -284,6 +286,7 @@ class EditorPanel(wx.Panel):
         )
         self.context_docs_list.InsertColumn(0, _("Path"))
         self._context_docs_list = self.context_docs_list
+        context_row = wx.BoxSizer(wx.HORIZONTAL)
         context_btn_row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_context_doc_btn = wx.Button(c_box, label=_("Add"))
         self.remove_context_doc_btn = wx.Button(c_box, label=_("Remove"))
@@ -291,8 +294,9 @@ class EditorPanel(wx.Panel):
         self.remove_context_doc_btn.Bind(wx.EVT_BUTTON, self._on_remove_context_doc)
         context_btn_row.Add(self.add_context_doc_btn, 0)
         context_btn_row.Add(self.remove_context_doc_btn, 0, wx.LEFT, 5)
-        c_sizer.Add(self.context_docs_list, 0, wx.EXPAND | wx.TOP, border)
-        c_sizer.Add(context_btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        context_row.Add(self.context_docs_list, 1, wx.EXPAND | wx.RIGHT, border)
+        context_row.Add(context_btn_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        c_sizer.Add(context_row, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(c_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         for name in ("acceptance", "assumptions"):

@@ -85,6 +85,9 @@ msgstr "Demonstration"
 msgid "Draft"
 msgstr "Draft"
 
+msgid "Requirements count: {count}"
+msgstr "Requirements count: {count}"
+
 msgid "Document revision: {value}"
 msgstr "Document revision: {value}"
 

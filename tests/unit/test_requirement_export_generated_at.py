@@ -39,6 +39,7 @@ def test_render_requirements_markdown_formats_generated_timestamp_for_humans(tmp
 
     assert "Generated at 2026-02-10 07:05:03+00:00" in markdown
     assert "Document revisions: SYS rev 7" in markdown
+    assert "Requirements count: 1" in markdown
     assert "## System (SYS, rev 7)" in markdown
     assert "T07:05:03" not in markdown
     assert "07:05:03.001866" not in markdown

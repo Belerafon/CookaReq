@@ -104,9 +104,16 @@ class MainFrameDocumentsMixin:
             return None
         return _("rev {revision}").format(revision=revision)
 
-    def _export_header_lines(self: MainFrame, document: object) -> list[str]:
+    def _export_header_lines(
+        self: MainFrame,
+        document: object,
+        *,
+        requirement_count: int,
+    ) -> list[str]:
         """Build metadata lines shown in exported document headers."""
-        lines: list[str] = []
+        lines: list[str] = [
+            _("Requirements count: {count}").format(count=requirement_count)
+        ]
         revision_label = self._format_document_revision(document)
         if revision_label:
             lines.append(_("Document revision: {value}").format(value=revision_label))
@@ -841,7 +848,10 @@ class MainFrameDocumentsMixin:
                     header_style=header_style,
                     value_style=value_style,
                 )
-                header_lines = self._export_header_lines(doc)
+                header_lines = self._export_header_lines(
+                    doc,
+                    requirement_count=len(export_rows_source),
+                )
                 if plan.format == ExportFormat.CSV:
                     content = render_tabular_delimited(
                         headers, rows, delimiter=",", header_lines=header_lines

@@ -271,6 +271,12 @@ msgstr "Требования"
 msgid "Requirements - {document}"
 msgstr "Требования - {document}"
 
+msgid "Requirements: {count}"
+msgstr "Требований: {count}"
+
+msgid "Requirements: {visible}/{total}"
+msgstr "Требований: {visible}/{total}"
+
 msgid "Document revision: {value}"
 msgstr "Ревизия документа: {value}"
 

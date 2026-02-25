@@ -115,20 +115,18 @@ class MainFrameDocumentsMixin:
     def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
         label_ctrl = getattr(self, "list_label", None)
-        if not label_ctrl:
-            return
-        base_label = _("Requirements")
         summary = self._current_document_summary()
-        if summary:
-            text = _("Requirements - {document}").format(document=summary)
-        else:
-            text = base_label
-        label_ctrl.SetLabel(text)
-        parent = getattr(label_ctrl, "GetParent", None)
-        if callable(parent):
-            container = parent()
-            if container and hasattr(container, "Layout"):
-                container.Layout()
+        panel = getattr(self, "panel", None)
+        if panel and hasattr(panel, "set_document_header"):
+            panel.set_document_header(summary)
+
+        if label_ctrl:
+            label_ctrl.SetLabel(_("Requirements"))
+            parent = getattr(label_ctrl, "GetParent", None)
+            if callable(parent):
+                container = parent()
+                if container and hasattr(container, "Layout"):
+                    container.Layout()
 
     def on_open_folder(self: MainFrame, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""

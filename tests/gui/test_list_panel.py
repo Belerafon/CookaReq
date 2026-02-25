@@ -55,7 +55,13 @@ def test_list_panel_has_filter_and_list(stubbed_list_panel_env):
     btn_row = children[0]
     assert isinstance(btn_row, wx_stub.BoxSizer)
     inner = [child.GetWindow() for child in btn_row.GetChildren()]
-    assert inner == [panel.filter_btn, panel.reset_btn, panel.filter_summary]
+    assert inner == [
+        panel.document_summary,
+        (0, 0),
+        panel.filter_summary,
+        panel.reset_btn,
+        panel.filter_btn,
+    ]
     assert children[1] is panel.list
 
 
@@ -134,6 +140,32 @@ def test_apply_filters(stubbed_list_panel_env):
 
     panel.apply_filters({"labels": [], "field_queries": {"owner": "bob"}})
     assert [r.id for r in panel.model.get_visible()] == [2]
+
+
+def test_document_summary_includes_count(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_document_header("SYS: System (rev 2)")
+    panel.set_requirements([
+        _req(1, "Login"),
+        _req(2, "Export"),
+    ])
+
+    assert panel.document_summary.label == "SYS: System (rev 2) · Requirements: 2"
+
+
+def test_document_summary_shows_visible_count_when_filtered(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_document_header("SYS: System (rev 2)")
+    panel.set_requirements([
+        _req(1, "Login", labels=["ui"]),
+        _req(2, "Export", labels=["report"]),
+    ])
+
+    panel.apply_filters({"labels": ["ui"]})
+
+    assert panel.document_summary.label == "SYS: System (rev 2) · Requirements: 1/2"
 
 
 def test_reset_button_visibility(stubbed_list_panel_env):

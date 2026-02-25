@@ -298,7 +298,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class ListPanel(wx.Panel, ColumnSorterMixin):
-    """Panel with a filter button and list of requirement fields."""
+    """Panel with document summary, filters and list of requirement fields."""
 
     MIN_COL_WIDTH = 50
     MAX_COL_WIDTH = 1000
@@ -329,6 +329,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         top_flag = getattr(wx, "TOP", 0)
         align_center = getattr(wx, "ALIGN_CENTER_VERTICAL", 0)
         btn_row = wx.BoxSizer(orient)
+        self.document_summary = wx.StaticText(self, label="")
+        self.filter_summary = wx.StaticText(self, label="")
         self.filter_btn = wx.Button(self, label=_("Filters"))
         bmp = wx.ArtProvider.GetBitmap(
             getattr(wx, "ART_CLOSE", "wxART_CLOSE"),
@@ -342,10 +344,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         )
         self.reset_btn.SetToolTip(_("Clear filters"))
         self.reset_btn.Hide()
-        self.filter_summary = wx.StaticText(self, label="")
-        btn_row.Add(self.filter_btn, 0, right, vertical_pad)
+        btn_row.Add(self.document_summary, 0, align_center | right, vertical_pad)
+        btn_row.Add((0, 0), 1)
+        btn_row.Add(self.filter_summary, 0, align_center | right, vertical_pad)
         btn_row.Add(self.reset_btn, 0, right, vertical_pad)
-        btn_row.Add(self.filter_summary, 0, align_center, 0)
+        btn_row.Add(self.filter_btn, 0, 0, 0)
         self.list = RequirementsListCtrl(self, style=wx.LC_REPORT)
         if hasattr(self.list, "SetExtraStyle"):
             extra = getattr(wx, "LC_EX_SUBITEMIMAGES", 0)
@@ -374,6 +377,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._sort_ascending = True
         self._docs_controller = docs_controller
         self._current_doc_prefix: str | None = None
+        self._document_header: str | None = None
         self._context_menu_open = False
         self._ignore_next_context_menu = False
         self._setup_columns()
@@ -769,6 +773,12 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._update_filter_summary()
         self._toggle_reset_button()
 
+    def set_document_header(self, summary: str | None) -> None:
+        """Set active document summary displayed above the requirements list."""
+        text = summary.strip() if summary else ""
+        self._document_header = text or None
+        self._update_document_summary()
+
     def set_label_filter(self, labels: list[str]) -> None:
         """Apply label filter to the model."""
         self.apply_filters({"labels": labels})
@@ -854,9 +864,29 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             with suppress(Exception):  # pragma: no cover - some stubs lack Layout
                 self.Layout()
 
+    def _update_document_summary(self) -> None:
+        """Refresh top-left document metadata with current requirement counters."""
+        visible_count = len(self.model.get_visible())
+        total_count = len(self.model.get_all())
+        if self._has_active_filters() and visible_count != total_count:
+            count_text = _("Requirements: {visible}/{total}").format(
+                visible=visible_count,
+                total=total_count,
+            )
+        else:
+            count_text = _("Requirements: {count}").format(count=total_count)
+
+        prefix = self._document_header
+        label = f"{prefix} · {count_text}" if prefix else count_text
+        if hasattr(self.document_summary, "SetLabel"):
+            self.document_summary.SetLabel(label)
+        else:  # pragma: no cover - test stub
+            self.document_summary.label = label
+
     def _refresh(self) -> None:
         """Reload list control from the model."""
         items = self.model.get_visible()
+        self._update_document_summary()
         self.list.DeleteAllItems()
         for req in items:
             index = self.list.InsertItem(self.list.GetItemCount(), "", -1)

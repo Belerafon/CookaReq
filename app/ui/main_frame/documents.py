@@ -104,9 +104,16 @@ class MainFrameDocumentsMixin:
             return None
         return _("rev {revision}").format(revision=revision)
 
-    def _export_header_lines(self: MainFrame, document: object) -> list[str]:
+    def _export_header_lines(
+        self: MainFrame,
+        document: object,
+        *,
+        requirement_count: int,
+    ) -> list[str]:
         """Build metadata lines shown in exported document headers."""
-        lines: list[str] = []
+        lines: list[str] = [
+            _("Requirements count: {count}").format(count=requirement_count)
+        ]
         revision_label = self._format_document_revision(document)
         if revision_label:
             lines.append(_("Document revision: {value}").format(value=revision_label))
@@ -115,20 +122,18 @@ class MainFrameDocumentsMixin:
     def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
         label_ctrl = getattr(self, "list_label", None)
-        if not label_ctrl:
-            return
-        base_label = _("Requirements")
         summary = self._current_document_summary()
-        if summary:
-            text = _("Requirements - {document}").format(document=summary)
-        else:
-            text = base_label
-        label_ctrl.SetLabel(text)
-        parent = getattr(label_ctrl, "GetParent", None)
-        if callable(parent):
-            container = parent()
-            if container and hasattr(container, "Layout"):
-                container.Layout()
+        panel = getattr(self, "panel", None)
+        if panel and hasattr(panel, "set_document_header"):
+            panel.set_document_header(summary)
+
+        if label_ctrl:
+            label_ctrl.SetLabel(_("Requirements"))
+            parent = getattr(label_ctrl, "GetParent", None)
+            if callable(parent):
+                container = parent()
+                if container and hasattr(container, "Layout"):
+                    container.Layout()
 
     def on_open_folder(self: MainFrame, _event: wx.Event) -> None:
         """Handle "Open Folder" menu action."""
@@ -843,7 +848,10 @@ class MainFrameDocumentsMixin:
                     header_style=header_style,
                     value_style=value_style,
                 )
-                header_lines = self._export_header_lines(doc)
+                header_lines = self._export_header_lines(
+                    doc,
+                    requirement_count=len(export_rows_source),
+                )
                 if plan.format == ExportFormat.CSV:
                     content = render_tabular_delimited(
                         headers, rows, delimiter=",", header_lines=header_lines

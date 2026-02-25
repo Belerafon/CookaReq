@@ -85,6 +85,9 @@ msgstr "Demonstration"
 msgid "Draft"
 msgstr "Draft"
 
+msgid "Requirements count: {count}"
+msgstr "Requirements count: {count}"
+
 msgid "Document revision: {value}"
 msgstr "Document revision: {value}"
 
@@ -290,6 +293,12 @@ msgstr "Requirements"
 
 msgid "Requirements - {document}"
 msgstr "Requirements - {document}"
+
+msgid "Requirements: {count}"
+msgstr "Requirements: {count}"
+
+msgid "Requirements: {visible}/{total}"
+msgstr "Requirements: {visible}/{total}"
 
 msgid "Editor"
 msgstr "Editor"

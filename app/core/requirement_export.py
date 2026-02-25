@@ -457,6 +457,11 @@ def _export_revisions_summary(export: RequirementExport) -> str:
     return ", ".join(parts)
 
 
+def _export_requirements_count(export: RequirementExport) -> int:
+    """Return total number of requirements included in ``export``."""
+    return sum(len(doc_export.requirements) for doc_export in export.documents)
+
+
 def render_requirements_markdown(
     export: RequirementExport,
     *,
@@ -475,6 +480,9 @@ def render_requirements_markdown(
         f"_{_('Generated at')} {_render_generated_at(export)} {_('for documents')}: {', '.join(export.selected_prefixes)}._"
     )
     parts.append(f"_{_('Document revisions')}: {_export_revisions_summary(export)}._")
+    parts.append(
+        f"_{_('Requirements count: {count}').format(count=_export_requirements_count(export))}._"
+    )
     parts.append("")
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
@@ -884,6 +892,7 @@ def render_requirements_html(
         f"<h1>{_escape_html(heading)}</h1>",
         f"<p><em>{_escape_html(_('Generated at'))} {_render_generated_at(export)} {_escape_html(_('for documents'))}: {', '.join(export.selected_prefixes)}.</em></p>",
         f"<p><em>{_escape_html(_('Document revisions'))}: {_escape_html(_export_revisions_summary(export))}.</em></p>",
+        f"<p><em>{_escape_html(_('Requirements count: {count}').format(count=_export_requirements_count(export)))}.</em></p>",
     ]
     if _should_render_field(selected_fields, "labels"):
         label_rows = _collect_used_label_rows(export)
@@ -1381,6 +1390,12 @@ def render_requirements_docx(
     document.add_paragraph(
         f"{_('Document revisions')}: {_export_revisions_summary(export)}."
     )
+    document.add_paragraph(
+        _("Requirements count: {count}").format(
+            count=_export_requirements_count(export)
+        )
+        + "."
+    )
     image_width = 5.5
     palette = _label_palette(export) if colorize_label_backgrounds else {}
     if _should_render_field(selected_fields, "labels"):
@@ -1577,6 +1592,17 @@ def render_requirements_pdf(
     story.append(
         Paragraph(
             xml_escape(f"{_('Document revisions')}: {_export_revisions_summary(export)}."),
+            styles["BodyText"],
+        )
+    )
+    story.append(
+        Paragraph(
+            xml_escape(
+                _("Requirements count: {count}").format(
+                    count=_export_requirements_count(export)
+                )
+                + "."
+            ),
             styles["BodyText"],
         )
     )

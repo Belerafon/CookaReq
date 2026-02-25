@@ -70,6 +70,7 @@ def test_render_requirements_html_shows_document_revision_in_header(tmp_path: Pa
     html = render_requirements_html(export)
 
     assert "Document revisions: SYS rev 5." in html
+    assert "Requirements count: 1." in html
     assert "<h2>System (<code>SYS</code>, rev 5)</h2>" in html
 
 

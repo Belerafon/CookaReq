@@ -51,6 +51,7 @@ def test_render_requirements_docx_embeds_assets(tmp_path: Path) -> None:
         document_xml = archive.read("word/document.xml").decode("utf-8")
         assert "SYS1" in document_xml
         assert "Title" in document_xml
+        assert "Requirements count: 1." in document_xml
         media_files = [name for name in archive.namelist() if name.startswith("word/media/")]
         assert media_files
 

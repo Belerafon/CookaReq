@@ -27,6 +27,7 @@ def _write_documents(root):
             "labels": [],
             "links": [],
             "status": "approved",
+            "revision": 1,
         },
     )
     save_item(
@@ -39,6 +40,7 @@ def _write_documents(root):
             "labels": ["safety"],
             "links": ["SYS1"],
             "status": "approved",
+            "revision": 2,
         },
     )
     save_item(
@@ -63,6 +65,7 @@ def _write_documents(root):
             "labels": [],
             "links": ["HLR1"],
             "status": "approved",
+            "revision": 2,
         },
     )
     return doc_sys
@@ -126,7 +129,7 @@ def test_axis_filters_apply(tmp_path):
 @pytest.mark.unit
 def test_suspect_links_detected(tmp_path):
     doc_sys = _write_documents(tmp_path)
-    # Update parent requirement to invalidate stored fingerprint in HLR1 link
+    # Update parent requirement to invalidate stored parent revision in HLR1 link
     save_item(
         tmp_path / "SYS",
         doc_sys,
@@ -137,6 +140,7 @@ def test_suspect_links_detected(tmp_path):
             "labels": [],
             "links": [],
             "status": "approved",
+            "revision": 2,
         },
     )
     config = TraceMatrixConfig(

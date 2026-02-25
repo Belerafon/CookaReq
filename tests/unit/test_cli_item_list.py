@@ -31,7 +31,7 @@ def test_item_list_outputs_requirements_with_optional_links(tmp_path, capsys, cl
             "statement": "",
             "labels": ["software"],
             "status": "approved",
-            "links": [{"rid": "SYS1", "fingerprint": "abc"}],
+            "links": [{"rid": "SYS1", "revision": 1}],
         },
     )
     save_item(

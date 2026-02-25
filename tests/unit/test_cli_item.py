@@ -351,7 +351,7 @@ def test_item_move_merges_sources(tmp_path, capsys, cli_context):
     assert data_new["approved_at"] == "2024-03-02 00:00:00"
     assert data_new["notes"] == "Template notes"
     assert [entry["rid"] for entry in data_new["links"]] == ["SYS2", "SYS3"]
-    assert all(entry.get("fingerprint") for entry in data_new["links"])
+    assert all(entry.get("revision") == 1 for entry in data_new["links"])
     assert data_new["revision"] == 7
 
 
@@ -465,7 +465,7 @@ def test_item_add_merges_base_and_arguments(tmp_path, capsys, cli_context):
     assert data["approved_at"] == "2024-02-01 00:00:00"
     assert data["notes"] == "Base notes"
     assert [entry["rid"] for entry in data["links"]] == ["SYS1", "SYS2"]
-    assert all(entry.get("fingerprint") for entry in data["links"])
+    assert all(entry.get("revision") == 1 for entry in data["links"])
     assert data["revision"] == 5
 
 
@@ -573,7 +573,7 @@ def test_item_delete_dry_run_lists_links(tmp_path, capsys, cli_context):
     assert item_path(tmp_path / "SYS", doc_sys, 1).exists()
     data = json.loads(item_path(tmp_path / "HLR", doc_hlr, 1).read_text(encoding="utf-8"))
     assert [entry["rid"] for entry in data.get("links", [])] == ["SYS1"]
-    assert all(entry.get("fingerprint") for entry in data.get("links", []))
+    assert all(entry.get("revision") == 1 for entry in data.get("links", []))
 
 
 def test_item_delete_requires_confirmation(tmp_path, capsys, cli_context):

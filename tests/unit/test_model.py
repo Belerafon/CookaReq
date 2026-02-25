@@ -10,7 +10,6 @@ from app.core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_fingerprint,
 )
 
 pytestmark = pytest.mark.unit
@@ -121,33 +120,15 @@ def test_requirement_links_roundtrip():
         priority=Priority.MEDIUM,
         source="",
         verification=Verification.ANALYSIS,
-        links=[Link(rid="SYS1", fingerprint="abc", suspect=True)],
+        links=[Link(rid="SYS1", revision=7, suspect=True)],
     )
     data = req.to_mapping()
-    assert data["links"] == [{"rid": "SYS1", "fingerprint": "abc", "suspect": True}]
+    assert data["links"] == [{"rid": "SYS1", "revision": 7, "suspect": True}]
     again = Requirement.from_mapping(data)
     assert len(again.links) == 1
     assert again.links[0].rid == "SYS1"
-    assert again.links[0].fingerprint == "abc"
+    assert again.links[0].revision == 7
     assert again.links[0].suspect is True
-
-
-def test_requirement_fingerprint_changes_on_text_update():
-    req = Requirement(
-        id=5,
-        title="Title",
-        statement="Alpha",
-        type=RequirementType.REQUIREMENT,
-        status=Status.DRAFT,
-        owner="",
-        priority=Priority.MEDIUM,
-        source="",
-        verification=Verification.ANALYSIS,
-    )
-    fp1 = requirement_fingerprint(req)
-    req.statement = "Beta"
-    fp2 = requirement_fingerprint(req)
-    assert fp1 != fp2
 
 
 def test_requirement_from_mapping_missing_statement():

@@ -10,7 +10,7 @@ from typing import Any
 from collections.abc import Callable, Mapping, Sequence
 
 from ..markdown_utils import validate_markdown
-from ..model import Attachment, Link, Requirement, requirement_fingerprint
+from ..model import Attachment, Link, Requirement
 from ..search import filter_by_labels, filter_by_status, search
 from .types import (
     Document,
@@ -70,12 +70,12 @@ def _validate_statement_markdown(statement: str) -> None:
         raise ValidationError(str(exc)) from exc
 
 
-def _load_fingerprint_for_rid(
+def _load_revision_for_rid(
     root: Path,
     docs: Mapping[str, Document],
     rid: str,
-    cache: dict[str, str | None],
-) -> str | None:
+    cache: dict[str, int | None],
+) -> int | None:
     if rid in cache:
         return cache[rid]
     try:
@@ -93,9 +93,17 @@ def _load_fingerprint_for_rid(
     except FileNotFoundError:
         cache[rid] = None
         return None
-    fingerprint = requirement_fingerprint(data)
-    cache[rid] = fingerprint
-    return fingerprint
+    raw_revision = data.get("revision", 1)
+    try:
+        revision = int(raw_revision)
+    except (TypeError, ValueError):
+        cache[rid] = None
+        return None
+    if revision <= 0:
+        cache[rid] = None
+        return None
+    cache[rid] = revision
+    return revision
 
 
 def _prepare_links_for_storage(
@@ -109,7 +117,7 @@ def _prepare_links_for_storage(
         return
     if not isinstance(raw_links, list):
         raise ValidationError("links must be a list")
-    cache: dict[str, str | None] = {}
+    cache: dict[str, int | None] = {}
     prepared: list[dict[str, Any]] = []
     for entry in raw_links:
         try:
@@ -117,18 +125,18 @@ def _prepare_links_for_storage(
         except (TypeError, ValueError) as exc:
             raise ValidationError("invalid link entry") from exc
         canonical_rid = _canonical_rid(docs, link.rid)
-        fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
-        if fingerprint is None:
+        target_revision = _load_revision_for_rid(root, docs, link.rid, cache)
+        if target_revision is None:
             link.suspect = True
             if canonical_rid is not None:
                 link.rid = canonical_rid
-        elif link.fingerprint is None:
-            link.fingerprint = fingerprint
+        elif link.revision is None:
+            link.revision = target_revision
             link.suspect = False
             if canonical_rid is not None:
                 link.rid = canonical_rid
         else:
-            link.suspect = link.fingerprint != fingerprint
+            link.suspect = link.revision != target_revision
             if canonical_rid is not None:
                 link.rid = canonical_rid
         prepared.append(link.to_dict())
@@ -143,7 +151,7 @@ def _update_link_suspicions(
     root: Path,
     docs: Mapping[str, Document],
     req: Requirement,
-    cache: dict[str, str | None] | None = None,
+    cache: dict[str, int | None] | None = None,
 ) -> None:
     if not req.links:
         return
@@ -153,17 +161,17 @@ def _update_link_suspicions(
         if not isinstance(link, Link):
             continue
         canonical_rid = _canonical_rid(docs, link.rid)
-        fingerprint = _load_fingerprint_for_rid(root, docs, link.rid, cache)
-        if fingerprint is None:
+        target_revision = _load_revision_for_rid(root, docs, link.rid, cache)
+        if target_revision is None:
             link.suspect = True
             continue
         if canonical_rid is not None:
             link.rid = canonical_rid
-        if link.fingerprint is None:
-            link.fingerprint = fingerprint
+        if link.revision is None:
+            link.revision = target_revision
             link.suspect = False
         else:
-            link.suspect = link.fingerprint != fingerprint
+            link.suspect = link.revision != target_revision
 
 
 def _read_json(path: Path) -> dict:
@@ -271,13 +279,20 @@ def _iter_requirements(
     all_docs: Mapping[str, Document] | None = None,
 ) -> list[Requirement]:
     requirements: list[Requirement] = []
-    cache: dict[str, str | None] = {}
+    cache: dict[str, int | None] = {}
     for prefix, doc in docs.items():
         directory = root / prefix
         for item_id in sorted(list_item_ids(directory, doc)):
             data, _ = load_item(directory, doc, item_id)
             rid = rid_for(doc, item_id)
-            cache[rid] = requirement_fingerprint(data)
+            raw_revision = data.get("revision", 1)
+            try:
+                revision = int(raw_revision)
+            except (TypeError, ValueError):
+                revision = None
+            if revision is not None and revision <= 0:
+                revision = None
+            cache[rid] = revision
             requirements.append(
                 Requirement.from_mapping(
                     data,
@@ -302,7 +317,7 @@ def load_requirements(
     ``prefixes`` preserves the provided order and filters out duplicates. When
     omitted, requirements from *all* documents are returned. The function
     ensures that link metadata is refreshed (``Link.suspect`` reflects the
-    current fingerprint state) in the same way as ``search_requirements`` and
+    current target revision state) in the same way as ``search_requirements`` and
     other high level helpers.
     """
     root_path = Path(root)
@@ -705,7 +720,7 @@ def move_requirement(
                             
                         )
                     link.rid = new_rid
-                    link.fingerprint = None
+                    link.revision = None
                     link.suspect = False
                     changed = True
                 new_links.append(link.to_dict())

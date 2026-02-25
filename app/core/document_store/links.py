@@ -7,7 +7,7 @@ from typing import Any
 
 from collections.abc import Iterable, Mapping
 
-from ..model import Link, Requirement, requirement_fingerprint
+from ..model import Link, Requirement
 from .types import Document, ValidationError
 from .documents import is_ancestor, load_documents
 from .items import (
@@ -287,9 +287,16 @@ def link_requirements(
                 raise ValidationError("invalid link entry") from exc
             existing_links[link.rid] = link
 
+    try:
+        source_revision = int(source_data.get("revision", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError("revision must be an integer") from exc
+    if source_revision <= 0:
+        raise ValidationError("revision must be positive")
+
     new_link = Link(
         rid=source_canonical_rid,
-        fingerprint=requirement_fingerprint(source_data),
+        revision=source_revision,
         suspect=False,
     )
     existing_links[source_canonical_rid] = new_link

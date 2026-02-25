@@ -21,7 +21,6 @@ from app.core.model import (
     Status,
     Priority,
     Verification,
-    requirement_fingerprint,
 )
 
 pytestmark = pytest.mark.unit
@@ -73,13 +72,11 @@ def test_validate_and_link(tmp_path: Path) -> None:
     link_obj = linked.links[0]
     assert link_obj.rid == "SYS1"
     assert link_obj.suspect is False
-    assert isinstance(link_obj.fingerprint, str) and link_obj.fingerprint
+    assert link_obj.revision == 1
     assert linked.revision == 1
 
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
-    parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
-    expected_fp = requirement_fingerprint(parent_data)
-    assert data["links"] == [{"rid": "SYS1", "fingerprint": expected_fp}]
+    assert data["links"] == [{"rid": "SYS1", "revision": 1}]
 
     exists, references = plan_delete_item(tmp_path, "SYS1", docs)
     assert exists is True
@@ -144,21 +141,22 @@ def test_link_becomes_suspect_after_parent_change(tmp_path: Path) -> None:
     assert linked.links[0].suspect is False
 
     child_data, _ = load_item(tmp_path / "HLR", hlr_doc, 2)
-    stored_fp = child_data["links"][0]["fingerprint"]
+    stored_fp = child_data["links"][0]["revision"]
 
     parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
     parent_data["statement"] = "Updated body"
-    new_fp = requirement_fingerprint(parent_data)
+    parent_data["revision"] = 2
+    new_fp = int(parent_data.get("revision", 1))
     assert new_fp != stored_fp
     save_item(tmp_path / "SYS", sys_doc, parent_data)
 
     updated = get_requirement(tmp_path, "HLR2", docs=docs)
     link_obj = updated.links[0]
     assert link_obj.suspect is True
-    assert link_obj.fingerprint == stored_fp
+    assert link_obj.revision == stored_fp
 
     serialized = updated.to_mapping()
-    assert serialized["links"][0]["fingerprint"] == stored_fp
+    assert serialized["links"][0]["revision"] == stored_fp
     assert serialized["links"][0]["suspect"] is True
 
 

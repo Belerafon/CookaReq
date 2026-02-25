@@ -21,7 +21,6 @@ from app.core.document_store import (
     save_document,
     save_item,
 )
-from app.core.model import requirement_fingerprint
 
 pytestmark = pytest.mark.unit
 
@@ -158,9 +157,7 @@ def test_plan_delete_item_lists_references(tmp_path: Path):
     # nothing removed
     assert item_path(tmp_path / "SYS", sys_doc, 1).exists()
     data, _ = load_item(tmp_path / "HLR", hlr_doc, 1)
-    parent_data, _ = load_item(tmp_path / "SYS", sys_doc, 1)
-    expected_fp = requirement_fingerprint(parent_data)
-    assert data.get("links") == [{"rid": "SYS1", "fingerprint": expected_fp}]
+    assert data.get("links") == [{"rid": "SYS1", "revision": 1}]
 
 
 def test_plan_delete_document_lists_subtree(tmp_path: Path):

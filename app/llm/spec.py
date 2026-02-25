@@ -359,9 +359,10 @@ TOOLS: list[dict[str, Any]] = [
                                                     "type": "string",
                                                     "description": "Target requirement identifier for the trace link.",
                                                 },
-                                                "fingerprint": {
-                                                    "type": ["string", "null"],
-                                                    "description": "Optional fingerprint hash used for stale link detection.",
+                                                "revision": {
+                                                    "type": ["integer", "null"],
+                                                    "minimum": 1,
+                                                    "description": "Optional target revision used for stale link detection.",
                                                 },
                                                 "suspect": {
                                                     "type": "boolean",
@@ -514,9 +515,10 @@ TOOLS: list[dict[str, Any]] = [
                                             "type": "string",
                                             "description": "Target requirement identifier for the link.",
                                         },
-                                        "fingerprint": {
-                                            "type": ["string", "null"],
-                                            "description": "Optional fingerprint used to detect stale relationships.",
+                                        "revision": {
+                                            "type": ["integer", "null"],
+                                            "minimum": 1,
+                                            "description": "Optional target revision used to detect stale relationships.",
                                         },
                                         "suspect": {
                                             "type": "boolean",

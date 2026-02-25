@@ -30,7 +30,6 @@ from ..core.model import (
     RequirementType,
     Status,
     Verification,
-    requirement_fingerprint,
 )
 from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
@@ -684,7 +683,7 @@ class EditorPanel(wx.Panel):
             return None
         metadata = {
             "title": str(data.get("title", "")),
-            "fingerprint": requirement_fingerprint(data),
+            "revision": data.get("revision"),
             "doc_prefix": doc.prefix,
             "doc_title": doc.title,
         }
@@ -704,8 +703,8 @@ class EditorPanel(wx.Panel):
             if metadata:
                 if metadata.get("title") and not entry.get("title"):
                     entry["title"] = metadata["title"]
-                if metadata.get("fingerprint") and not entry.get("fingerprint"):
-                    entry["fingerprint"] = metadata["fingerprint"]
+                if metadata.get("revision") and not entry.get("revision"):
+                    entry["revision"] = metadata["revision"]
                 if metadata.get("doc_prefix"):
                     entry["doc_prefix"] = metadata["doc_prefix"]
                 if metadata.get("doc_title"):
@@ -902,13 +901,15 @@ class EditorPanel(wx.Panel):
                         if not rid:
                             continue
                         link_info: dict[str, Any] = {"rid": rid}
-                        fingerprint = entry.get("fingerprint")
-                        if isinstance(fingerprint, str) and fingerprint:
-                            link_info["fingerprint"] = fingerprint
-                        elif fingerprint not in (None, ""):
-                            link_info["fingerprint"] = str(fingerprint)
+                        revision_raw = entry.get("revision")
+                        if revision_raw in (None, ""):
+                            link_info["revision"] = None
                         else:
-                            link_info["fingerprint"] = None
+                            try:
+                                revision_value = int(revision_raw)
+                            except (TypeError, ValueError):
+                                revision_value = None
+                            link_info["revision"] = revision_value if revision_value and revision_value > 0 else None
                         link_info["suspect"] = bool(entry.get("suspect", False))
                         if "title" in entry and entry["title"]:
                             link_info["title"] = str(entry["title"])
@@ -916,7 +917,7 @@ class EditorPanel(wx.Panel):
                     elif isinstance(entry, str):
                         rid = entry.strip()
                         if rid:
-                            parsed_links.append({"rid": rid, "fingerprint": None, "suspect": False})
+                            parsed_links.append({"rid": rid, "revision": None, "suspect": False})
             self.links = self._augment_links_with_metadata(parsed_links)
             self._rebuild_links_list("links")
             self.links_id.ChangeValue("")
@@ -1040,9 +1041,14 @@ class EditorPanel(wx.Panel):
                 if not rid:
                     continue
                 entry: dict[str, Any] = {"rid": rid}
-                fingerprint = link.get("fingerprint")
-                if isinstance(fingerprint, str) and fingerprint:
-                    entry["fingerprint"] = fingerprint
+                revision_raw = link.get("revision")
+                if revision_raw not in (None, ""):
+                    try:
+                        revision = int(revision_raw)
+                    except (TypeError, ValueError):
+                        revision = None
+                    if revision is not None and revision > 0:
+                        entry["revision"] = revision
                 suspect = bool(link.get("suspect", False))
                 if suspect:
                     entry["suspect"] = True
@@ -1503,7 +1509,7 @@ class EditorPanel(wx.Panel):
             wx.MessageBox(_("Invalid requirement ID"), _("Error"), style=wx.ICON_ERROR)
             return
         title = ""
-        fingerprint = None
+        parent_revision = None
         doc_title = ""
         doc_prefix = ""
         service = self._service
@@ -1516,19 +1522,19 @@ class EditorPanel(wx.Panel):
                 self._link_metadata_cache[value] = {}
             else:
                 title = str(data.get("title", ""))
-                fingerprint = requirement_fingerprint(data)
+                parent_revision = data.get("revision")
                 doc_title = doc.title
                 doc_prefix = doc.prefix
                 self._link_metadata_cache[value] = {
                     "title": title,
-                    "fingerprint": fingerprint,
+                    "revision": parent_revision,
                     "doc_prefix": doc_prefix,
                     "doc_title": doc_title,
                 }
         links_list.append(
             {
                 "rid": value,
-                "fingerprint": fingerprint,
+                "revision": parent_revision,
                 "suspect": False,
                 "title": title,
                 "doc_prefix": doc_prefix,

@@ -5,7 +5,6 @@ import pytest
 
 from app.cli import commands
 from app.core.document_store import Document, item_path, save_document, save_item
-from app.core.model import requirement_fingerprint
 
 
 @pytest.mark.unit
@@ -27,10 +26,7 @@ def test_link_add(tmp_path, capsys, cli_context):
 
     path = item_path(tmp_path / "HLR", doc_hlr, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
-    parent_path = item_path(tmp_path / "SYS", doc_sys, 1)
-    parent_data = json.loads(parent_path.read_text(encoding="utf-8"))
-    expected_fp = requirement_fingerprint(parent_data)
-    assert data["links"] == [{"rid": "SYS1", "fingerprint": expected_fp}]
+    assert data["links"] == [{"rid": "SYS1", "revision": 1}]
 
 
 @pytest.mark.unit

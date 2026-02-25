@@ -3086,3 +3086,27 @@ msgstr "context_docs must be a list"
 
 msgid "context_docs must be a list of strings"
 msgstr "context_docs must be a list of strings"
+
+msgid "Select a document before adding context docs."
+msgstr "Select a document before adding context docs."
+
+msgid "Document folder does not exist: {path}"
+msgstr "Document folder does not exist: {path}"
+
+msgid "Select context Markdown file"
+msgstr "Select context Markdown file"
+
+msgid "Markdown files (*.md)|*.md"
+msgstr "Markdown files (*.md)|*.md"
+
+msgid "Selected file must be inside the current document folder."
+msgstr "Selected file must be inside the current document folder."
+
+msgid "Relative paths to Markdown files with shared context for this requirement."
+msgstr "Relative paths to Markdown files with shared context for this requirement."
+
+msgid "Store documents inside the current requirement document folder (for example, related/overview.md) so exports and reviews can resolve them reliably."
+msgstr "Store documents inside the current requirement document folder (for example, related/overview.md) so exports and reviews can resolve them reliably."
+
+msgid "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
+msgstr "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."

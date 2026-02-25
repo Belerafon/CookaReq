@@ -179,6 +179,11 @@
       "Consistent labeling enables powerful filtering and helps group related items.",
       "Use shared presets to avoid typos and duplicates."
     ],
+    "context_docs": [
+      "Relative paths to Markdown files with shared context for this requirement.",
+      "Store documents inside the current requirement document folder (for example, related/overview.md) so exports and reviews can resolve them reliably.",
+      "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
+    ],
     "links": [
       "Links to higher-level requirements or stakeholder needs.",
       "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change.",

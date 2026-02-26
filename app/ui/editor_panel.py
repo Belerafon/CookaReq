@@ -260,6 +260,11 @@ class EditorPanel(wx.Panel):
         )
         self.attachments_list.InsertColumn(0, _("File"))
         self.attachments_list.InsertColumn(1, _("Note"))
+        self.attachments_list.Bind(
+            wx.EVT_SIZE,
+            lambda evt: (evt.Skip(), self._autosize_attachment_columns()),
+        )
+        attachment_row = wx.BoxSizer(wx.HORIZONTAL)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_attachment_btn = wx.Button(a_box, label=_("Add"))
         self.remove_attachment_btn = wx.Button(a_box, label=_("Remove"))
@@ -267,8 +272,9 @@ class EditorPanel(wx.Panel):
         self.remove_attachment_btn.Bind(wx.EVT_BUTTON, self._on_remove_attachment)
         btn_row.Add(self.add_attachment_btn, 0)
         btn_row.Add(self.remove_attachment_btn, 0, wx.LEFT, 5)
-        a_sizer.Add(self.attachments_list, 0, wx.EXPAND | wx.TOP, border)
-        a_sizer.Add(btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        attachment_row.Add(self.attachments_list, 1, wx.EXPAND | wx.RIGHT, border)
+        attachment_row.Add(btn_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        a_sizer.Add(attachment_row, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(a_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         # context docs section -------------------------------------------
@@ -283,7 +289,12 @@ class EditorPanel(wx.Panel):
             style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
         self.context_docs_list.InsertColumn(0, _("Path"))
+        self.context_docs_list.Bind(
+            wx.EVT_SIZE,
+            lambda evt: (evt.Skip(), self._autosize_context_docs_columns()),
+        )
         self._context_docs_list = self.context_docs_list
+        context_row = wx.BoxSizer(wx.HORIZONTAL)
         context_btn_row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_context_doc_btn = wx.Button(c_box, label=_("Add"))
         self.remove_context_doc_btn = wx.Button(c_box, label=_("Remove"))
@@ -291,8 +302,9 @@ class EditorPanel(wx.Panel):
         self.remove_context_doc_btn.Bind(wx.EVT_BUTTON, self._on_remove_context_doc)
         context_btn_row.Add(self.add_context_doc_btn, 0)
         context_btn_row.Add(self.remove_context_doc_btn, 0, wx.LEFT, 5)
-        c_sizer.Add(self.context_docs_list, 0, wx.EXPAND | wx.TOP, border)
-        c_sizer.Add(context_btn_row, 0, wx.ALIGN_RIGHT | wx.TOP, border)
+        context_row.Add(self.context_docs_list, 1, wx.EXPAND | wx.RIGHT, border)
+        context_row.Add(context_btn_row, 0, wx.ALIGN_CENTER_VERTICAL)
+        c_sizer.Add(context_row, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(c_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         for name in ("acceptance", "assumptions"):
@@ -788,6 +800,45 @@ class EditorPanel(wx.Panel):
         else:
             list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
 
+    def _autosize_attachment_columns(self) -> None:
+        """Resize attachment columns so file path stays readable."""
+        list_ctrl = self.attachments_list
+        if not list_ctrl or not list_ctrl.IsShown():
+            return
+        total = list_ctrl.GetClientSize().width
+        if total <= 0:
+            return
+        list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
+        note_width = list_ctrl.GetColumnWidth(1)
+        min_file_width = dip(self, 220)
+        if total > note_width + min_file_width:
+            list_ctrl.SetColumnWidth(0, total - note_width)
+        else:
+            list_ctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE)
+            file_width = list_ctrl.GetColumnWidth(0)
+            if file_width + note_width < total:
+                list_ctrl.SetColumnWidth(0, total - note_width)
+
+    def _autosize_context_docs_columns(self) -> None:
+        """Stretch context path column to the available list width."""
+        list_ctrl = self._context_docs_list
+        if list_ctrl is None or not list_ctrl.IsShown():
+            return
+        total = list_ctrl.GetClientSize().width
+        if total > 0:
+            list_ctrl.SetColumnWidth(0, total)
+
+    def _apply_compact_list_height(self, list_ctrl: wx.ListCtrl, item_count: int) -> None:
+        """Set list height to match the amount of visible data."""
+        if item_count <= 0:
+            list_ctrl.SetMinSize(wx.Size(-1, 0))
+            return
+        row_height = list_ctrl.GetCharHeight() + dip(self, 8)
+        header_height = list_ctrl.GetCharHeight() + dip(self, 6)
+        vertical_padding = dip(self, 6)
+        target_height = header_height + row_height * item_count + vertical_padding
+        list_ctrl.SetMinSize(wx.Size(-1, target_height))
+
     def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
         """Repopulate ListCtrl for given link attribute."""
         _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
@@ -1191,6 +1242,7 @@ class EditorPanel(wx.Panel):
         finally:
             self.attachments_list.Thaw()
         self.attachments_list.InvalidateBestSize()
+        self._apply_compact_list_height(self.attachments_list, len(self.attachments))
         visible = bool(self.attachments)
         sizer = self.attachments_list.GetContainingSizer()
         if sizer:
@@ -1204,6 +1256,7 @@ class EditorPanel(wx.Panel):
             btn_sizer.Show(self.remove_attachment_btn, visible)
             btn_sizer.Layout()
         if visible:
+            self._autosize_attachment_columns()
             self.attachments_list.SendSizeEvent()
         self.Layout()
         self.FitInside()
@@ -1843,6 +1896,7 @@ class EditorPanel(wx.Panel):
         finally:
             list_ctrl.Thaw()
         list_ctrl.InvalidateBestSize()
+        self._apply_compact_list_height(list_ctrl, len(self.context_docs))
         visible = bool(self.context_docs)
         sizer = list_ctrl.GetContainingSizer()
         if sizer is not None:
@@ -1852,6 +1906,7 @@ class EditorPanel(wx.Panel):
                 parent.Layout()
         list_ctrl.Show(visible)
         if visible:
+            self._autosize_context_docs_columns()
             list_ctrl.SendSizeEvent()
         if hasattr(self, "_content_panel") and self._content_panel:
             self._content_panel.FitInside()

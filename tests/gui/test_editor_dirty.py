@@ -362,3 +362,39 @@ def test_editor_panel_auto_resize_all_batches_layout(wx_app, monkeypatch):
         assert all(ctrl.GetMinSize().height > 10 for ctrl in panel._autosize_fields)
     finally:
         frame.Destroy()
+
+
+@pytest.mark.gui_smoke
+def test_editor_panel_attachment_and_context_lists_are_compact_and_fill_columns(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None, size=(900, 700))
+    try:
+        panel = EditorPanel(frame)
+        panel.attachments = [{"id": "att-1", "path": "assets/specs/diagram-long-name.png", "note": ""}]
+        panel.context_docs = ["assets/specs/reference/context-overview.md"]
+        panel._refresh_attachments()
+        panel._refresh_context_docs()
+
+        frame.Show()
+        panel.Layout()
+        panel.FitInside()
+        wx.Yield()
+
+        attachment_height = panel.attachments_list.GetSize().height
+        context_height = panel.context_docs_list.GetSize().height
+        assert attachment_height < 90
+        assert context_height < 90
+
+        context_client_width = panel.context_docs_list.GetClientSize().width
+        context_column_width = panel.context_docs_list.GetColumnWidth(0)
+        assert context_column_width >= context_client_width - 8
+
+        file_column_width = panel.attachments_list.GetColumnWidth(0)
+        note_column_width = panel.attachments_list.GetColumnWidth(1)
+        assert file_column_width > note_column_width
+    finally:
+        frame.Destroy()

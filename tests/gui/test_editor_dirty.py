@@ -389,6 +389,8 @@ def test_editor_panel_attachment_and_context_lists_are_compact_and_fill_columns(
         assert attachment_height < 90
         assert context_height < 90
 
+        assert panel.context_docs_list.GetWindowStyleFlag() & wx.LC_NO_HEADER
+
         context_client_width = panel.context_docs_list.GetClientSize().width
         context_column_width = panel.context_docs_list.GetColumnWidth(0)
         assert context_column_width >= context_client_width - 8

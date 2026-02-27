@@ -286,9 +286,9 @@ class EditorPanel(wx.Panel):
         c_box = c_sizer.GetStaticBox()
         self.context_docs_list = AutoHeightListCtrl(
             c_box,
-            style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
+            style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
-        self.context_docs_list.InsertColumn(0, _("Path"))
+        self.context_docs_list.InsertColumn(0, "")
         self.context_docs_list.Bind(
             wx.EVT_SIZE,
             lambda evt: (evt.Skip(), self._autosize_context_docs_columns()),

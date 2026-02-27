@@ -217,6 +217,9 @@ class AutoHeightListCtrl(wx.ListCtrl):
     def _measure_header_height(self) -> int:
         if self._header_height:
             return self._header_height
+        if self.GetWindowStyleFlag() & wx.LC_NO_HEADER:
+            self._header_height = 0
+            return self._header_height
         header = self.GetHeaderCtrl()
         if header:
             self._header_height = header.GetSize().height

@@ -97,7 +97,7 @@ class RequirementTransferDialog(wx.Dialog):
         btn_sizer = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         if btn_sizer is not None:
             main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
-            ok_btn = btn_sizer.GetAffirmativeButton()
+            ok_btn = self._resolve_ok_button(btn_sizer)
         else:  # pragma: no cover - minimal wx builds
             ok_btn = None
 
@@ -111,6 +111,19 @@ class RequirementTransferDialog(wx.Dialog):
             ok_btn.Enable(False)
 
         self._on_mode_changed(None)
+
+    def _resolve_ok_button(self, btn_sizer: wx.Sizer) -> wx.Window | None:
+        """Return the affirmative button for std dialog sizers across wx variants."""
+
+        ok_btn = None
+        if hasattr(btn_sizer, "GetAffirmativeButton"):
+            try:
+                ok_btn = btn_sizer.GetAffirmativeButton()
+            except TypeError:  # pragma: no cover - older wx variants
+                ok_btn = None
+        if ok_btn is None:
+            ok_btn = self.FindWindowById(wx.ID_OK)
+        return ok_btn
 
     @staticmethod
     def _normalize_documents(

@@ -236,6 +236,7 @@ def test_delete_unsaved_new_requirement(monkeypatch, wx_app, tmp_path):
 
     try:
         monkeypatch.setattr(main_frame_mod, "confirm", lambda _message: True)
+        monkeypatch.setattr(frame, "_prompt_unsaved_changes", lambda: "discard")
         wx_app.Yield()
 
         frame.on_new_requirement()

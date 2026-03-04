@@ -353,7 +353,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   PyInstaller, reusing resources under `app/resources/` and localisation assets
   from `app/locale/`. Runtime dependencies for statement formula previews
   (`matplotlib` with `backend_agg`) are packaged explicitly so Windows bundles
-  keep rendering LaTeX snippets inside requirement preview forms.
+  keep rendering LaTeX snippets inside requirement preview forms. The
+  exclusion list intentionally does not remove `unittest`, because matplotlib
+  imports touch it in frozen runtimes.
 
 ## Data flows
 

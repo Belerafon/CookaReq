@@ -159,9 +159,17 @@ def _looks_like_formula(candidate: str) -> bool:
 def _latex_to_png_bytes_with_reason(latex: str) -> tuple[bytes | None, str | None]:
     try:
         import matplotlib
-    except ImportError:  # pragma: no cover - optional runtime dependency
+    except ImportError as exc:  # pragma: no cover - optional runtime dependency
+        module_name = getattr(exc, "name", "") or ""
+        if module_name and not module_name.startswith("matplotlib"):
+            _FORMULA_LOG.warning(
+                "Formula preview PNG renderer is unavailable: matplotlib dependency import failed (%s).",
+                exc,
+            )
+            return None, "matplotlib_dependency_missing"
         _FORMULA_LOG.warning(
-            "Formula preview PNG renderer is unavailable: matplotlib is not installed."
+            "Formula preview PNG renderer is unavailable: matplotlib is not installed (%s).",
+            exc,
         )
         return None, "matplotlib_not_installed"
 

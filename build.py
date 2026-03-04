@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 REQUIRED_BUILD_IMPORTS: tuple[str, ...] = (
+    "numpy",
     "matplotlib",
     "matplotlib.pyplot",
     "matplotlib.backends.backend_agg",
@@ -158,6 +159,7 @@ def main() -> None:
         "typer",
         "python_multipart",
         "latex2mathml",
+        "numpy",
         
         # Core dependencies
         "pydantic",
@@ -219,6 +221,9 @@ def main() -> None:
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
+        "numpy",
+        "numpy.core",
+        "numpy.core._multiarray_umath",
         "matplotlib",
         "matplotlib.pyplot",
         "matplotlib.backends.backend_agg",
@@ -243,6 +248,7 @@ def main() -> None:
         "mcp",
         "typer",
         # Required for formula rendering in wx HtmlWindow previews.
+        "numpy",
         "matplotlib",
         # Fallback formula rendering path (MathML conversion).
         "latex2mathml",

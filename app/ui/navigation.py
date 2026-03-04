@@ -115,7 +115,7 @@ class Navigation:
         view_menu.AppendSubMenu(columns_menu, _("Columns"))
         self.hierarchy_menu_item = view_menu.AppendCheckItem(
             wx.ID_ANY,
-            _("Show Hierarchy"),
+            _("Show Data Modules Hierarchy"),
         )
         self.frame.Bind(
             wx.EVT_MENU,

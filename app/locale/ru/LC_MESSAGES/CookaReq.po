@@ -1098,7 +1098,7 @@ msgid "Custom labels (comma-separated)"
 msgstr "Произвольные метки (через запятую)"
 
 msgid "Delete document {prefix} and its subtree?"
-msgstr "Удалить документ {prefix} и все дочерние элементы?"
+msgstr "Удалить модуль данных {prefix} и все дочерние элементы?"
 
 msgid "Delete item {rid}?"
 msgstr "Удалить требование {rid}?"
@@ -1110,13 +1110,16 @@ msgid "Discard unsaved changes?"
 msgstr "Отменить несохранённые изменения?"
 
 msgid "Document not found"
-msgstr "Документ не найден"
+msgstr "Модуль данных не найден"
 
 msgid "Document prefix is required."
-msgstr "Требуется указать префикс документа."
+msgstr "Требуется указать префикс модуля данных."
 
+
+msgid "Data Modules"
+msgstr "Модули данных"
 msgid "Documents"
-msgstr "Документы"
+msgstr "Модули данных"
 
 msgid "Edit label"
 msgstr "Изменить метку"
@@ -1172,7 +1175,7 @@ msgstr ""
 "Минимально допустимое значение — 1000 токенов; по умолчанию CookaReq использует 5000, если поле пустое."
 
 msgid "New document"
-msgstr "Новый документ"
+msgstr "Новый модуль данных"
 
 msgid ""
 "Number of times to retry a failed HTTP request. Example: 3\n"
@@ -1202,7 +1205,7 @@ msgstr ""
 "Позволяет сохранять порядок списка между сеансами."
 
 msgid "Edit document"
-msgstr "Изменить документ"
+msgstr "Изменить модуль данных"
 
 msgid "Requirement {rid}"
 msgstr "Требование {rid}"
@@ -1248,25 +1251,25 @@ msgid "comma-separated parent requirement IDs"
 msgstr "идентификаторы родительских требований через запятую"
 
 msgid "create document"
-msgstr "создать документ"
+msgstr "создать модуль данных"
 
 msgid "create new item"
 msgstr "создать новый элемент"
 
 msgid "delete document"
-msgstr "удалить документ"
+msgstr "удалить модуль данных"
 
 msgid "delete item"
 msgstr "удалить элемент"
 
 msgid "document not found: {prefix}"
-msgstr "документ не найден: {prefix}"
+msgstr "модуль данных не найден: {prefix}"
 
 msgid "document prefix"
-msgstr "префикс документа"
+msgstr "префикс модуля данных"
 
 msgid "document title"
-msgstr "название документа"
+msgstr "название модуля данных"
 
 msgid "edit existing item"
 msgstr "изменить существующий элемент"
@@ -1302,10 +1305,10 @@ msgid "links must be a list"
 msgstr "связи должны быть списком"
 
 msgid "list documents"
-msgstr "список документов"
+msgstr "список модулей данных"
 
 msgid "manage documents"
-msgstr "управлять документами"
+msgstr "управлять модулями данных"
 
 msgid "manage items"
 msgstr "управлять элементами"
@@ -1320,7 +1323,7 @@ msgid "export requirements"
 msgstr "экспортировать требования"
 
 msgid "document prefixes (comma separated)"
-msgstr "префиксы документов через запятую"
+msgstr "префиксы модулей данных через запятую"
 
 msgid "title for exported document"
 msgstr "заголовок экспортируемого документа"
@@ -1332,7 +1335,7 @@ msgid "output format"
 msgstr "формат вывода"
 
 msgid "parent document prefix"
-msgstr "префикс родительского документа"
+msgstr "префикс родительского модуля данных"
 
 msgid "parent requirement identifiers"
 msgstr "идентификаторы родительских требований"
@@ -1356,10 +1359,10 @@ msgid "show what would be deleted"
 msgstr "показать, что будет удалено"
 
 msgid "target document prefix"
-msgstr "префикс целевого документа"
+msgstr "префикс целевого модуля данных"
 
 msgid "unknown document prefix: {prefix}"
-msgstr "неизвестный префикс документа: {prefix}"
+msgstr "неизвестный префикс модуля данных: {prefix}"
 
 msgid "unknown priority: {value}"
 msgstr "неизвестный приоритет: {value}"
@@ -1595,8 +1598,11 @@ msgstr "Время ответа: {timestamp}"
 msgid "Restart response generation"
 msgstr "Запустить генерацию ответа заново"
 
+
+msgid "Show Data Modules Hierarchy"
+msgstr "Показать иерархию модулей данных"
 msgid "Show Hierarchy"
-msgstr "Показать иерархию"
+msgstr "Показать иерархию модулей данных"
 
 msgid "LLM ↔ MCP tool exchanges:"
 msgstr "Обмен инструментов между LLM и MCP:"

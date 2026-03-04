@@ -191,6 +191,8 @@ def main() -> None:
         "matplotlib",
         "matplotlib.pyplot",
         "matplotlib.backends.backend_agg",
+        "matplotlib.ft2font",
+        "matplotlib.font_manager",
         "matplotlib.mathtext",
         "latex2mathml",
         "latex2mathml.converter",

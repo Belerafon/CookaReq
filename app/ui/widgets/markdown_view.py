@@ -154,14 +154,30 @@ def _looks_like_formula(candidate: str) -> bool:
 def _latex_to_png_bytes_with_reason(latex: str) -> tuple[bytes | None, str | None]:
     try:
         import matplotlib
-        from matplotlib import pyplot as plt
     except ImportError:  # pragma: no cover - optional runtime dependency
         _FORMULA_LOG.warning(
             "Formula preview PNG renderer is unavailable: matplotlib is not installed."
         )
         return None, "matplotlib_not_installed"
 
-    matplotlib.use("Agg", force=True)
+    # Configure a non-interactive backend before importing pyplot. In frozen
+    # Windows bundles, pyplot may otherwise pick an interactive backend that is
+    # missing from the packaged runtime and formula rendering will fail.
+    try:
+        matplotlib.use("Agg", force=True)
+    except Exception:  # pragma: no cover - backend bootstrap failures
+        _FORMULA_LOG.exception(
+            "Formula preview PNG renderer is unavailable: failed to select matplotlib Agg backend."
+        )
+        return None, "matplotlib_backend_setup_failed"
+
+    try:
+        from matplotlib import pyplot as plt
+    except Exception:  # pragma: no cover - optional runtime dependency
+        _FORMULA_LOG.exception(
+            "Formula preview PNG renderer is unavailable: matplotlib.pyplot import failed."
+        )
+        return None, "matplotlib_pyplot_import_failed"
     figure = None
     try:
         figure = plt.figure(figsize=(0.01, 0.01))

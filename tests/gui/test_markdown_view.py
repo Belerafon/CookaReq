@@ -134,3 +134,18 @@ def test_markdown_view_logs_formula_renderer_summary(
 
     assert "Formula preview renderer summary" in caplog.text
     assert "forced_for_test=1" in caplog.text
+
+
+def test_latex_to_png_bytes_reports_backend_setup_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ui.widgets import markdown_view
+
+    class _FakeMatplotlib:
+        def use(self, *_args, **_kwargs):
+            raise RuntimeError("backend failed")
+
+    monkeypatch.setitem(__import__("sys").modules, "matplotlib", _FakeMatplotlib())
+
+    png_bytes, reason = markdown_view._latex_to_png_bytes_with_reason(r"x^2")
+
+    assert png_bytes is None
+    assert reason == "matplotlib_backend_setup_failed"

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import build
 
 
@@ -39,3 +41,24 @@ def test_build_pyinstaller_args_onefile_switch_replaces_onedir() -> None:
 
     assert '--onefile' in args
     assert '--onedir' not in args
+
+
+def test_validate_build_environment_reports_missing_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _broken_import(name: str):
+        raise ImportError(name)
+
+    monkeypatch.setattr(build.importlib, "import_module", _broken_import)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        build._validate_build_environment(("matplotlib", "latex2mathml.converter"))
+
+    message = str(excinfo.value)
+    assert "matplotlib" in message
+    assert "latex2mathml.converter" in message
+    assert "requirements-build.txt" in message
+
+
+def test_validate_build_environment_accepts_available_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(build.importlib, "import_module", lambda _name: object())
+
+    build._validate_build_environment(("matplotlib",))

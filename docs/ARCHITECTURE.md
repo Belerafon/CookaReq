@@ -351,9 +351,13 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
   PyInstaller, reusing resources under `app/resources/` and localisation assets
-  from `app/locale/`. Runtime dependencies for statement formula previews
-  (`matplotlib` with `backend_agg`) are packaged explicitly so Windows bundles
-  keep rendering LaTeX snippets inside requirement preview forms.
+  from `app/locale/`. The build now fails fast when required formula-preview
+  modules (`matplotlib`, `matplotlib.pyplot`, `matplotlib.backends.backend_agg`,
+  `latex2mathml.converter`) are missing in the build interpreter, because
+  packaged runtimes otherwise silently degrade to plain-text formulas.
+  Runtime dependencies for statement formula previews (`matplotlib` with
+  `backend_agg`) are packaged explicitly so Windows bundles keep rendering
+  LaTeX snippets inside requirement preview forms.
 
 ## Data flows
 

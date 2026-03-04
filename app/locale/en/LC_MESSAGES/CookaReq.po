@@ -1082,7 +1082,7 @@ msgid "Custom labels (comma-separated)"
 msgstr "Custom labels (comma-separated)"
 
 msgid "Delete document {prefix} and its subtree?"
-msgstr "Delete document {prefix} and its subtree?"
+msgstr "Delete data module {prefix} and its subtree?"
 
 msgid "Delete item {rid}?"
 msgstr "Delete item {rid}?"
@@ -1094,13 +1094,16 @@ msgid "Discard unsaved changes?"
 msgstr "Discard unsaved changes?"
 
 msgid "Document not found"
-msgstr "Document not found"
+msgstr "Data module not found"
 
 msgid "Document prefix is required."
-msgstr "Document prefix is required."
+msgstr "Data module prefix is required."
 
+
+msgid "Data Modules"
+msgstr "Data Modules"
 msgid "Documents"
-msgstr "Documents"
+msgstr "Data Modules"
 
 msgid "Edit label"
 msgstr "Edit label"
@@ -1156,7 +1159,7 @@ msgstr ""
 "Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset."
 
 msgid "New document"
-msgstr "New document"
+msgstr "New data module"
 
 msgid ""
 "Number of times to retry a failed HTTP request. Example: 3\n"
@@ -1186,7 +1189,7 @@ msgstr ""
 "Keeps the list ordering consistent between sessions."
 
 msgid "Edit document"
-msgstr "Edit document"
+msgstr "Edit data module"
 
 msgid "Requirement {rid}"
 msgstr "Requirement {rid}"
@@ -1232,25 +1235,25 @@ msgid "comma-separated parent requirement IDs"
 msgstr "comma-separated parent requirement IDs"
 
 msgid "create document"
-msgstr "create document"
+msgstr "create data module"
 
 msgid "create new item"
 msgstr "create new item"
 
 msgid "delete document"
-msgstr "delete document"
+msgstr "delete data module"
 
 msgid "delete item"
 msgstr "delete item"
 
 msgid "document not found: {prefix}"
-msgstr "document not found: {prefix}"
+msgstr "data module not found: {prefix}"
 
 msgid "document prefix"
-msgstr "document prefix"
+msgstr "data module prefix"
 
 msgid "document title"
-msgstr "document title"
+msgstr "data module title"
 
 msgid "edit existing item"
 msgstr "edit existing item"
@@ -1286,10 +1289,10 @@ msgid "links must be a list"
 msgstr "links must be a list"
 
 msgid "list documents"
-msgstr "list documents"
+msgstr "list data modules"
 
 msgid "manage documents"
-msgstr "manage documents"
+msgstr "manage data modules"
 
 msgid "manage items"
 msgstr "manage items"
@@ -1304,7 +1307,7 @@ msgid "export requirements"
 msgstr "export requirements"
 
 msgid "document prefixes (comma separated)"
-msgstr "document prefixes (comma separated)"
+msgstr "data module prefixes (comma separated)"
 
 msgid "title for exported document"
 msgstr "title for exported document"
@@ -1316,7 +1319,7 @@ msgid "output format"
 msgstr "output format"
 
 msgid "parent document prefix"
-msgstr "parent document prefix"
+msgstr "parent data module prefix"
 
 msgid "parent requirement identifiers"
 msgstr "parent requirement identifiers"
@@ -1340,10 +1343,10 @@ msgid "show what would be deleted"
 msgstr "show what would be deleted"
 
 msgid "target document prefix"
-msgstr "target document prefix"
+msgstr "target data module prefix"
 
 msgid "unknown document prefix: {prefix}"
-msgstr "unknown document prefix: {prefix}"
+msgstr "unknown data module prefix: {prefix}"
 
 msgid "unknown priority: {value}"
 msgstr "unknown priority: {value}"
@@ -1579,8 +1582,11 @@ msgstr "Response timestamp: {timestamp}"
 msgid "Restart response generation"
 msgstr "Restart response generation"
 
+
+msgid "Show Data Modules Hierarchy"
+msgstr "Show Data Modules Hierarchy"
 msgid "Show Hierarchy"
-msgstr "Show Hierarchy"
+msgstr "Show Data Modules Hierarchy"
 
 msgid "LLM ↔ MCP tool exchanges:"
 msgstr "LLM ↔ MCP tool exchanges:"

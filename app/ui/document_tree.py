@@ -31,11 +31,18 @@ class DocumentTree(wx.Panel):
         style = getattr(wx, "TR_DEFAULT_STYLE", 0) | getattr(wx, "TR_HIDE_ROOT", 0)
         self.tree = wx.TreeCtrl(self, style=style)
         sizer = wx.BoxSizer(wx.VERTICAL)
+        static_text = getattr(wx, "StaticText", None)
+        if static_text is not None:
+            self._title_label = static_text(self, label=_("Data Modules"))
+            title_flags = getattr(wx, "LEFT", 0) | getattr(wx, "RIGHT", 0) | getattr(wx, "TOP", 0)
+            sizer.Add(self._title_label, 0, title_flags, 6)
+        else:
+            self._title_label = None
         sizer.Add(self.tree, 1, wx.EXPAND)
         self.SetSizer(sizer)
         self._node_for_prefix: dict[str, wx.TreeItemId] = {}
         self._prefix_for_id: dict[wx.TreeItemId, str] = {}
-        self.root = self.tree.AddRoot(_("Documents"))
+        self.root = self.tree.AddRoot(_("Data Modules"))
         self.tree.Bind(wx.EVT_TREE_SEL_CHANGED, self._handle_select)
         self.tree.Bind(wx.EVT_TREE_ITEM_MENU, self._show_context_menu)
         if hasattr(wx, "EVT_CONTEXT_MENU"):

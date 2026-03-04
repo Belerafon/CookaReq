@@ -11,7 +11,6 @@ from collections import Counter
 from pathlib import Path
 import re
 import tempfile
-from urllib.parse import quote
 
 import markdown
 import wx
@@ -215,6 +214,14 @@ def _formula_image_uri(latex: str) -> tuple[str | None, str | None]:
     target = cache_dir / f"{digest}.png"
     if not target.exists():
         target.write_bytes(png_bytes)
+    # wx.html.HtmlWindow resolves local images more reliably when paths are
+    # converted through wx's URL helper (especially on Windows frozen builds).
+    try:
+        wx_url = wx.FileSystem.FileNameToURL(str(target))
+    except Exception:  # pragma: no cover - defensive fallback
+        wx_url = ""
+    if wx_url:
+        return wx_url, None
     return target.as_uri(), None
 
 
@@ -230,7 +237,7 @@ def _formula_img_tag(latex: str, *, display: str, stats: _FormulaRenderStats | N
     escaped_latex = html_lib.escape(latex, quote=True)
     class_name = "math-formula-block" if display == "block" else "math-formula-inline"
     return (
-        f'<img src="{quote(uri, safe=":/%")}" alt="{escaped_latex}" '
+        f'<img src="{uri}" alt="{escaped_latex}" '
         f'title="{escaped_latex}" class="{class_name}" />'
     )
 

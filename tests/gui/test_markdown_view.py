@@ -149,3 +149,37 @@ def test_latex_to_png_bytes_reports_backend_setup_failure(monkeypatch: pytest.Mo
 
     assert png_bytes is None
     assert reason == "matplotlib_backend_setup_failed"
+
+
+def test_formula_image_uri_prefers_wx_filename_to_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ui.widgets import markdown_view
+
+    monkeypatch.setattr(markdown_view, "_latex_to_png_bytes_with_reason", lambda _latex: (b"png", None))
+
+    class _FakeFileSystem:
+        @staticmethod
+        def FileNameToURL(path: str) -> str:
+            assert path.endswith('.png')
+            return "file:C:/tmp/formula image.png"
+
+    fake_wx = type("_FakeWx", (), {"FileSystem": _FakeFileSystem})
+    monkeypatch.setattr(markdown_view, "wx", fake_wx)
+
+    uri, reason = markdown_view._formula_image_uri(r"x^2")
+
+    assert reason is None
+    assert uri == "file:C:/tmp/formula image.png"
+
+
+def test_formula_img_tag_keeps_wx_url_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ui.widgets import markdown_view
+
+    monkeypatch.setattr(
+        markdown_view,
+        "_formula_image_uri",
+        lambda _latex: ("file:C:/tmp/formula image.png", None),
+    )
+
+    tag = markdown_view._formula_img_tag(r"x^2", display="inline")
+
+    assert 'src="file:C:/tmp/formula image.png"' in tag

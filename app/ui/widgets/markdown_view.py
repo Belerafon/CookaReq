@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import hashlib
 import html as html_lib
 import logging
+import os
 from collections import Counter
 from pathlib import Path
 import re
@@ -25,7 +26,12 @@ from ..text import normalize_for_display
 import contextlib
 
 
-_FORMULA_LOG = logging.getLogger(__name__)
+_FORMULA_LOG = logging.getLogger("cookareq.formula_preview")
+
+
+def _formula_debug_enabled() -> bool:
+    flag = os.environ.get("COOKAREQ_FORMULA_DEBUG", "")
+    return flag.strip().lower() in {"1", "true", "yes", "on", "debug"}
 
 
 @dataclass
@@ -207,7 +213,14 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
 def _formula_image_uri(latex: str) -> tuple[str | None, str | None]:
     png_bytes, reason = _latex_to_png_bytes_with_reason(latex)
     if not png_bytes:
-        return None, reason or "png_bytes_unavailable"
+        fallback_reason = reason or "png_bytes_unavailable"
+        if _formula_debug_enabled():
+            _FORMULA_LOG.warning(
+                "Formula debug: PNG bytes unavailable; reason=%s latex=%r",
+                fallback_reason,
+                latex,
+            )
+        return None, fallback_reason
     cache_dir = Path(tempfile.gettempdir()) / "cookareq-formula-preview"
     cache_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(latex.encode("utf-8")).hexdigest()
@@ -221,19 +234,51 @@ def _formula_image_uri(latex: str) -> tuple[str | None, str | None]:
     except Exception:  # pragma: no cover - defensive fallback
         wx_url = ""
     if wx_url:
+        if _formula_debug_enabled():
+            _FORMULA_LOG.warning(
+                "Formula debug: resolved PNG uri via wx FileSystem; path=%s uri=%s exists=%s size=%d",
+                target,
+                wx_url,
+                target.exists(),
+                target.stat().st_size if target.exists() else -1,
+            )
         return wx_url, None
-    return target.as_uri(), None
+    fallback_uri = target.as_uri()
+    if _formula_debug_enabled():
+        _FORMULA_LOG.warning(
+            "Formula debug: wx FileSystem URL unavailable, using Path.as_uri; path=%s uri=%s exists=%s size=%d",
+            target,
+            fallback_uri,
+            target.exists(),
+            target.stat().st_size if target.exists() else -1,
+        )
+    return fallback_uri, None
 
 
 def _formula_img_tag(latex: str, *, display: str, stats: _FormulaRenderStats | None = None) -> str:
     uri, reason = _formula_image_uri(latex)
     if not uri:
+        fallback_reason = reason or "unknown"
         if stats is not None:
-            stats.mark_text_fallback(reason=reason or "unknown")
+            stats.mark_text_fallback(reason=fallback_reason)
+        if _formula_debug_enabled():
+            _FORMULA_LOG.warning(
+                "Formula debug: falling back to source text; reason=%s display=%s latex=%r",
+                fallback_reason,
+                display,
+                latex,
+            )
         escaped = latex.replace("\\", "\\\\")
         return f"$${escaped}$$" if display == "block" else f"\\({escaped}\\)"
     if stats is not None:
         stats.mark_png()
+    if _formula_debug_enabled():
+        _FORMULA_LOG.warning(
+            "Formula debug: rendered PNG formula; display=%s uri=%s latex=%r",
+            display,
+            uri,
+            latex,
+        )
     escaped_latex = html_lib.escape(latex, quote=True)
     class_name = "math-formula-block" if display == "block" else "math-formula-inline"
     return (

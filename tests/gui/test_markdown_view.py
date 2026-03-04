@@ -183,3 +183,30 @@ def test_formula_img_tag_keeps_wx_url_unchanged(monkeypatch: pytest.MonkeyPatch)
     tag = markdown_view._formula_img_tag(r"x^2", display="inline")
 
     assert 'src="file:C:/tmp/formula image.png"' in tag
+
+
+def test_formula_logger_uses_cookareq_namespace() -> None:
+    from app.ui.widgets import markdown_view
+
+    assert markdown_view._FORMULA_LOG.name == "cookareq.formula_preview"
+
+
+def test_formula_debug_logging_emits_fallback_details(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.ui.widgets import markdown_view
+
+    monkeypatch.setenv("COOKAREQ_FORMULA_DEBUG", "1")
+    monkeypatch.setattr(markdown_view, "_formula_image_uri", lambda _latex: (None, "forced_debug"))
+
+    with caplog.at_level("WARNING"):
+        rendered = markdown_view._render_markdown(
+            "Fallback: $E = mc^2$",
+            allow_html=True,
+            render_math=True,
+        )
+
+    assert "Formula debug: falling back to source text" in caplog.text
+    assert "forced_debug" in caplog.text
+    assert "E = mc^2" in rendered

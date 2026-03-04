@@ -236,7 +236,7 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     table cell content. Because `wx.html.HtmlWindow` supports CSS only
     partially, the renderer also injects legacy table attributes (`border`,
     `bordercolor`, `bgcolor`) so borders and headers stay visible on all
-    supported platforms. Formula snippets in the statement preview are rendered as LaTeX-generated PNG images (inline and block markers) before Markdown conversion so superscripts, fractions, and roots remain visually accurate even though `wx.html.HtmlWindow` does not natively render MathML. The preview renderer forces the `matplotlib` `Agg` backend before importing `pyplot`; this avoids backend auto-detection pitfalls in frozen Windows builds where interactive backends may be unavailable. Generated formula PNG paths are converted through `wx.FileSystem.FileNameToURL` before embedding into `<img>` tags so `wx.html.HtmlWindow` can resolve local files reliably in packaged Windows runtimes. For field diagnostics in packaged builds, set `COOKAREQ_FORMULA_DEBUG=1`: the formula preview path emits WARNING-level records under `cookareq.formula_preview` with latex snippets, chosen image URI, file existence/size, and fallback reasons. If PNG rendering is unavailable in a packaged runtime, the preview deliberately keeps the original LaTeX markers as plain text instead of attempting MathML conversion that would be invisible in the widget. The renderer writes an INFO-level summary for each markdown render with formulas, including how many snippets were rendered as PNG versus plain-text fallback and aggregated fallback reasons.
+    supported platforms. Formula snippets in the statement preview are rendered as LaTeX-generated PNG images (inline and block markers) before Markdown conversion so superscripts, fractions, and roots remain visually accurate even though `wx.html.HtmlWindow` does not natively render MathML. If PNG rendering is unavailable in a packaged runtime, the preview deliberately keeps the original LaTeX markers as plain text instead of attempting MathML conversion that would be invisible in the widget. The renderer writes an INFO-level summary for each markdown render with formulas, including how many snippets were rendered as PNG versus plain-text fallback and aggregated fallback reasons.
 * `agent_chat_panel/` displays the running agent transcript, batching controls
   and confirmation toggles. Users can queue follow-up prompts while a run is
   still executing; the panel surfaces the pending message in a cancellable
@@ -351,16 +351,11 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
   PyInstaller, reusing resources under `app/resources/` and localisation assets
-  from `app/locale/`. The build now fails fast when required formula-preview
-  modules (`numpy`, `matplotlib`, `matplotlib.pyplot`,
-  `matplotlib.backends.backend_agg`, `latex2mathml.converter`) are missing in
-  the build interpreter, because
-  packaged runtimes otherwise silently degrade to plain-text formulas. The
-  exclusion list avoids removing standard-library modules required by
-  third-party renderers (for example, `unittest` imported by matplotlib paths).
-  Runtime dependencies for statement formula previews (`matplotlib` with
-  `backend_agg`) are packaged explicitly so Windows bundles keep rendering
-  LaTeX snippets inside requirement preview forms.
+  from `app/locale/`. Runtime dependencies for statement formula previews
+  (`matplotlib` with `backend_agg`) are packaged explicitly so Windows bundles
+  keep rendering LaTeX snippets inside requirement preview forms. The
+  exclusion list intentionally does not remove `unittest`, because matplotlib
+  imports touch it in frozen runtimes.
 
 ## Data flows
 

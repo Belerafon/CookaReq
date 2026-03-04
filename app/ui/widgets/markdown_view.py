@@ -7,11 +7,11 @@ from dataclasses import dataclass
 import hashlib
 import html as html_lib
 import logging
-import os
 from collections import Counter
 from pathlib import Path
 import re
 import tempfile
+from urllib.parse import quote
 
 import markdown
 import wx
@@ -26,12 +26,7 @@ from ..text import normalize_for_display
 import contextlib
 
 
-_FORMULA_LOG = logging.getLogger("cookareq.formula_preview")
-
-
-def _formula_debug_enabled() -> bool:
-    flag = os.environ.get("COOKAREQ_FORMULA_DEBUG", "")
-    return flag.strip().lower() in {"1", "true", "yes", "on", "debug"}
+_FORMULA_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -159,38 +154,14 @@ def _looks_like_formula(candidate: str) -> bool:
 def _latex_to_png_bytes_with_reason(latex: str) -> tuple[bytes | None, str | None]:
     try:
         import matplotlib
-    except ImportError as exc:  # pragma: no cover - optional runtime dependency
-        module_name = getattr(exc, "name", "") or ""
-        if module_name and not module_name.startswith("matplotlib"):
-            _FORMULA_LOG.warning(
-                "Formula preview PNG renderer is unavailable: matplotlib dependency import failed (%s).",
-                exc,
-            )
-            return None, "matplotlib_dependency_missing"
+        from matplotlib import pyplot as plt
+    except ImportError:  # pragma: no cover - optional runtime dependency
         _FORMULA_LOG.warning(
-            "Formula preview PNG renderer is unavailable: matplotlib is not installed (%s).",
-            exc,
+            "Formula preview PNG renderer is unavailable: matplotlib is not installed."
         )
         return None, "matplotlib_not_installed"
 
-    # Configure a non-interactive backend before importing pyplot. In frozen
-    # Windows bundles, pyplot may otherwise pick an interactive backend that is
-    # missing from the packaged runtime and formula rendering will fail.
-    try:
-        matplotlib.use("Agg", force=True)
-    except Exception:  # pragma: no cover - backend bootstrap failures
-        _FORMULA_LOG.exception(
-            "Formula preview PNG renderer is unavailable: failed to select matplotlib Agg backend."
-        )
-        return None, "matplotlib_backend_setup_failed"
-
-    try:
-        from matplotlib import pyplot as plt
-    except Exception:  # pragma: no cover - optional runtime dependency
-        _FORMULA_LOG.exception(
-            "Formula preview PNG renderer is unavailable: matplotlib.pyplot import failed."
-        )
-        return None, "matplotlib_pyplot_import_failed"
+    matplotlib.use("Agg", force=True)
     figure = None
     try:
         figure = plt.figure(figsize=(0.01, 0.01))
@@ -221,76 +192,29 @@ def _latex_to_png_bytes(latex: str) -> bytes | None:
 def _formula_image_uri(latex: str) -> tuple[str | None, str | None]:
     png_bytes, reason = _latex_to_png_bytes_with_reason(latex)
     if not png_bytes:
-        fallback_reason = reason or "png_bytes_unavailable"
-        if _formula_debug_enabled():
-            _FORMULA_LOG.warning(
-                "Formula debug: PNG bytes unavailable; reason=%s latex=%r",
-                fallback_reason,
-                latex,
-            )
-        return None, fallback_reason
+        return None, reason or "png_bytes_unavailable"
     cache_dir = Path(tempfile.gettempdir()) / "cookareq-formula-preview"
     cache_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(latex.encode("utf-8")).hexdigest()
     target = cache_dir / f"{digest}.png"
     if not target.exists():
         target.write_bytes(png_bytes)
-    # wx.html.HtmlWindow resolves local images more reliably when paths are
-    # converted through wx's URL helper (especially on Windows frozen builds).
-    try:
-        wx_url = wx.FileSystem.FileNameToURL(str(target))
-    except Exception:  # pragma: no cover - defensive fallback
-        wx_url = ""
-    if wx_url:
-        if _formula_debug_enabled():
-            _FORMULA_LOG.warning(
-                "Formula debug: resolved PNG uri via wx FileSystem; path=%s uri=%s exists=%s size=%d",
-                target,
-                wx_url,
-                target.exists(),
-                target.stat().st_size if target.exists() else -1,
-            )
-        return wx_url, None
-    fallback_uri = target.as_uri()
-    if _formula_debug_enabled():
-        _FORMULA_LOG.warning(
-            "Formula debug: wx FileSystem URL unavailable, using Path.as_uri; path=%s uri=%s exists=%s size=%d",
-            target,
-            fallback_uri,
-            target.exists(),
-            target.stat().st_size if target.exists() else -1,
-        )
-    return fallback_uri, None
+    return target.as_uri(), None
 
 
 def _formula_img_tag(latex: str, *, display: str, stats: _FormulaRenderStats | None = None) -> str:
     uri, reason = _formula_image_uri(latex)
     if not uri:
-        fallback_reason = reason or "unknown"
         if stats is not None:
-            stats.mark_text_fallback(reason=fallback_reason)
-        if _formula_debug_enabled():
-            _FORMULA_LOG.warning(
-                "Formula debug: falling back to source text; reason=%s display=%s latex=%r",
-                fallback_reason,
-                display,
-                latex,
-            )
+            stats.mark_text_fallback(reason=reason or "unknown")
         escaped = latex.replace("\\", "\\\\")
         return f"$${escaped}$$" if display == "block" else f"\\({escaped}\\)"
     if stats is not None:
         stats.mark_png()
-    if _formula_debug_enabled():
-        _FORMULA_LOG.warning(
-            "Formula debug: rendered PNG formula; display=%s uri=%s latex=%r",
-            display,
-            uri,
-            latex,
-        )
     escaped_latex = html_lib.escape(latex, quote=True)
     class_name = "math-formula-block" if display == "block" else "math-formula-inline"
     return (
-        f'<img src="{uri}" alt="{escaped_latex}" '
+        f'<img src="{quote(uri, safe=":/%")}" alt="{escaped_latex}" '
         f'title="{escaped_latex}" class="{class_name}" />'
     )
 

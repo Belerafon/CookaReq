@@ -5,42 +5,12 @@ folder. It requires PyInstaller to be installed in the active
 environment.
 """
 
-import importlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-
-
-
-REQUIRED_BUILD_IMPORTS: tuple[str, ...] = (
-    "numpy",
-    "matplotlib",
-    "matplotlib.pyplot",
-    "matplotlib.backends.backend_agg",
-    "latex2mathml.converter",
-)
-
-
-def _validate_build_environment(required_modules: tuple[str, ...] = REQUIRED_BUILD_IMPORTS) -> None:
-    """Fail fast when required build/runtime modules are unavailable."""
-    missing: list[str] = []
-    for module_name in required_modules:
-        try:
-            importlib.import_module(module_name)
-        except Exception:
-            missing.append(module_name)
-    if not missing:
-        return
-
-    modules = ", ".join(missing)
-    raise RuntimeError(
-        "Build environment is missing required Python modules: "
-        f"{modules}. Install/update dependencies before building (for example: "
-        "python -m pip install -r requirements-build.txt)."
-    )
 
 def get_git_commit_date() -> str | None:
     """Get the date of the last commit from git."""
@@ -126,8 +96,6 @@ def main() -> None:
     """Build project executables using PyInstaller."""
     import PyInstaller.__main__  # type: ignore
 
-    _validate_build_environment()
-
     # Update version.json with current git commit date
     update_version_json()
     
@@ -159,7 +127,6 @@ def main() -> None:
         "typer",
         "python_multipart",
         "latex2mathml",
-        "numpy",
         
         # Core dependencies
         "pydantic",
@@ -221,14 +188,9 @@ def main() -> None:
         "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto",
         "uvicorn.lifespan.on",
-        "numpy",
-        "numpy.core",
-        "numpy.core._multiarray_umath",
         "matplotlib",
         "matplotlib.pyplot",
         "matplotlib.backends.backend_agg",
-        "matplotlib.ft2font",
-        "matplotlib.font_manager",
         "matplotlib.mathtext",
         "latex2mathml",
         "latex2mathml.converter",
@@ -248,7 +210,6 @@ def main() -> None:
         "mcp",
         "typer",
         # Required for formula rendering in wx HtmlWindow previews.
-        "numpy",
         "matplotlib",
         # Fallback formula rendering path (MathML conversion).
         "latex2mathml",

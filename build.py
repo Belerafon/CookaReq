@@ -256,7 +256,6 @@ def main() -> None:
 
     excluded_modules = [
         "_tkinter",
-        "unittest",
         "test",
         "setuptools",
         "pip",

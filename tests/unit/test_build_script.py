@@ -26,6 +26,7 @@ def test_build_pyinstaller_args_keeps_formula_preview_dependencies() -> None:
     assert '--collect-all=latex2mathml' in args
     assert '--hidden-import=latex2mathml.converter' in args
     assert '--exclude-module=matplotlib' not in args
+    assert '--exclude-module=unittest' not in args
     assert '--exclude-module=numpy' not in args
 
 

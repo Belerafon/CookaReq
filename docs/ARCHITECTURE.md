@@ -355,7 +355,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   modules (`numpy`, `matplotlib`, `matplotlib.pyplot`,
   `matplotlib.backends.backend_agg`, `latex2mathml.converter`) are missing in
   the build interpreter, because
-  packaged runtimes otherwise silently degrade to plain-text formulas.
+  packaged runtimes otherwise silently degrade to plain-text formulas. The
+  exclusion list avoids removing standard-library modules required by
+  third-party renderers (for example, `unittest` imported by matplotlib paths).
   Runtime dependencies for statement formula previews (`matplotlib` with
   `backend_agg`) are packaged explicitly so Windows bundles keep rendering
   LaTeX snippets inside requirement preview forms.

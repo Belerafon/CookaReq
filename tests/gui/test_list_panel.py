@@ -232,6 +232,29 @@ def test_statement_column_shows_plain_preview(stubbed_list_panel_env):
     assert display.endswith("…")
 
 
+def test_statement_preview_uses_cache_between_refreshes(
+    stubbed_list_panel_env,
+    monkeypatch,
+):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_columns(["statement"])
+    statement = "**cached** value " + ("A" * 80)
+
+    calls = {"count": 0}
+
+    def _counting_strip(value: str) -> str:
+        calls["count"] += 1
+        return value.replace("**", "")
+
+    monkeypatch.setattr("app.ui.list_panel.strip_markdown", _counting_strip)
+
+    panel.set_requirements([_req(1, "One", statement=statement)])
+    panel.set_requirements([_req(2, "Two", statement=statement)])
+
+    assert calls["count"] == 1
+
+
 def test_label_imagelist_handles_resizes(stubbed_list_panel_env):
     env = stubbed_list_panel_env
     wx_stub = env.wx

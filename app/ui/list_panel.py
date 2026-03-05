@@ -363,6 +363,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._rid_lookup: dict[str, Requirement] = {}
         self._doc_titles: dict[str, str] = {}
         self._link_display_cache: dict[str, str] = {}
+        self._statement_preview_cache: dict[str, str] = {}
         ColumnSorterMixin.__init__(self, 1)
         self.columns: list[str] = []
         self._on_clone = on_clone
@@ -888,89 +889,110 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         """Reload list control from the model."""
         items = self.model.get_visible()
         self._update_document_summary()
-        self.list.DeleteAllItems()
-        for req in items:
-            index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
-            # Windows ListCtrl may still assign image 0; clear explicitly
-            if hasattr(self.list, "SetItemImage"):
+        freeze = getattr(self.list, "Freeze", None)
+        thaw = getattr(self.list, "Thaw", None)
+        is_frozen = False
+        if callable(freeze):
+            with suppress(Exception):
+                freeze()
+                is_frozen = True
+        try:
+            self.list.DeleteAllItems()
+            for req in items:
+                index = self.list.InsertItem(self.list.GetItemCount(), "", -1)
+                # Windows ListCtrl may still assign image 0; clear explicitly
+                if hasattr(self.list, "SetItemImage"):
+                    with suppress(Exception):
+                        self.list.SetItemImage(index, -1)
+                req_id = getattr(req, "id", 0)
+                try:
+                    self.list.SetItemData(index, int(req_id))
+                except Exception:
+                    self.list.SetItemData(index, 0)
+                for col, field in enumerate(self._field_order):
+                    is_unsaved = bool(getattr(self.model, "is_unsaved", None)) and self.model.is_unsaved(req)
+                    if field == "title":
+                        title = getattr(req, "title", "")
+                        derived = bool(getattr(req, "links", []))
+                        parts: list[str] = []
+                        if is_unsaved:
+                            parts.append("*")
+                        if derived:
+                            parts.append("↳")
+                        if title:
+                            parts.append(title)
+                        display = " ".join(parts)
+                        self.list.SetItem(index, col, display)
+                        continue
+                    if field == "labels":
+                        value = getattr(req, "labels", [])
+                        self._set_label_image(index, col, value)
+                        continue
+                    if field == "id":
+                        value = getattr(req, "id", "")
+                        display = f"* {value}".strip() if is_unsaved else str(value)
+                        self.list.SetItem(index, col, display)
+                        continue
+                    if field == "derived_from":
+                        value = self._first_parent_text(req)
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "links":
+                        links = getattr(req, "links", [])
+                        formatted: list[str] = []
+                        for link in links:
+                            rid = getattr(link, "rid", str(link))
+                            if getattr(link, "suspect", False):
+                                formatted.append(f"{rid} ⚠")
+                            else:
+                                formatted.append(str(rid))
+                        value = ", ".join(formatted)
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "derived_count":
+                        rid = req.rid or str(req.id)
+                        count = len(self.derived_map.get(rid, []))
+                        self.list.SetItem(index, col, str(count))
+                        continue
+                    if field == "attachments":
+                        value = ", ".join(
+                            getattr(a, "path", "") for a in getattr(req, "attachments", [])
+                        )
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "context_docs":
+                        value = ", ".join(str(path) for path in getattr(req, "context_docs", []) or [])
+                        self.list.SetItem(index, col, value)
+                        continue
+                    if field == "statement":
+                        value = self._statement_preview_text(getattr(req, "statement", ""))
+                        self.list.SetItem(index, col, value)
+                        continue
+                    value = getattr(req, field, "")
+                    if isinstance(value, Enum):
+                        value = locale.code_to_label(field, value.value)
+                    self.list.SetItem(index, col, str(value))
+        finally:
+            if is_frozen and callable(thaw):
                 with suppress(Exception):
-                    self.list.SetItemImage(index, -1)
-            req_id = getattr(req, "id", 0)
-            try:
-                self.list.SetItemData(index, int(req_id))
-            except Exception:
-                self.list.SetItemData(index, 0)
-            for col, field in enumerate(self._field_order):
-                is_unsaved = bool(getattr(self.model, "is_unsaved", None)) and self.model.is_unsaved(req)
-                if field == "title":
-                    title = getattr(req, "title", "")
-                    derived = bool(getattr(req, "links", []))
-                    parts: list[str] = []
-                    if is_unsaved:
-                        parts.append("*")
-                    if derived:
-                        parts.append("↳")
-                    if title:
-                        parts.append(title)
-                    display = " ".join(parts)
-                    self.list.SetItem(index, col, display)
-                    continue
-                if field == "labels":
-                    value = getattr(req, "labels", [])
-                    self._set_label_image(index, col, value)
-                    continue
-                if field == "id":
-                    value = getattr(req, "id", "")
-                    display = f"* {value}".strip() if is_unsaved else str(value)
-                    self.list.SetItem(index, col, display)
-                    continue
-                if field == "derived_from":
-                    value = self._first_parent_text(req)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "links":
-                    links = getattr(req, "links", [])
-                    formatted: list[str] = []
-                    for link in links:
-                        rid = getattr(link, "rid", str(link))
-                        if getattr(link, "suspect", False):
-                            formatted.append(f"{rid} ⚠")
-                        else:
-                            formatted.append(str(rid))
-                    value = ", ".join(formatted)
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "derived_count":
-                    rid = req.rid or str(req.id)
-                    count = len(self.derived_map.get(rid, []))
-                    self.list.SetItem(index, col, str(count))
-                    continue
-                if field == "attachments":
-                    value = ", ".join(
-                        getattr(a, "path", "") for a in getattr(req, "attachments", [])
-                    )
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "context_docs":
-                    value = ", ".join(str(path) for path in getattr(req, "context_docs", []) or [])
-                    self.list.SetItem(index, col, value)
-                    continue
-                if field == "statement":
-                    value = self._statement_preview_text(getattr(req, "statement", ""))
-                    self.list.SetItem(index, col, value)
-                    continue
-                value = getattr(req, field, "")
-                if isinstance(value, Enum):
-                    value = locale.code_to_label(field, value.value)
-                self.list.SetItem(index, col, str(value))
+                    thaw()
 
     def _statement_preview_text(self, value: str) -> str:
-        text = strip_markdown(str(value))
+        raw_text = str(value)
+        cached = self._statement_preview_cache.get(raw_text)
+        if cached is not None:
+            return cached
+        text = strip_markdown(raw_text)
         text = " ".join(text.split())
         if len(text) <= self.STATEMENT_PREVIEW_LIMIT:
-            return text
-        trimmed = text[: self.STATEMENT_PREVIEW_LIMIT - 1].rstrip()
-        return f"{trimmed}…"
+            preview = text
+        else:
+            trimmed = text[: self.STATEMENT_PREVIEW_LIMIT - 1].rstrip()
+            preview = f"{trimmed}…"
+        if len(self._statement_preview_cache) > 2048:
+            self._statement_preview_cache.clear()
+        self._statement_preview_cache[raw_text] = preview
+        return preview
 
     def refresh(self, *, select_id: int | None = None) -> None:
         """Public wrapper to reload list control.

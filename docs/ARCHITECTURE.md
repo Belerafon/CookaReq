@@ -21,7 +21,7 @@ so you know which modules are involved and which regressions to guard against.
 | `app/resources/version.json` | Build-stamped version metadata (date only) surfaced in the main window title. The loader first tries `importlib.resources` and then falls back to filesystem paths so frozen bundles still show the version. |
 | `requirements/` | Bundled sample requirements documents (`SYS/`, `HLR/`, `LLR/`). |
 | `tests/` | End-to-end, GUI, services and core suites (see `tests/README.md`). |
-| `tools/` | Development helpers such as `run_wx.py` for running wx scripts under a virtual display and `benchmark_document_switch.py` for profiling document-switch latency (load/render/sort) on synthetic large datasets. |
+| `tools/` | Development helpers such as `run_wx.py` for running wx scripts under a virtual display and `benchmark_document_switch.py` for profiling document-switch latency on synthetic large datasets in both normal single-repaint mode (sort already active) and forced extra-repaint mode (`--resort-each-switch`). |
 
 Design alternatives for larger product changes are tracked in standalone docs
 under `docs/`. For generalized contextual-artifact linking and context-centric

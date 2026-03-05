@@ -54,8 +54,6 @@ def _long_markdown_block(base: str, *, repeat: int) -> str:
 
 
 def _build_dataset(root: Path, *, per_doc: int, statement_size: int) -> None:
-    """Create synthetic dataset with "full" requirement cards."""
-
     service = RequirementsService(root)
     service.create_document(prefix="SYS", title="System")
     service.create_document(prefix="HLR", title="High-Level")
@@ -73,7 +71,6 @@ def _build_dataset(root: Path, *, per_doc: int, statement_size: int) -> None:
                 links.append({"rid": f"{prefix}{req_id - 1}", "revision": 1})
             if req_id > 10:
                 links.append({"rid": f"{prefix}{req_id - 10}", "revision": 1})
-
             service.create_requirement(
                 prefix,
                 {
@@ -112,6 +109,7 @@ def _run_benchmark(
     *,
     iterations: int,
     sort_column: str,
+    resort_each_switch: bool,
 ) -> BenchmarkResult:
     model = RequirementModel()
     service = RequirementsService(root)
@@ -122,22 +120,16 @@ def _run_benchmark(
     frame = wx.Frame(None)
     panel = ListPanel(frame, model=model)
     panel.set_columns(
-        [
-            "id",
-            "statement",
-            "status",
-            "owner",
-            "rationale",
-            "notes",
-            "links",
-            "derived_count",
-        ]
+        ["id", "statement", "status", "owner", "rationale", "notes", "links", "derived_count"]
     )
 
     if sort_column not in panel._field_order:
         available = ", ".join(panel._field_order)
         raise ValueError(f"Unknown sort column '{sort_column}'. Available: {available}")
     sort_col_index = panel._field_order.index(sort_column)
+
+    # Prime sort once so following document switches keep sort in model without extra redraw.
+    panel.sort(sort_col_index, True)
 
     load_durations_ms: list[float] = []
     render_durations_ms: list[float] = []
@@ -153,13 +145,17 @@ def _run_benchmark(
         t1 = time.perf_counter()
         panel.set_requirements(model.get_all(), derived_map)
         t2 = time.perf_counter()
-        panel.sort(sort_col_index, sort_ascending)
-        t3 = time.perf_counter()
 
-        sort_ascending = not sort_ascending
+        sort_ms = 0.0
+        if resort_each_switch:
+            panel.sort(sort_col_index, sort_ascending)
+            t3 = time.perf_counter()
+            sort_ms = (t3 - t2) * 1000
+            sort_ascending = not sort_ascending
+
         load_durations_ms.append((t1 - t0) * 1000)
         render_durations_ms.append((t2 - t1) * 1000)
-        sort_durations_ms.append((t3 - t2) * 1000)
+        sort_durations_ms.append(sort_ms)
 
     frame.Destroy()
     app.Destroy()
@@ -171,8 +167,6 @@ def _run_benchmark(
 
 
 def _profile_operation(root: Path, *, sort_column: str) -> tuple[str, str]:
-    """Profile one render and one sort operation on loaded data."""
-
     model = RequirementModel()
     service = RequirementsService(root)
     controller = DocumentsController(service, model)
@@ -188,14 +182,17 @@ def _profile_operation(root: Path, *, sort_column: str) -> tuple[str, str]:
 
     derived_map = controller.load_items("SYS")
 
+    # Scenario A: normal switch with sort already active in model.
+    panel.sort(sort_col_index, True)
     render_profile = cProfile.Profile()
     render_profile.enable()
     panel.set_requirements(model.get_all(), derived_map)
     render_profile.disable()
 
+    # Scenario B: explicit re-sort call (extra repaint) after refresh.
     sort_profile = cProfile.Profile()
     sort_profile.enable()
-    panel.sort(sort_col_index, True)
+    panel.sort(sort_col_index, False)
     sort_profile.disable()
 
     render_stream = io.StringIO()
@@ -209,6 +206,8 @@ def _profile_operation(root: Path, *, sort_column: str) -> tuple[str, str]:
 
 
 def _fmt(values: list[float]) -> str:
+    if not values:
+        return "mean=0.00 ms, max=0.00 ms"
     if len(values) < 2:
         return f"mean={statistics.mean(values):.2f} ms, max={max(values):.2f} ms"
     return (
@@ -227,7 +226,15 @@ def main() -> int:
         "--sort-column",
         type=str,
         default="title",
-        help="Column used for per-switch sorting (default: title).",
+        help="Column used for sorting (default: title).",
+    )
+    parser.add_argument(
+        "--resort-each-switch",
+        action="store_true",
+        help=(
+            "Force explicit sort call after each switch (double repaint scenario). "
+            "By default benchmark measures normal flow with one repaint per switch."
+        ),
     )
     args = parser.parse_args()
 
@@ -238,6 +245,7 @@ def main() -> int:
             root,
             iterations=args.iterations,
             sort_column=args.sort_column,
+            resort_each_switch=args.resort_each_switch,
         )
 
         print("Dataset:")
@@ -245,26 +253,41 @@ def main() -> int:
         print("Switch benchmark:")
         print(f"  load_items: {_fmt(result.load_durations_ms)}")
         print(f"  list_render: {_fmt(result.render_durations_ms)}")
-        print(f"  sort({args.sort_column}): {_fmt(result.sort_durations_ms)}")
-        print(
-            "  combined(load+render+sort): "
-            + _fmt(
-                [
-                    load + render + sort
-                    for load, render, sort in zip(
-                        result.load_durations_ms,
-                        result.render_durations_ms,
-                        result.sort_durations_ms,
-                        strict=True,
-                    )
-                ]
+        if args.resort_each_switch:
+            print(f"  explicit sort({args.sort_column}): {_fmt(result.sort_durations_ms)}")
+            print(
+                "  combined(load+render+sort): "
+                + _fmt(
+                    [
+                        load + render + sort
+                        for load, render, sort in zip(
+                            result.load_durations_ms,
+                            result.render_durations_ms,
+                            result.sort_durations_ms,
+                            strict=True,
+                        )
+                    ]
+                )
             )
-        )
+        else:
+            print(
+                "  combined(load+render): "
+                + _fmt(
+                    [
+                        load + render
+                        for load, render in zip(
+                            result.load_durations_ms,
+                            result.render_durations_ms,
+                            strict=True,
+                        )
+                    ]
+                )
+            )
 
         render_profile, sort_profile = _profile_operation(root, sort_column=args.sort_column)
-        print("\nTop render profile (single switch):")
+        print("\nTop profile: switch with active sort (single repaint)")
         print(render_profile)
-        print("Top sort profile (single sort call):")
+        print("Top profile: explicit sort call after switch (extra repaint)")
         print(sort_profile)
     return 0
 

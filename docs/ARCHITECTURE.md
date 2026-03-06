@@ -108,7 +108,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   definitions are centralized in `requirement_export.py` and reused by all card
   renderers to keep translations synchronized across formats. The
   export dialog keeps a single field-selection list for all formats, and the
-  selected fields are applied both to tabular exports and to card exports
+  selected fields are applied both to tabular exports and to card exports.
+  A dedicated toggle controls whether document-level shared artifacts marked
+  with `include_in_export=true` are injected into exports (TXT/HTML/DOCX as a
+  preface section, CSV/TSV as additional commented header lines).
   (metadata/sections/links are filtered accordingly). Export headers now also
   include document revision metadata (`doc_revision`) so generated artifacts
   clearly show the baseline state of each exported document. For card-oriented formats
@@ -235,6 +238,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     The shared-artifacts dialog now uses a resizable top-level window with persisted geometry
     (size/position/maximized state) and persisted table column widths, and it validates
     export-preface inclusion so only supported UTF-8 text artifact formats are marked as exportable.
+    During export, non-Markdown text artifacts (CSV/JSON/YAML/INI/LOG/TXT)
+    are normalized into Markdown-compatible fenced blocks before rendering in
+    card-oriented formats.
     To keep document switching responsive on large datasets, list repaints run
     under `wx.ListCtrl.Freeze/Thaw`, and statement markdown previews are cached
     by source text so repeated switches avoid re-running markdown stripping for

@@ -3241,3 +3241,15 @@ msgstr "This file type cannot be added to export introduction. Allowed text form
 
 msgid "Only text artifacts can be included in export introduction. Allowed formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
 msgstr "Only text artifacts can be included in export introduction. Allowed formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+
+
+msgid "Include shared artifacts marked for export"
+msgstr "Include shared artifacts marked for export"
+
+
+msgid "Context: {title}"
+msgstr "Context: {title}"
+
+
+msgid "invalid shared artifacts registry"
+msgstr "invalid shared artifacts registry"

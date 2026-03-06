@@ -40,6 +40,7 @@ class RequirementExportPlan:
     colorize_label_backgrounds: bool
     docx_include_requirement_heading: bool
     generate_context_docs_preface: bool
+    include_shared_artifacts: bool
 
 
 DEFAULT_EXPORT_FIELD_ORDER: tuple[str, ...] = (
@@ -143,6 +144,9 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._generate_context_docs_preface = (
             bool(saved_state.generate_context_docs_preface) if saved_state else False
+        )
+        self._include_shared_artifacts = (
+            bool(saved_state.include_shared_artifacts) if saved_state else True
         )
         self._default_export_scope: Literal["all", "visible", "selected"] = (
             default_export_scope
@@ -335,6 +339,11 @@ class RequirementExportDialog(wx.Dialog):
             label=_("Generate context_docs content before requirements list"),
         )
         self.context_docs_preface_checkbox.SetValue(self._generate_context_docs_preface)
+        self.include_shared_artifacts_checkbox = wx.CheckBox(
+            self.txt_options_box,
+            label=_("Include shared artifacts marked for export"),
+        )
+        self.include_shared_artifacts_checkbox.SetValue(self._include_shared_artifacts)
 
         self.docx_formula_box = wx.StaticBox(self, label=_("DOCX formulas"))
         self.docx_formula_choice = wx.Choice(
@@ -422,6 +431,12 @@ class RequirementExportDialog(wx.Dialog):
         )
         txt_options_sizer.Add(
             self.context_docs_preface_checkbox,
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            6,
+        )
+        txt_options_sizer.Add(
+            self.include_shared_artifacts_checkbox,
             0,
             wx.LEFT | wx.RIGHT | wx.BOTTOM,
             6,
@@ -514,6 +529,7 @@ class RequirementExportDialog(wx.Dialog):
         self._main_sizer.Show(self._txt_options_sizer, show_options, recursive=True)
         self._update_label_grouping_state()
         self._update_context_docs_preface_state()
+        self._update_shared_artifacts_state()
         self._update_colorize_labels_state()
         self._main_sizer.Layout()
 
@@ -606,6 +622,9 @@ class RequirementExportDialog(wx.Dialog):
         self.context_docs_preface_checkbox.Show(enabled)
         if not enabled:
             self.context_docs_preface_checkbox.SetValue(False)
+
+    def _update_shared_artifacts_state(self) -> None:
+        self.include_shared_artifacts_checkbox.Enable(True)
 
     def _update_colorize_labels_state(self) -> None:
         enabled = self._current_format() in {ExportFormat.HTML, ExportFormat.DOCX}
@@ -768,6 +787,7 @@ class RequirementExportDialog(wx.Dialog):
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
             generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),
+            include_shared_artifacts=self.include_shared_artifacts_checkbox.GetValue(),
         )
 
     def get_state(self) -> ExportDialogState:
@@ -797,4 +817,5 @@ class RequirementExportDialog(wx.Dialog):
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
             generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),
+            include_shared_artifacts=self.include_shared_artifacts_checkbox.GetValue(),
         )

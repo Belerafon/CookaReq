@@ -78,6 +78,7 @@ class ExportDialogState:
     colorize_label_backgrounds: bool = False
     docx_include_requirement_heading: bool = True
     generate_context_docs_preface: bool = False
+    include_shared_artifacts: bool = True
 
 
 FIELD_BINDINGS: dict[str, FieldBinding] = {
@@ -514,6 +515,9 @@ class ConfigManager:
         generate_context_docs_preface = payload.get("generate_context_docs_preface")
         if not isinstance(generate_context_docs_preface, bool):
             generate_context_docs_preface = False
+        include_shared_artifacts = payload.get("include_shared_artifacts")
+        if not isinstance(include_shared_artifacts, bool):
+            include_shared_artifacts = True
         return ExportDialogState(
             path=path_value,
             format=fmt_value,
@@ -527,6 +531,7 @@ class ConfigManager:
             colorize_label_backgrounds=colorize_label_backgrounds,
             docx_include_requirement_heading=docx_include_requirement_heading,
             generate_context_docs_preface=generate_context_docs_preface,
+            include_shared_artifacts=include_shared_artifacts,
         )
 
     def set_export_dialog_state(self, path: Path | str, state: ExportDialogState) -> None:
@@ -547,6 +552,7 @@ class ConfigManager:
             "colorize_label_backgrounds": state.colorize_label_backgrounds,
             "docx_include_requirement_heading": state.docx_include_requirement_heading,
             "generate_context_docs_preface": state.generate_context_docs_preface,
+            "include_shared_artifacts": state.include_shared_artifacts,
         }
         self._raw["export_dialog_state"] = export_state
         self.flush()

@@ -1272,8 +1272,10 @@ class EditorPanel(wx.Panel):
         visible = bool(self.attachments)
         sizer = self.attachments_list.GetContainingSizer()
         if sizer:
-            sizer.ShowItems(visible)
-            sizer.Layout()
+            sizer.Show(self.attachments_list, visible)
+            parent = self.attachments_list.GetParent()
+            if parent:
+                parent.Layout()
         self.attachments_list.Show(visible)
         self.remove_attachment_btn.Enable(visible)
         self.remove_attachment_btn.Show(visible)

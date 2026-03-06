@@ -432,5 +432,17 @@ def test_editor_panel_attachment_and_context_lists_are_compact_and_fill_columns(
         file_column_width = panel.attachments_list.GetColumnWidth(0)
         note_column_width = panel.attachments_list.GetColumnWidth(1)
         assert file_column_width > note_column_width
+
+        assert panel.add_attachment_btn.IsShown()
+        assert panel.add_attachment_btn.IsEnabled()
+        assert panel.remove_attachment_btn.IsShown()
+
+        panel.attachments = []
+        panel._refresh_attachments()
+        wx.Yield()
+
+        assert panel.add_attachment_btn.IsShown()
+        assert panel.add_attachment_btn.IsEnabled()
+        assert not panel.remove_attachment_btn.IsShown()
     finally:
         frame.Destroy()

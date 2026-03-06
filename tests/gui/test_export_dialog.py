@@ -26,6 +26,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert not dialog.docx_formula_box.IsShown()
         assert not dialog.colorize_label_backgrounds_checkbox.IsEnabled()
         assert not dialog.context_docs_preface_checkbox.IsShown()
+        assert dialog.include_shared_artifacts_checkbox.GetValue() is True
         assert dialog._selected_export_scope() == "all"
 
         dialog.format_choice.SetSelection(1)
@@ -88,12 +89,14 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
             card_sort_mode="source",
             card_label_group_mode="per_label",
             export_scope="visible",
+            include_shared_artifacts=False,
         ),
     )
     try:
         wx_app.Yield()
         assert dialog._selected_card_sort_mode() == "source"
         assert dialog._selected_export_scope() == "visible"
+        assert dialog.include_shared_artifacts_checkbox.GetValue() is False
         assert dialog._selected_card_label_group_mode() == "per_label"
         assert not dialog.card_label_group_choice.IsEnabled()
         assert not dialog.context_docs_preface_checkbox.IsShown()
@@ -109,6 +112,7 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
         assert plan is not None
         assert plan.card_sort_mode == "labels"
         assert plan.card_label_group_mode == "label_set"
+        assert plan.include_shared_artifacts is False
 
         state = dialog.get_state()
         assert state.card_sort_mode == "labels"

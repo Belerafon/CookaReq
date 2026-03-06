@@ -179,6 +179,68 @@ class MainFrameDocumentsMixin:
         ]
         return context_preface, missing_messages
 
+    def _shared_artifact_text_to_markdown(self: MainFrame, path: Path, text: str) -> str:
+        """Normalize shared artifact text into markdown for card exports."""
+        suffix = path.suffix.lower()
+        stripped = text.strip()
+        if not stripped:
+            return ""
+        if suffix in {".md", ".markdown"}:
+            return stripped
+        language = {
+            ".txt": "",
+            ".csv": "csv",
+            ".json": "json",
+            ".yaml": "yaml",
+            ".yml": "yaml",
+            ".ini": "ini",
+            ".log": "log",
+        }.get(suffix, "")
+        fence = f"```{language}" if language else "```"
+        return f"{fence}\n{stripped}\n```"
+
+    def _collect_shared_artifacts_preface(
+        self: MainFrame,
+        document: object,
+        *,
+        doc_root: Path,
+    ) -> tuple[list[tuple[str, str]], list[str]]:
+        """Collect export-enabled shared artifacts as markdown snippets."""
+        artifacts = getattr(document, "shared_artifacts", []) or []
+        if not isinstance(artifacts, Sequence):
+            return [], [_("invalid shared artifacts registry")]
+
+        preface: list[tuple[str, str]] = []
+        missing: list[str] = []
+        root_resolved = doc_root.resolve()
+
+        for artifact in artifacts:
+            include = bool(getattr(artifact, "include_in_export", False))
+            if not include:
+                continue
+            rel_path = str(getattr(artifact, "path", "")).strip()
+            if not rel_path:
+                continue
+            candidate = (doc_root / rel_path).resolve()
+            try:
+                candidate.relative_to(root_resolved)
+            except ValueError:
+                missing.append(_("outside document root: {path}").format(path=rel_path))
+                continue
+            if not candidate.is_file():
+                missing.append(_("file not found: {path}").format(path=rel_path))
+                continue
+            try:
+                text = candidate.read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+            markdown_text = self._shared_artifact_text_to_markdown(candidate, text)
+            title = str(getattr(artifact, "title", "")).strip()
+            display_name = title or rel_path
+            preface.append((display_name, markdown_text))
+
+        return preface, missing
+
     def _render_context_preface_txt(
         self: MainFrame,
         context_preface: Sequence[tuple[str, str]],
@@ -191,6 +253,20 @@ class MainFrameDocumentsMixin:
             blocks.append(f"\n## {rel_path}\n")
             blocks.append(markdown_text.strip())
         return "\n".join(blocks).strip() + "\n\n"
+
+    def _render_preface_header_lines(
+        self: MainFrame,
+        context_preface: Sequence[tuple[str, str]],
+    ) -> list[str]:
+        """Render shared/context snippets for delimited export header comments."""
+        lines: list[str] = []
+        for title, markdown_text in context_preface:
+            lines.append(_("Context: {title}").format(title=title))
+            for raw_line in markdown_text.splitlines():
+                line = raw_line.strip()
+                if line:
+                    lines.append(line)
+        return lines
 
     def _update_requirements_label(self: MainFrame) -> None:
         """Adjust requirements pane title to reflect active document."""
@@ -892,12 +968,21 @@ class MainFrameDocumentsMixin:
         )
         context_preface: list[tuple[str, str]] = []
         context_missing: list[str] = []
+        doc_root = self.current_dir / doc.prefix
+        if plan.include_shared_artifacts:
+            shared_preface, shared_missing = self._collect_shared_artifacts_preface(
+                doc,
+                doc_root=doc_root,
+            )
+            context_preface.extend(shared_preface)
+            context_missing.extend(shared_missing)
         if should_generate_context_preface:
-            doc_root = self.current_dir / doc.prefix
-            context_preface, context_missing = self._collect_context_preface(
+            docs_preface, docs_missing = self._collect_context_preface(
                 requirements,
                 doc_root=doc_root,
             )
+            context_preface.extend(docs_preface)
+            context_missing.extend(docs_missing)
 
         labels_grouped = plan.card_sort_mode == "labels"
         label_group_mode = plan.card_label_group_mode
@@ -978,6 +1063,8 @@ class MainFrameDocumentsMixin:
                     doc,
                     requirement_count=len(export_rows_source),
                 )
+                if context_preface and plan.format in {ExportFormat.CSV, ExportFormat.TSV}:
+                    header_lines.extend(self._render_preface_header_lines(context_preface))
                 if plan.format == ExportFormat.CSV:
                     content = render_tabular_delimited(
                         headers, rows, delimiter=",", header_lines=header_lines

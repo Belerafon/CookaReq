@@ -2,7 +2,7 @@ from pathlib import Path
 
 from types import SimpleNamespace
 
-from app.core.document_store import Document
+from app.core.document_store import Document, SharedArtifact
 from app.settings import MCPSettings
 from app.ui.main_frame.documents import MainFrameDocumentsMixin
 
@@ -158,3 +158,38 @@ def test_collect_context_preface_collects_unique_markdown_and_missing(tmp_path: 
     assert any("SYS1" in line and "related/missing.md" in line for line in missing)
     assert any("SYS2" in line and "outside document root" in line for line in missing)
     assert any("SYS3" in line and "invalid context_docs format" in line for line in missing)
+
+
+def test_collect_shared_artifacts_preface_includes_only_enabled_and_converts_formats(tmp_path: Path) -> None:
+    doc_root = tmp_path / "SYS"
+    shared = doc_root / "shared"
+    shared.mkdir(parents=True)
+    (shared / "overview.md").write_text("# Overview", encoding="utf-8")
+    (shared / "matrix.csv").write_text("a,b\n1,2", encoding="utf-8")
+
+    document = Document(
+        prefix="SYS",
+        title="System",
+        shared_artifacts=[
+            SharedArtifact(id="A1", path="shared/overview.md", title="Overview", include_in_export=True),
+            SharedArtifact(id="A2", path="shared/matrix.csv", title="Matrix", include_in_export=True),
+            SharedArtifact(id="A3", path="shared/missing.txt", title="Missing", include_in_export=True),
+            SharedArtifact(id="A4", path="shared/hidden.txt", title="Hidden", include_in_export=False),
+        ],
+    )
+
+    frame = _ExportFrame()
+    preface, missing = frame._collect_shared_artifacts_preface(document, doc_root=doc_root)
+
+    assert preface[0] == ("Overview", "# Overview")
+    assert preface[1][0] == "Matrix"
+    assert preface[1][1].startswith("```csv\n")
+    assert any("shared/missing.txt" in line for line in missing)
+
+
+def test_render_preface_header_lines_flattens_markdown_lines() -> None:
+    frame = _ExportFrame()
+
+    lines = frame._render_preface_header_lines([("Spec", "# Title\n\nvalue")])
+
+    assert lines == ["Context: Spec", "# Title", "value"]

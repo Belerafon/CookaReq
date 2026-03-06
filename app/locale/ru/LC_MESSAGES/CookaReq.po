@@ -3263,3 +3263,15 @@ msgstr "Этот тип файла нельзя добавить во вступ
 
 msgid "Only text artifacts can be included in export introduction. Allowed formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
 msgstr "Во вступление экспорта можно включать только текстовые артефакты. Допустимые форматы: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+
+
+msgid "Include shared artifacts marked for export"
+msgstr "Включать общие артефакты, отмеченные для экспорта"
+
+
+msgid "Context: {title}"
+msgstr "Контекст: {title}"
+
+
+msgid "invalid shared artifacts registry"
+msgstr "некорректный реестр общих артефактов"

@@ -3177,3 +3177,24 @@ msgstr "Удалить метаданные выбранного общего а
 
 msgid "Also delete artifact file from disk?\n{path}"
 msgstr "Также удалить файл артефакта с диска?\n{path}"
+
+msgid "All types"
+msgstr "Все типы"
+
+msgid "Filter by type"
+msgstr "Фильтр по типу"
+
+msgid "Toggle export"
+msgstr "Переключить экспорт"
+
+msgid "Tags (comma-separated)"
+msgstr "Теги (через запятую)"
+
+msgid "Include in export preface"
+msgstr "Включать в префейс экспорта"
+
+msgid "Open file"
+msgstr "Открыть файл"
+
+msgid "Unable to open file with the default application."
+msgstr "Не удалось открыть файл приложением по умолчанию."

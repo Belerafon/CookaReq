@@ -228,7 +228,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     context-menu actions for cloning,
     deriving, deleting and now transferring requirements between documents via
     a modal dialog that lets users choose between copy/move semantics and the
-    destination document.
+    destination document. The document-tree context menu also provides a
+    shared-artifacts manager for document-level files (for example TZ/PSSA),
+    including metadata editing (type/title/note/tags), type filtering, and an
+    export-inclusion toggle.
     To keep document switching responsive on large datasets, list repaints run
     under `wx.ListCtrl.Freeze/Thaw`, and statement markdown previews are cached
     by source text so repeated switches avoid re-running markdown stripping for

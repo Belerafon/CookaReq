@@ -437,6 +437,41 @@ class RequirementsService:
                     candidate.unlink()
         return True
 
+    def update_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        kind: str | None = None,
+        title: str | None = None,
+        note: str | None = None,
+        include_in_export: bool | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Update metadata of an existing document-level shared artifact."""
+        doc = self.get_document(prefix)
+        target: SharedArtifact | None = None
+        for artifact in doc.shared_artifacts:
+            if artifact.id == artifact_id:
+                target = artifact
+                break
+        if target is None:
+            raise ValidationError(f"shared artifact id not found: {artifact_id}")
+
+        if kind is not None:
+            target.kind = kind.strip() or "general"
+        if title is not None:
+            target.title = title.strip()
+        if note is not None:
+            target.note = note
+        if include_in_export is not None:
+            target.include_in_export = bool(include_in_export)
+        if tags is not None:
+            target.tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+
+        self.save_document(doc)
+        return target
+
     def get_requirement_attachment_path(self, rid: str, attachment_id: str) -> Path:
         """Resolve the attachment file path for ``attachment_id`` on requirement ``rid``."""
         requirement = self.get_requirement(rid)

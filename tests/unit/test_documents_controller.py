@@ -350,6 +350,32 @@ def test_create_document_with_parent(tmp_path: Path) -> None:
     assert stored_child.parent == "SYS"
 
 
+def test_update_shared_artifact_via_controller(tmp_path: Path) -> None:
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.create_document("SYS", "System")
+    source = tmp_path / "tz.pdf"
+    source.write_bytes(b"tz")
+    uploaded = controller.upload_shared_artifact(
+        "SYS",
+        str(source),
+        kind="tz",
+        title="TZ",
+    )
+
+    updated = controller.update_shared_artifact(
+        "SYS",
+        uploaded.id,
+        title="TZ v2",
+        include_in_export=False,
+    )
+
+    assert updated.title == "TZ v2"
+    assert updated.include_in_export is False
+    document = controller.documents["SYS"]
+    assert document.shared_artifacts[0].title == "TZ v2"
+
+
 def test_create_document_rejects_invalid_prefix(tmp_path: Path) -> None:
     model = RequirementModel()
     controller = _controller(tmp_path, model)

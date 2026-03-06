@@ -385,6 +385,30 @@ class DocumentsController:
             self.load_documents()
         return removed
 
+    def update_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        kind: str | None = None,
+        title: str | None = None,
+        note: str | None = None,
+        include_in_export: bool | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Update document-level shared artifact metadata."""
+        artifact = self.service.update_shared_artifact(
+            prefix,
+            artifact_id,
+            kind=kind,
+            title=title,
+            note=note,
+            include_in_export=include_in_export,
+            tags=tags,
+        )
+        self.load_documents()
+        return artifact
+
     # ------------------------------------------------------------------
     def iter_links(self) -> Iterable[tuple[str, str]]:
         """Yield ``(child_rid, parent_rid)`` pairs for requirements."""

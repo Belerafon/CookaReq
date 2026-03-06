@@ -3155,3 +3155,24 @@ msgstr "Delete selected shared artifact metadata?"
 
 msgid "Also delete artifact file from disk?\n{path}"
 msgstr "Also delete artifact file from disk?\n{path}"
+
+msgid "All types"
+msgstr "All types"
+
+msgid "Filter by type"
+msgstr "Filter by type"
+
+msgid "Toggle export"
+msgstr "Toggle export"
+
+msgid "Tags (comma-separated)"
+msgstr "Tags (comma-separated)"
+
+msgid "Include in export preface"
+msgstr "Include in export preface"
+
+msgid "Open file"
+msgstr "Open file"
+
+msgid "Unable to open file with the default application."
+msgstr "Unable to open file with the default application."

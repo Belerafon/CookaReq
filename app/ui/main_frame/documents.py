@@ -661,6 +661,7 @@ class MainFrameDocumentsMixin:
             artifacts=artifacts,
             on_add=controller.upload_shared_artifact,
             on_remove=controller.remove_shared_artifact,
+            on_update=controller.update_shared_artifact,
         )
         try:
             dlg.ShowModal()

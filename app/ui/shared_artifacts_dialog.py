@@ -8,8 +8,12 @@ from typing import Any
 
 import wx
 
+from ..config import ConfigManager
 from ..i18n import _
 from .helpers import make_help_button
+
+
+TEXT_EXPORT_SUFFIXES = frozenset({".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log", ".ini"})
 
 
 @dataclass(slots=True)
@@ -100,14 +104,21 @@ class SharedArtifactsDialog(wx.Dialog):
         on_add: Any,
         on_remove: Any,
         on_update: Any,
+        config: ConfigManager | None = None,
     ) -> None:
-        super().__init__(parent, title=_("Shared artifacts: {prefix}").format(prefix=prefix))
+        super().__init__(
+            parent,
+            title=_("Shared artifacts: {prefix}").format(prefix=prefix),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER | wx.MAXIMIZE_BOX,
+        )
         self._prefix = prefix
         self._document_root = root / prefix
         self._on_add = on_add
         self._on_remove = on_remove
         self._on_update = on_update
         self._artifacts = artifacts
+        self._config = config
+        self._column_widths_loaded = False
 
         main = wx.BoxSizer(wx.VERTICAL)
 
@@ -140,6 +151,7 @@ class SharedArtifactsDialog(wx.Dialog):
         hint = _(
             "Shared artifacts are available to all requirements in this data module."
             " Attach key source files here so they can be reused in reviews and exports."
+            " For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
         )
         hint_row = wx.BoxSizer(wx.HORIZONTAL)
         hint_label = wx.StaticText(self, label=hint)
@@ -155,15 +167,56 @@ class SharedArtifactsDialog(wx.Dialog):
 
         self.SetSizer(main)
         self.SetMinSize((980, 560))
-        self.SetSize((1120, 680))
+        if self._config is not None:
+            self._config.restore_shared_artifacts_dialog_geometry(self)
+        else:
+            self.SetSize((1120, 680))
 
         self._add_btn.Bind(wx.EVT_BUTTON, self._on_add_click)
         self._list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_edit_click)
-        self._list.Bind(wx.EVT_SIZE, lambda evt: (evt.Skip(), self._autosize_columns()))
+        self._list.Bind(wx.EVT_SIZE, self._on_list_resized)
+        self._list.Bind(wx.EVT_LIST_COL_END_DRAG, self._on_column_resized)
         self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
         self._close_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CLOSE))
+        self.Bind(wx.EVT_CLOSE, self._on_close)
 
         self._refresh()
+
+    def _load_persisted_column_widths(self) -> bool:
+        if self._config is None:
+            return False
+        loaded_any = False
+        for index in range(5):
+            width = self._config.get_shared_artifacts_column_width(index, default=-1)
+            if width > 0:
+                self._list.SetColumnWidth(index, width)
+                loaded_any = True
+        self._column_widths_loaded = loaded_any
+        return loaded_any
+
+    def _persist_geometry_and_columns(self) -> None:
+        if self._config is None:
+            return
+        self._config.save_shared_artifacts_dialog_geometry(self)
+        for index in range(5):
+            width = self._list.GetColumnWidth(index)
+            if width > 0:
+                self._config.set_shared_artifacts_column_width(index, width)
+        self._config.flush()
+
+    def _on_list_resized(self, event: wx.SizeEvent) -> None:
+        event.Skip()
+        if not self._column_widths_loaded:
+            if not self._load_persisted_column_widths():
+                self._autosize_columns()
+
+    def _on_column_resized(self, event: wx.ListEvent) -> None:
+        event.Skip()
+        self._column_widths_loaded = True
+
+    def _on_close(self, event: wx.CloseEvent) -> None:
+        self._persist_geometry_and_columns()
+        event.Skip()
 
     def _autosize_columns(self) -> None:
         width = max(420, self._list.GetClientSize().width)
@@ -226,6 +279,7 @@ class SharedArtifactsDialog(wx.Dialog):
         with wx.FileDialog(
             self,
             _("Select shared artifact"),
+            wildcard=_("Text files (*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini)|*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini|All files (*.*)|*.*"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         ) as file_dialog:
             if file_dialog.ShowModal() != wx.ID_OK:
@@ -255,6 +309,17 @@ class SharedArtifactsDialog(wx.Dialog):
         if form is None:
             return
         source_path, result = form
+        source = Path(source_path)
+        if result.include_in_export and source.suffix.lower() not in TEXT_EXPORT_SUFFIXES:
+            wx.MessageBox(
+                _(
+                    "This file type cannot be added to export introduction. "
+                    "Allowed text formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+                ),
+                _("Shared artifact"),
+                style=wx.OK | wx.ICON_WARNING,
+            )
+            return
         try:
             artifact = self._on_add(
                 self._prefix,
@@ -306,6 +371,20 @@ class SharedArtifactsDialog(wx.Dialog):
         if selected is None:
             return
         artifact_index, artifact = selected
+        will_include = not bool(getattr(artifact, "include_in_export", True))
+        if will_include:
+            candidate = self._resolve_artifact_file(artifact)
+            suffix = candidate.suffix.lower() if candidate is not None else ""
+            if suffix not in TEXT_EXPORT_SUFFIXES:
+                wx.MessageBox(
+                    _(
+                        "Only text artifacts can be included in export introduction. "
+                        "Allowed formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+                    ),
+                    _("Shared artifact"),
+                    style=wx.OK | wx.ICON_WARNING,
+                )
+                return
         updated = self._on_update(
             self._prefix,
             str(getattr(artifact, "id", "")),

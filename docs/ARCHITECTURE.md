@@ -232,6 +232,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     shared-artifacts manager for document-level files (for example project documents),
     including metadata editing (title/note/tags), file-size/missing-file indicators plus a dedicated tags column in
     the table, and context-menu actions for opening the file, opening its containing directory, editing, and stateful include/remove export toggles.
+    The shared-artifacts dialog now uses a resizable top-level window with persisted geometry
+    (size/position/maximized state) and persisted table column widths, and it validates
+    export-preface inclusion so only supported UTF-8 text artifact formats are marked as exportable.
     To keep document switching responsive on large datasets, list repaints run
     under `wx.ListCtrl.Freeze/Thaw`, and statement markdown previews are cached
     by source text so repeated switches avoid re-running markdown stripping for

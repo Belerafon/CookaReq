@@ -662,12 +662,22 @@ class MainFrameDocumentsMixin:
             on_add=controller.upload_shared_artifact,
             on_remove=controller.remove_shared_artifact,
             on_update=controller.update_shared_artifact,
+            config=self.config,
         )
         try:
             dlg.ShowModal()
         finally:
             dlg.Destroy()
         self._refresh_documents(select=prefix, force_reload=True)
+
+
+    def on_open_data_module_artifacts(self: MainFrame, _event: wx.Event) -> None:
+        """Open shared artifacts manager for currently selected data module."""
+
+        if not self.current_doc_prefix:
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        self.on_manage_shared_artifacts(self.current_doc_prefix)
 
     def _on_doc_changing(self: MainFrame, event: wx.TreeEvent) -> None:
         """Request confirmation before switching documents."""

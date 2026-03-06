@@ -360,6 +360,7 @@ def test_update_shared_artifact_via_controller(tmp_path: Path) -> None:
         "SYS",
         str(source),
         title="TZ",
+        include_in_export=False,
     )
 
     updated = controller.update_shared_artifact(

@@ -91,6 +91,7 @@ class EditorPanel(wx.Panel):
         self._text_history_limit = 10
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
         self._defer_autosize_layout = False
+        self._id_prefix_label: wx.StaticText | None = None
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -171,6 +172,11 @@ class EditorPanel(wx.Panel):
             self.fields[spec.name] = ctrl
 
             if spec.name in compact_text_fields:
+                if spec.name == "id":
+                    prefix_label = wx.StaticText(content, label="")
+                    prefix_label.Hide()
+                    row.Add(prefix_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                    self._id_prefix_label = prefix_label
                 row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
             else:
@@ -378,6 +384,7 @@ class EditorPanel(wx.Panel):
         self._refresh_labels_display()
         self._refresh_attachments()
         self._refresh_context_docs()
+        self._update_id_prefix_label()
         self.mark_clean()
 
     def set_requirement_selected(self, selected: bool) -> None:
@@ -432,6 +439,7 @@ class EditorPanel(wx.Panel):
         self._known_ids = None
         self._id_conflict = False
         self._link_metadata_cache = {}
+        self._update_id_prefix_label()
         self._on_id_change()
 
     def set_document(self, prefix: str | None) -> None:
@@ -442,7 +450,24 @@ class EditorPanel(wx.Panel):
         self._known_ids = None
         self._id_conflict = False
         self._link_metadata_cache = {}
+        self._update_id_prefix_label()
         self._on_id_change()
+
+    def _update_id_prefix_label(self) -> None:
+        """Render readonly prefix next to numeric ID input."""
+        label = self._id_prefix_label
+        if label is None:
+            return
+        prefix = self._effective_prefix()
+        if prefix:
+            label.SetLabel(f"{prefix}-")
+            label.Show()
+        else:
+            label.SetLabel("")
+            label.Hide()
+        parent_sizer = label.GetContainingSizer()
+        if parent_sizer is not None:
+            parent_sizer.Layout()
 
     def _effective_prefix(self) -> str | None:
         prefix = self._doc_prefix or str(self.extra.get("doc_prefix", "")).strip()
@@ -1036,6 +1061,7 @@ class EditorPanel(wx.Panel):
             self._refresh_labels_display()
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
+        self._update_id_prefix_label()
         self._on_id_change()
         self._reset_scroll_position()
         self._reset_text_histories()
@@ -1727,6 +1753,7 @@ class EditorPanel(wx.Panel):
         self.mtime = path.stat().st_mtime
         self._doc_prefix = prefix
         self.extra["doc_prefix"] = prefix
+        self._update_id_prefix_label()
         self._refresh_known_ids(prefix=prefix, doc=doc)
         self.original_id = req.id
         self._known_ids = None

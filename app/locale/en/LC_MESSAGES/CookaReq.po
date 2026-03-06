@@ -3147,6 +3147,12 @@ msgstr "Also delete artifact file from disk?\n{path}"
 msgid "Toggle export"
 msgstr "Toggle export"
 
+msgid "Include in export"
+msgstr "Include in export"
+
+msgid "Remove from export"
+msgstr "Remove from export"
+
 msgid "Tags (comma-separated)"
 msgstr "Tags (comma-separated)"
 
@@ -3156,8 +3162,17 @@ msgstr "Include in export introduction"
 msgid "Open file"
 msgstr "Open file"
 
+msgid "Open containing directory"
+msgstr "Open containing directory"
+
 msgid "Unable to open file with the default application."
 msgstr "Unable to open file with the default application."
+
+msgid "Containing directory is missing on disk."
+msgstr "Containing directory is missing on disk."
+
+msgid "Unable to open containing directory with the default application."
+msgstr "Unable to open containing directory with the default application."
 
 msgid "Close"
 msgstr "Close"
@@ -3197,6 +3212,9 @@ msgstr "Add file"
 
 msgid "File size"
 msgstr "File size"
+
+msgid "Tags"
+msgstr "Tags"
 
 msgid "Missing"
 msgstr "Missing"

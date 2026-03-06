@@ -125,7 +125,8 @@ class SharedArtifactsDialog(wx.Dialog):
         self._list.InsertColumn(0, _("Title"))
         self._list.InsertColumn(1, _("File"))
         self._list.InsertColumn(2, _("File size"))
-        self._list.InsertColumn(3, _("Export"))
+        self._list.InsertColumn(3, _("Tags"))
+        self._list.InsertColumn(4, _("Export"))
 
         main.Add(self._list, 1, wx.ALL | wx.EXPAND, 10)
 
@@ -160,17 +161,17 @@ class SharedArtifactsDialog(wx.Dialog):
         self._list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_edit_click)
         self._list.Bind(wx.EVT_SIZE, lambda evt: (evt.Skip(), self._autosize_columns()))
         self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
-        self._list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_context_menu)
         self._close_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CLOSE))
 
         self._refresh()
 
     def _autosize_columns(self) -> None:
         width = max(420, self._list.GetClientSize().width)
-        self._list.SetColumnWidth(0, max(220, int(width * 0.30)))
-        self._list.SetColumnWidth(1, max(260, int(width * 0.44)))
-        self._list.SetColumnWidth(2, max(120, int(width * 0.16)))
-        self._list.SetColumnWidth(3, max(90, int(width * 0.10)))
+        self._list.SetColumnWidth(0, max(190, int(width * 0.23)))
+        self._list.SetColumnWidth(1, max(250, int(width * 0.35)))
+        self._list.SetColumnWidth(2, max(110, int(width * 0.12)))
+        self._list.SetColumnWidth(3, max(180, int(width * 0.20)))
+        self._list.SetColumnWidth(4, max(90, int(width * 0.10)))
 
     def _resolve_artifact_file(self, artifact: object) -> Path | None:
         path = str(getattr(artifact, "path", "")).strip()
@@ -202,8 +203,11 @@ class SharedArtifactsDialog(wx.Dialog):
                 if candidate is not None and candidate.exists() and candidate.is_file():
                     size_label = self._format_file_size(candidate.stat().st_size)
                 self._list.SetItem(idx, 2, size_label)
+                tags = getattr(artifact, "tags", [])
+                tags_label = ", ".join(str(tag).strip() for tag in tags if str(tag).strip())
+                self._list.SetItem(idx, 3, tags_label)
                 export_flag = "✓" if bool(getattr(artifact, "include_in_export", True)) else ""
-                self._list.SetItem(idx, 3, export_flag)
+                self._list.SetItem(idx, 4, export_flag)
                 self._list.SetItemData(idx, artifact_index)
         finally:
             self._list.Thaw()
@@ -332,22 +336,59 @@ class SharedArtifactsDialog(wx.Dialog):
                 style=wx.OK | wx.ICON_ERROR,
             )
 
-    def _on_context_menu(self, event: wx.Event) -> None:
-        if isinstance(event, wx.ListEvent):
-            item_index = event.GetIndex()
-            if item_index >= 0:
-                self._list.Select(item_index)
-                self._list.Focus(item_index)
+    def _on_open_directory_click(self, _event: wx.CommandEvent) -> None:
+        selected = self._selected_artifact()
+        if selected is None:
+            return
+        _artifact_index, artifact = selected
+        candidate = self._resolve_artifact_file(artifact)
+        if candidate is None:
+            return
+        directory = candidate.parent
+        if not directory.exists() or not directory.is_dir():
+            wx.MessageBox(
+                _("Containing directory is missing on disk."),
+                _("Shared artifact"),
+                style=wx.OK | wx.ICON_WARNING,
+            )
+            return
+        if not wx.LaunchDefaultApplication(str(directory)):
+            wx.MessageBox(
+                _("Unable to open containing directory with the default application."),
+                _("Error"),
+                style=wx.OK | wx.ICON_ERROR,
+            )
+
+    def _context_menu_position_to_item_index(self, event: wx.ContextMenuEvent) -> int:
+        pos = event.GetPosition()
+        if pos.x == -1 and pos.y == -1:
+            return self._list.GetFirstSelected()
+        local_pos = self._list.ScreenToClient(pos)
+        item_index, _flags = self._list.HitTest(local_pos)
+        return item_index
+
+    def _on_context_menu(self, event: wx.ContextMenuEvent) -> None:
+        item_index = self._context_menu_position_to_item_index(event)
+        if item_index >= 0:
+            self._list.Select(item_index)
+            self._list.Focus(item_index)
         selected = self._selected_artifact()
 
         menu = wx.Menu()
         open_item = menu.Append(wx.ID_ANY, _("Open file"))
+        open_dir_item = menu.Append(wx.ID_ANY, _("Open containing directory"))
         edit_item = menu.Append(wx.ID_ANY, _("Edit"))
-        toggle_export_item = menu.Append(wx.ID_ANY, _("Toggle export"))
+        toggle_export_item = menu.Append(
+            wx.ID_ANY,
+            _("Remove from export")
+            if selected is not None and bool(getattr(selected[1], "include_in_export", True))
+            else _("Include in export"),
+        )
         remove_item = menu.Append(wx.ID_ANY, _("Remove"))
 
         if selected is None:
             open_item.Enable(False)
+            open_dir_item.Enable(False)
             edit_item.Enable(False)
             toggle_export_item.Enable(False)
             remove_item.Enable(False)
@@ -356,8 +397,11 @@ class SharedArtifactsDialog(wx.Dialog):
             candidate = self._resolve_artifact_file(artifact)
             if candidate is None or not candidate.exists() or not candidate.is_file():
                 open_item.Enable(False)
+            if candidate is None or not candidate.parent.exists() or not candidate.parent.is_dir():
+                open_dir_item.Enable(False)
 
         menu.Bind(wx.EVT_MENU, self._on_open_file_click, open_item)
+        menu.Bind(wx.EVT_MENU, self._on_open_directory_click, open_dir_item)
         menu.Bind(wx.EVT_MENU, self._on_edit_click, edit_item)
         menu.Bind(wx.EVT_MENU, self._on_toggle_export_click, toggle_export_item)
         menu.Bind(wx.EVT_MENU, self._on_remove_click, remove_item)

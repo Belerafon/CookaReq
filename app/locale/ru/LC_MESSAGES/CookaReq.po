@@ -3169,6 +3169,12 @@ msgstr "Также удалить файл артефакта с диска?\n{p
 msgid "Toggle export"
 msgstr "Переключить экспорт"
 
+msgid "Include in export"
+msgstr "Включить в экспорт"
+
+msgid "Remove from export"
+msgstr "Убрать из экспорта"
+
 msgid "Tags (comma-separated)"
 msgstr "Теги (через запятую)"
 
@@ -3178,8 +3184,17 @@ msgstr "Включать во вступление экспорта"
 msgid "Open file"
 msgstr "Открыть файл"
 
+msgid "Open containing directory"
+msgstr "Открыть содержащую директорию"
+
 msgid "Unable to open file with the default application."
 msgstr "Не удалось открыть файл приложением по умолчанию."
+
+msgid "Containing directory is missing on disk."
+msgstr "Содержащая директория отсутствует на диске."
+
+msgid "Unable to open containing directory with the default application."
+msgstr "Не удалось открыть содержащую директорию приложением по умолчанию."
 
 msgid "Close"
 msgstr "Закрыть"
@@ -3219,6 +3234,9 @@ msgstr "Добавить файл"
 
 msgid "File size"
 msgstr "Размер файла"
+
+msgid "Tags"
+msgstr "Теги"
 
 msgid "Missing"
 msgstr "Отсутствует"

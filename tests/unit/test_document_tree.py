@@ -238,3 +238,30 @@ def test_document_tree_shared_artifacts_menu_callback(document_tree_module):
     tree._handle_menu_shared_artifacts(wx_stub.TreeEvent(node))
 
     assert selected_prefixes == ["SYS"]
+
+
+def test_document_tree_context_menu_has_export_action(document_tree_module):
+    wx_stub, module = document_tree_module
+    parent = wx_stub.Panel(None)
+    tree = module.DocumentTree(parent, on_export_requirements=lambda: None)
+    tree.set_documents({"SYS": Document(prefix="SYS", title="System")})
+    node = tree._node_for_prefix["SYS"]
+
+    tree._show_menu_for_item(node)
+
+    labels = [item.label for item in tree.tree._last_menu.items]
+    assert "Export Requirements" in labels
+
+
+def test_document_tree_export_menu_callback(document_tree_module):
+    wx_stub, module = document_tree_module
+    parent = wx_stub.Panel(None)
+    calls: list[str] = []
+    tree = module.DocumentTree(parent, on_export_requirements=lambda: calls.append("export"))
+    tree.set_documents({"SYS": Document(prefix="SYS", title="System")})
+    tree._menu_target_prefix = "SYS"
+
+    tree._handle_menu_export(wx_stub.TreeEvent())
+
+    assert calls == ["export"]
+

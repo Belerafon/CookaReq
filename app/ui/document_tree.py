@@ -22,6 +22,7 @@ class DocumentTree(wx.Panel):
         on_rename_document: Callable[[str], None] | None = None,
         on_delete_document: Callable[[str], None] | None = None,
         on_manage_shared_artifacts: Callable[[str], None] | None = None,
+        on_export_requirements: Callable[[], None] | None = None,
     ) -> None:
         """Initialise the tree widget and wire optional callbacks."""
         super().__init__(parent)
@@ -30,6 +31,7 @@ class DocumentTree(wx.Panel):
         self._on_rename_document = on_rename_document
         self._on_delete_document = on_delete_document
         self._on_manage_shared_artifacts = on_manage_shared_artifacts
+        self._on_export_requirements = on_export_requirements
         style = getattr(wx, "TR_DEFAULT_STYLE", 0) | getattr(wx, "TR_HIDE_ROOT", 0)
         self.tree = wx.TreeCtrl(self, style=style)
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -136,6 +138,7 @@ class DocumentTree(wx.Panel):
         new_item = menu.Append(_next_menu_id(), _("New document"))
         rename_item = menu.Append(_next_menu_id(), _("Edit"))
         artifacts_item = menu.Append(_next_menu_id(), _("Shared artifacts"))
+        export_item = menu.Append(_next_menu_id(), _("Export Requirements"))
         delete_item = menu.Append(_next_menu_id(), _("Delete"))
 
         def _bind(item: wx.MenuItem, handler: Callable[[wx.CommandEvent], None]) -> None:
@@ -147,6 +150,7 @@ class DocumentTree(wx.Panel):
         _bind(new_item, self._handle_menu_new)
         _bind(rename_item, self._handle_menu_rename)
         _bind(artifacts_item, self._handle_menu_shared_artifacts)
+        _bind(export_item, self._handle_menu_export)
         _bind(delete_item, self._handle_menu_delete)
         if self._on_new_document is None:
             new_item.Enable(False)
@@ -156,6 +160,8 @@ class DocumentTree(wx.Panel):
             delete_item.Enable(False)
         if prefix is None or self._on_manage_shared_artifacts is None:
             artifacts_item.Enable(False)
+        if prefix is None or self._on_export_requirements is None:
+            export_item.Enable(False)
         self.tree.PopupMenu(menu)
         menu.Destroy()
         self._menu_target_prefix = None
@@ -213,3 +219,10 @@ class DocumentTree(wx.Panel):
         prefix = self._menu_target_prefix
         self._menu_target_prefix = None
         self._on_manage_shared_artifacts(prefix)
+
+    def _handle_menu_export(self, _event: wx.CommandEvent) -> None:
+        if self._on_export_requirements is None:
+            return
+        if self._menu_target_prefix is None:
+            return
+        self._on_export_requirements()

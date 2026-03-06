@@ -3213,3 +3213,15 @@ msgstr "Удалить запись метаданных выбранного о
 
 msgid "Close this dialog."
 msgstr "Закрыть это окно."
+
+msgid "Add file"
+msgstr "Добавить файл"
+
+msgid "File size"
+msgstr "Размер файла"
+
+msgid "Missing"
+msgstr "Отсутствует"
+
+msgid "File is missing on disk."
+msgstr "Файл отсутствует на диске."

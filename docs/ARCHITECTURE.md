@@ -230,8 +230,8 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     a modal dialog that lets users choose between copy/move semantics and the
     destination document. The document-tree context menu also provides a
     shared-artifacts manager for document-level files (for example project documents),
-    including metadata editing (type/title/note/tags), type filtering, and an
-    export-inclusion toggle.
+    including metadata editing (title/note/tags), file-size/missing-file indicators in
+    the table, and context-menu actions for open/edit/export-toggle/remove operations.
     To keep document switching responsive on large datasets, list repaints run
     under `wx.ListCtrl.Freeze/Thaw`, and statement markdown previews are cached
     by source text so repeated switches avoid re-running markdown stripping for

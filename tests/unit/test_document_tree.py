@@ -221,3 +221,20 @@ def test_document_tree_ignores_invalid_selection(document_tree_module):
     tree._handle_select(event)
 
     assert selected == []
+
+
+def test_document_tree_shared_artifacts_menu_callback(document_tree_module):
+    wx_stub, module = document_tree_module
+    parent = wx_stub.Panel(None)
+    selected_prefixes: list[str] = []
+    tree = module.DocumentTree(
+        parent,
+        on_manage_shared_artifacts=selected_prefixes.append,
+    )
+    tree.set_documents({"SYS": Document(prefix="SYS", title="System")})
+    node = tree._node_for_prefix["SYS"]
+    tree._menu_target_prefix = "SYS"
+
+    tree._handle_menu_shared_artifacts(wx_stub.TreeEvent(node))
+
+    assert selected_prefixes == ["SYS"]

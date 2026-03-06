@@ -3138,3 +3138,42 @@ msgstr "Храните документы внутри папки текущег
 
 msgid "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
 msgstr "Используйте context_docs для фона, доменных ограничений и справочных заметок, которые должны быть доступны до чтения формулировок требований."
+
+msgid "Shared artifacts"
+msgstr "Общие артефакты"
+
+msgid "Shared artifact"
+msgstr "Общий артефакт"
+
+msgid "Shared artifacts: {prefix}"
+msgstr "Общие артефакты: {prefix}"
+
+msgid "System overview"
+msgstr "Общее описание системы"
+
+msgid "Technical specification"
+msgstr "Техническое задание"
+
+msgid "PSSA calculation"
+msgstr "Расчёт PSSA"
+
+msgid "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
+msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Используйте типы для классификации документов, например описание системы, ТЗ и расчёты PSSA."
+
+msgid "Select shared artifact"
+msgstr "Выберите общий артефакт"
+
+msgid "Artifact title"
+msgstr "Название артефакта"
+
+msgid "Artifact type"
+msgstr "Тип артефакта"
+
+msgid "Optional note"
+msgstr "Необязательная заметка"
+
+msgid "Delete selected shared artifact metadata?"
+msgstr "Удалить метаданные выбранного общего артефакта?"
+
+msgid "Also delete artifact file from disk?\n{path}"
+msgstr "Также удалить файл артефакта с диска?\n{path}"

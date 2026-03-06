@@ -30,10 +30,11 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
 ## Core domain: requirements and traceability
 
 * **On-disk layout** — each document lives under `requirements/<PREFIX>/`.
-  * `document.json` stores metadata (title, parent, labels).
+  * `document.json` stores metadata (title, parent, labels, shared artifact registry).
   * `items/<ID>.json` keeps individual requirement payloads.
   * `agent_chats.zip` retains previous agent transcripts for that document.
   * `assets/` stores attachment files referenced from requirement statements.
+  * `shared/` stores document-level artifacts (for example system overviews, TZ and PSSA calculations) referenced from `document.json`.
 * **Document store** — `app/core/document_store/` exposes CRUD helpers for
   documents, items, relationship links and label collections. It keeps ID
   counters, validates JSON payloads and hides filesystem concerns from callers.
@@ -58,7 +59,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   from Markdown statements and `path` points to the document-local assets file.
   Requirements can also include `context_docs` (relative Markdown paths under the
   current document directory) so exports can prepend shared context sections
-  before requirement cards while reporting unresolved references.
+  before requirement cards while reporting unresolved references. Documents expose
+  a `shared_artifacts` registry (entries `{id, path, kind, title, note, include_in_export, tags}`)
+  for module-wide files that apply to all requirements, stored under each
+  document's `shared/` directory.
   Trace links keep a `revision` snapshot of the target requirement and are marked
   suspect when the stored revision differs from the current target revision (or
   when the target cannot be resolved).

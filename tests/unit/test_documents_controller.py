@@ -333,6 +333,7 @@ def test_create_document_persists_configuration(tmp_path: Path) -> None:
         "title": "System",
         "parent": None,
         "labels": {"allowFreeform": False, "defs": []},
+        "shared_artifacts": [],
         "attributes": {},
     }
 

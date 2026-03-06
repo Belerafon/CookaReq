@@ -3116,3 +3116,42 @@ msgstr "Store documents inside the current requirement document folder (for exam
 
 msgid "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
 msgstr "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
+
+msgid "Shared artifacts"
+msgstr "Shared artifacts"
+
+msgid "Shared artifact"
+msgstr "Shared artifact"
+
+msgid "Shared artifacts: {prefix}"
+msgstr "Shared artifacts: {prefix}"
+
+msgid "System overview"
+msgstr "System overview"
+
+msgid "Technical specification"
+msgstr "Technical specification"
+
+msgid "PSSA calculation"
+msgstr "PSSA calculation"
+
+msgid "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
+msgstr "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
+
+msgid "Select shared artifact"
+msgstr "Select shared artifact"
+
+msgid "Artifact title"
+msgstr "Artifact title"
+
+msgid "Artifact type"
+msgstr "Artifact type"
+
+msgid "Optional note"
+msgstr "Optional note"
+
+msgid "Delete selected shared artifact metadata?"
+msgstr "Delete selected shared artifact metadata?"
+
+msgid "Also delete artifact file from disk?\n{path}"
+msgstr "Also delete artifact file from disk?\n{path}"

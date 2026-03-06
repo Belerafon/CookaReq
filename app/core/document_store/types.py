@@ -111,7 +111,6 @@ class SharedArtifact:
 
     id: str
     path: str
-    kind: str = "general"
     title: str = ""
     note: str = ""
     include_in_export: bool = True
@@ -128,7 +127,6 @@ class SharedArtifact:
         path = str(data.get("path", "")).strip()
         if not path:
             raise ValidationError("shared_artifact.path is required")
-        kind = str(data.get("kind", "general")).strip() or "general"
         title = str(data.get("title", "")).strip()
         note = str(data.get("note", ""))
         include_in_export = bool(data.get("include_in_export", True))
@@ -142,7 +140,6 @@ class SharedArtifact:
         return cls(
             id=artifact_id,
             path=path,
-            kind=kind,
             title=title,
             note=note,
             include_in_export=include_in_export,
@@ -154,7 +151,6 @@ class SharedArtifact:
         return {
             "id": self.id,
             "path": self.path,
-            "kind": self.kind,
             "title": self.title,
             "note": self.note,
             "include_in_export": self.include_in_export,

@@ -389,7 +389,6 @@ class RequirementsService:
         prefix: str,
         source: Path,
         *,
-        kind: str,
         title: str,
         note: str = "",
         include_in_export: bool = True,
@@ -400,7 +399,6 @@ class RequirementsService:
         artifact = SharedArtifact(
             id=str(uuid.uuid4()),
             path=self._copy_shared_artifact_asset(prefix, source),
-            kind=kind.strip() or "general",
             title=title.strip() or source.stem,
             note=note,
             include_in_export=bool(include_in_export),
@@ -442,7 +440,6 @@ class RequirementsService:
         prefix: str,
         artifact_id: str,
         *,
-        kind: str | None = None,
         title: str | None = None,
         note: str | None = None,
         include_in_export: bool | None = None,
@@ -458,8 +455,6 @@ class RequirementsService:
         if target is None:
             raise ValidationError(f"shared artifact id not found: {artifact_id}")
 
-        if kind is not None:
-            target.kind = kind.strip() or "general"
         if title is not None:
             target.title = title.strip()
         if note is not None:

@@ -359,7 +359,6 @@ def test_update_shared_artifact_via_controller(tmp_path: Path) -> None:
     uploaded = controller.upload_shared_artifact(
         "SYS",
         str(source),
-        kind="tz",
         title="TZ",
     )
 

@@ -3148,26 +3148,14 @@ msgstr "Общий артефакт"
 msgid "Shared artifacts: {prefix}"
 msgstr "Общие артефакты: {prefix}"
 
-msgid "System overview"
-msgstr "Общее описание системы"
-
-msgid "Technical specification"
-msgstr "Техническое задание"
-
-msgid "PSSA calculation"
-msgstr "Расчёт PSSA"
-
-msgid "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
-msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Используйте типы для классификации документов, например описание системы, ТЗ и расчёты PSSA."
+msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
+msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте."
 
 msgid "Select shared artifact"
 msgstr "Выберите общий артефакт"
 
 msgid "Artifact title"
 msgstr "Название артефакта"
-
-msgid "Artifact type"
-msgstr "Тип артефакта"
 
 msgid "Optional note"
 msgstr "Необязательная заметка"
@@ -3178,23 +3166,50 @@ msgstr "Удалить метаданные выбранного общего а
 msgid "Also delete artifact file from disk?\n{path}"
 msgstr "Также удалить файл артефакта с диска?\n{path}"
 
-msgid "All types"
-msgstr "Все типы"
-
-msgid "Filter by type"
-msgstr "Фильтр по типу"
-
 msgid "Toggle export"
 msgstr "Переключить экспорт"
 
 msgid "Tags (comma-separated)"
 msgstr "Теги (через запятую)"
 
-msgid "Include in export preface"
-msgstr "Включать в префейс экспорта"
+msgid "Include in export introduction"
+msgstr "Включать во вступление экспорта"
 
 msgid "Open file"
 msgstr "Открыть файл"
 
 msgid "Unable to open file with the default application."
 msgstr "Не удалось открыть файл приложением по умолчанию."
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Display name shown in shared artifacts list and exports."
+msgstr "Отображаемое имя в списке общих артефактов и в экспорте."
+
+msgid "Short comment about this artifact, for example status or owner."
+msgstr "Короткий комментарий об артефакте, например статус или владелец."
+
+msgid "Keywords to simplify searching and filtering in exports."
+msgstr "Ключевые слова для упрощения поиска и фильтрации в экспортах."
+
+msgid "Adds artifact content to the generated export introduction section."
+msgstr "Добавляет содержимое артефакта во вступительный раздел экспорта."
+
+msgid "Open selected file using the system default application."
+msgstr "Открыть выбранный файл приложением по умолчанию."
+
+msgid "Select and register a new shared artifact file."
+msgstr "Выбрать и зарегистрировать новый файл общего артефакта."
+
+msgid "Edit metadata of the selected shared artifact."
+msgstr "Редактировать метаданные выбранного общего артефакта."
+
+msgid "Enable or disable inclusion in export introduction."
+msgstr "Включить или отключить добавление во вступление экспорта."
+
+msgid "Remove metadata entry for the selected shared artifact."
+msgstr "Удалить запись метаданных выбранного общего артефакта."
+
+msgid "Close this dialog."
+msgstr "Закрыть это окно."

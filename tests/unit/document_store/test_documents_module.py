@@ -116,7 +116,6 @@ def test_document_from_mapping_roundtrip() -> None:
             {
                 "id": "tz-main",
                 "path": "shared/tz.pdf",
-                "kind": "tz",
                 "title": "Main TZ",
                 "note": "Approved",
                 "include_in_export": True,
@@ -133,7 +132,6 @@ def test_document_from_mapping_roundtrip() -> None:
     assert document.labels.allow_freeform is True
     assert document.labels.defs[0].color == "#123456"
     assert len(document.shared_artifacts) == 1
-    assert document.shared_artifacts[0].kind == "tz"
     assert document.attributes == {"owner": "QA"}
 
     assert document.to_mapping() == {
@@ -153,7 +151,6 @@ def test_document_from_mapping_roundtrip() -> None:
             {
                 "id": "tz-main",
                 "path": "shared/tz.pdf",
-                "kind": "tz",
                 "title": "Main TZ",
                 "note": "Approved",
                 "include_in_export": True,

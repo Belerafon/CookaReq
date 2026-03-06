@@ -257,6 +257,40 @@ def test_editor_panel_compact_fields_are_inline(wx_app):
 
 
 @pytest.mark.gui_smoke
+def test_editor_panel_shows_readonly_doc_prefix_before_id(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        frame.Show()
+        wx.Yield()
+
+        prefix_label = panel._id_prefix_label
+        assert prefix_label is not None
+        assert not prefix_label.IsShown()
+
+        panel.set_document("REQ")
+        wx.Yield()
+        assert prefix_label.IsShown()
+        assert prefix_label.GetLabel() == "REQ-"
+
+        panel.set_document(None)
+        wx.Yield()
+        assert not prefix_label.IsShown()
+
+        panel.load({"id": 5, "doc_prefix": "SYS", "title": "Sample"})
+        wx.Yield()
+        assert prefix_label.IsShown()
+        assert prefix_label.GetLabel() == "SYS-"
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
 def test_editor_panel_primary_and_secondary_fields_order(wx_app):
     pytest.importorskip("wx")
     import wx

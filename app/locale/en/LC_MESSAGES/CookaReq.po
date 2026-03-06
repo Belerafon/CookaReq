@@ -3126,26 +3126,14 @@ msgstr "Shared artifact"
 msgid "Shared artifacts: {prefix}"
 msgstr "Shared artifacts: {prefix}"
 
-msgid "System overview"
-msgstr "System overview"
-
-msgid "Technical specification"
-msgstr "Technical specification"
-
-msgid "PSSA calculation"
-msgstr "PSSA calculation"
-
-msgid "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
-msgstr "Shared artifacts are available to all requirements in this data module. Use types to classify documents such as system overview, TZ and PSSA."
+msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
+msgstr "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
 
 msgid "Select shared artifact"
 msgstr "Select shared artifact"
 
 msgid "Artifact title"
 msgstr "Artifact title"
-
-msgid "Artifact type"
-msgstr "Artifact type"
 
 msgid "Optional note"
 msgstr "Optional note"
@@ -3156,23 +3144,50 @@ msgstr "Delete selected shared artifact metadata?"
 msgid "Also delete artifact file from disk?\n{path}"
 msgstr "Also delete artifact file from disk?\n{path}"
 
-msgid "All types"
-msgstr "All types"
-
-msgid "Filter by type"
-msgstr "Filter by type"
-
 msgid "Toggle export"
 msgstr "Toggle export"
 
 msgid "Tags (comma-separated)"
 msgstr "Tags (comma-separated)"
 
-msgid "Include in export preface"
-msgstr "Include in export preface"
+msgid "Include in export introduction"
+msgstr "Include in export introduction"
 
 msgid "Open file"
 msgstr "Open file"
 
 msgid "Unable to open file with the default application."
 msgstr "Unable to open file with the default application."
+
+msgid "Close"
+msgstr "Close"
+
+msgid "Display name shown in shared artifacts list and exports."
+msgstr "Display name shown in shared artifacts list and exports."
+
+msgid "Short comment about this artifact, for example status or owner."
+msgstr "Short comment about this artifact, for example status or owner."
+
+msgid "Keywords to simplify searching and filtering in exports."
+msgstr "Keywords to simplify searching and filtering in exports."
+
+msgid "Adds artifact content to the generated export introduction section."
+msgstr "Adds artifact content to the generated export introduction section."
+
+msgid "Open selected file using the system default application."
+msgstr "Open selected file using the system default application."
+
+msgid "Select and register a new shared artifact file."
+msgstr "Select and register a new shared artifact file."
+
+msgid "Edit metadata of the selected shared artifact."
+msgstr "Edit metadata of the selected shared artifact."
+
+msgid "Enable or disable inclusion in export introduction."
+msgstr "Enable or disable inclusion in export introduction."
+
+msgid "Remove metadata entry for the selected shared artifact."
+msgstr "Remove metadata entry for the selected shared artifact."
+
+msgid "Close this dialog."
+msgstr "Close this dialog."

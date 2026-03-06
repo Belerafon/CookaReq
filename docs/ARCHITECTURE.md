@@ -34,7 +34,7 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   * `items/<ID>.json` keeps individual requirement payloads.
   * `agent_chats.zip` retains previous agent transcripts for that document.
   * `assets/` stores attachment files referenced from requirement statements.
-  * `shared/` stores document-level artifacts (for example system overviews, TZ and PSSA calculations) referenced from `document.json`.
+  * `shared/` stores document-level artifacts (for example architecture overviews, specifications and calculations) referenced from `document.json`.
 * **Document store** — `app/core/document_store/` exposes CRUD helpers for
   documents, items, relationship links and label collections. It keeps ID
   counters, validates JSON payloads and hides filesystem concerns from callers.
@@ -60,7 +60,7 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   Requirements can also include `context_docs` (relative Markdown paths under the
   current document directory) so exports can prepend shared context sections
   before requirement cards while reporting unresolved references. Documents expose
-  a `shared_artifacts` registry (entries `{id, path, kind, title, note, include_in_export, tags}`)
+  a `shared_artifacts` registry (entries `{id, path, title, note, include_in_export, tags}`)
   for module-wide files that apply to all requirements, stored under each
   document's `shared/` directory.
   Trace links keep a `revision` snapshot of the target requirement and are marked
@@ -229,7 +229,7 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     deriving, deleting and now transferring requirements between documents via
     a modal dialog that lets users choose between copy/move semantics and the
     destination document. The document-tree context menu also provides a
-    shared-artifacts manager for document-level files (for example TZ/PSSA),
+    shared-artifacts manager for document-level files (for example project documents),
     including metadata editing (type/title/note/tags), type filtering, and an
     export-inclusion toggle.
     To keep document switching responsive on large datasets, list repaints run

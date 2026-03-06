@@ -349,7 +349,6 @@ class DocumentsController:
         prefix: str,
         source_path: str,
         *,
-        kind: str,
         title: str,
         note: str = "",
         include_in_export: bool = True,
@@ -359,7 +358,6 @@ class DocumentsController:
         artifact = self.service.upload_shared_artifact(
             prefix,
             Path(source_path),
-            kind=kind,
             title=title,
             note=note,
             include_in_export=include_in_export,
@@ -390,7 +388,6 @@ class DocumentsController:
         prefix: str,
         artifact_id: str,
         *,
-        kind: str | None = None,
         title: str | None = None,
         note: str | None = None,
         include_in_export: bool | None = None,
@@ -400,7 +397,6 @@ class DocumentsController:
         artifact = self.service.update_shared_artifact(
             prefix,
             artifact_id,
-            kind=kind,
             title=title,
             note=note,
             include_in_export=include_in_export,

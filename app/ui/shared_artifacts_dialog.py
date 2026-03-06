@@ -11,18 +11,9 @@ import wx
 from ..i18n import _
 from .helpers import make_help_button
 
-_ARTIFACT_KINDS: tuple[tuple[str, str], ...] = (
-    ("all", _("All types")),
-    ("general", _("General")),
-    ("system_overview", _("System overview")),
-    ("tz", _("Technical specification")),
-    ("pssa", _("PSSA calculation")),
-)
-
 
 @dataclass(slots=True)
 class _ArtifactFormResult:
-    kind: str
     title: str
     note: str
     include_in_export: bool
@@ -37,7 +28,6 @@ class SharedArtifactEditDialog(wx.Dialog):
         parent: wx.Window,
         *,
         title: str,
-        kind: str,
         note: str,
         include_in_export: bool,
         tags: list[str],
@@ -46,31 +36,35 @@ class SharedArtifactEditDialog(wx.Dialog):
         main = wx.BoxSizer(wx.VERTICAL)
         grid = wx.FlexGridSizer(cols=2, hgap=8, vgap=8)
         grid.AddGrowableCol(1, 1)
+        grid.AddGrowableRow(1, 1)
 
-        grid.Add(wx.StaticText(self, label=_("Artifact title")), 0, wx.ALIGN_CENTER_VERTICAL)
+        title_label = wx.StaticText(self, label=_("Artifact title"))
+        title_label.SetToolTip(_("Display name shown in shared artifacts list and exports."))
+        grid.Add(title_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self._title_ctrl = wx.TextCtrl(self, value=title)
+        self._title_ctrl.SetToolTip(_("Display name shown in shared artifacts list and exports."))
         grid.Add(self._title_ctrl, 1, wx.EXPAND)
 
-        grid.Add(wx.StaticText(self, label=_("Artifact type")), 0, wx.ALIGN_CENTER_VERTICAL)
-        self._kind_values = [value for value, _ in _ARTIFACT_KINDS if value != "all"]
-        kind_labels = [label for value, label in _ARTIFACT_KINDS if value != "all"]
-        self._kind_choice = wx.Choice(self, choices=kind_labels)
-        selection = 0
-        if kind in self._kind_values:
-            selection = self._kind_values.index(kind)
-        self._kind_choice.SetSelection(selection)
-        grid.Add(self._kind_choice, 0, wx.EXPAND)
-
-        grid.Add(wx.StaticText(self, label=_("Optional note")), 0, wx.ALIGN_TOP)
+        note_label = wx.StaticText(self, label=_("Optional note"))
+        note_label.SetToolTip(_("Short comment about this artifact, for example status or owner."))
+        grid.Add(note_label, 0, wx.ALIGN_TOP)
         self._note_ctrl = wx.TextCtrl(self, value=note, style=wx.TE_MULTILINE)
+        self._note_ctrl.SetMinSize((-1, 140))
+        self._note_ctrl.SetToolTip(_("Short comment about this artifact, for example status or owner."))
         grid.Add(self._note_ctrl, 1, wx.EXPAND)
 
-        grid.Add(wx.StaticText(self, label=_("Tags (comma-separated)")), 0, wx.ALIGN_CENTER_VERTICAL)
+        tags_label = wx.StaticText(self, label=_("Tags (comma-separated)"))
+        tags_label.SetToolTip(_("Keywords to simplify searching and filtering in exports."))
+        grid.Add(tags_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self._tags_ctrl = wx.TextCtrl(self, value=", ".join(tags))
+        self._tags_ctrl.SetToolTip(_("Keywords to simplify searching and filtering in exports."))
         grid.Add(self._tags_ctrl, 1, wx.EXPAND)
 
-        self._include_export = wx.CheckBox(self, label=_("Include in export preface"))
+        self._include_export = wx.CheckBox(self, label=_("Include in export introduction"))
         self._include_export.SetValue(include_in_export)
+        self._include_export.SetToolTip(
+            _("Adds artifact content to the generated export introduction section.")
+        )
 
         main.Add(grid, 1, wx.ALL | wx.EXPAND, 10)
         main.Add(self._include_export, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -78,16 +72,14 @@ class SharedArtifactEditDialog(wx.Dialog):
         if buttons:
             main.Add(buttons, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
         self.SetSizer(main)
-        self.SetMinSize((480, 320))
+        self.SetMinSize((560, 420))
+        self.SetSize((680, 520))
 
     def get_result(self) -> _ArtifactFormResult:
-        kind_idx = self._kind_choice.GetSelection()
-        kind = self._kind_values[kind_idx] if 0 <= kind_idx < len(self._kind_values) else "general"
         title = self._title_ctrl.GetValue().strip()
         note = self._note_ctrl.GetValue()
         tags = [item.strip() for item in self._tags_ctrl.GetValue().split(",") if item.strip()]
         return _ArtifactFormResult(
-            kind=kind,
             title=title,
             note=note,
             include_in_export=self._include_export.GetValue(),
@@ -116,17 +108,13 @@ class SharedArtifactsDialog(wx.Dialog):
         self._on_remove = on_remove
         self._on_update = on_update
         self._artifacts = artifacts
-        self._filtered_indices: list[int] = []
 
         main = wx.BoxSizer(wx.VERTICAL)
 
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
-        toolbar.Add(wx.StaticText(self, label=_("Filter by type")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self._filter_choice = wx.Choice(self, choices=[label for _value, label in _ARTIFACT_KINDS])
-        self._filter_choice.SetSelection(0)
-        toolbar.Add(self._filter_choice, 0, wx.RIGHT, 10)
         toolbar.AddStretchSpacer(1)
         self._open_file_btn = wx.Button(self, label=_("Open file"))
+        self._open_file_btn.SetToolTip(_("Open selected file using the system default application."))
         toolbar.Add(self._open_file_btn, 0)
         main.Add(toolbar, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, 10)
 
@@ -136,9 +124,8 @@ class SharedArtifactsDialog(wx.Dialog):
             style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
         self._list.InsertColumn(0, _("Title"))
-        self._list.InsertColumn(1, _("Type"))
-        self._list.InsertColumn(2, _("File"))
-        self._list.InsertColumn(3, _("Export"))
+        self._list.InsertColumn(1, _("File"))
+        self._list.InsertColumn(2, _("Export"))
         list_row.Add(self._list, 1, wx.EXPAND | wx.RIGHT, 10)
 
         actions = wx.BoxSizer(wx.VERTICAL)
@@ -147,6 +134,13 @@ class SharedArtifactsDialog(wx.Dialog):
         self._toggle_export_btn = wx.Button(self, label=_("Toggle export"))
         self._remove_btn = wx.Button(self, label=_("Remove"))
         self._close_btn = wx.Button(self, id=wx.ID_CLOSE, label=_("Close"))
+
+        self._add_btn.SetToolTip(_("Select and register a new shared artifact file."))
+        self._edit_btn.SetToolTip(_("Edit metadata of the selected shared artifact."))
+        self._toggle_export_btn.SetToolTip(_("Enable or disable inclusion in export introduction."))
+        self._remove_btn.SetToolTip(_("Remove metadata entry for the selected shared artifact."))
+        self._close_btn.SetToolTip(_("Close this dialog."))
+
         actions.Add(self._add_btn, 0, wx.BOTTOM, 5)
         actions.Add(self._edit_btn, 0, wx.BOTTOM, 5)
         actions.Add(self._toggle_export_btn, 0, wx.BOTTOM, 5)
@@ -158,10 +152,12 @@ class SharedArtifactsDialog(wx.Dialog):
 
         hint = _(
             "Shared artifacts are available to all requirements in this data module."
-            " Use types to classify documents such as system overview, TZ and PSSA."
+            " Attach key source files here so they can be reused in reviews and exports."
         )
         hint_row = wx.BoxSizer(wx.HORIZONTAL)
-        hint_row.Add(wx.StaticText(self, label=hint), 1, wx.ALIGN_CENTER_VERTICAL)
+        hint_label = wx.StaticText(self, label=hint)
+        hint_label.SetToolTip(hint)
+        hint_row.Add(hint_label, 1, wx.ALIGN_CENTER_VERTICAL)
         hint_row.Add(
             make_help_button(self, hint, dialog_parent=self),
             0,
@@ -171,7 +167,8 @@ class SharedArtifactsDialog(wx.Dialog):
         main.Add(hint_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
 
         self.SetSizer(main)
-        self.SetMinSize((860, 420))
+        self.SetMinSize((980, 560))
+        self.SetSize((1120, 680))
 
         self._add_btn.Bind(wx.EVT_BUTTON, self._on_add_click)
         self._edit_btn.Bind(wx.EVT_BUTTON, self._on_edit_click)
@@ -179,7 +176,6 @@ class SharedArtifactsDialog(wx.Dialog):
         self._remove_btn.Bind(wx.EVT_BUTTON, self._on_remove_click)
         self._open_file_btn.Bind(wx.EVT_BUTTON, self._on_open_file_click)
         self._close_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CLOSE))
-        self._filter_choice.Bind(wx.EVT_CHOICE, lambda _evt: self._refresh())
         self._list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_edit_click)
         self._list.Bind(wx.EVT_LIST_ITEM_SELECTED, lambda _evt: self._sync_buttons_state())
         self._list.Bind(wx.EVT_SIZE, lambda evt: (evt.Skip(), self._autosize_columns()))
@@ -187,40 +183,20 @@ class SharedArtifactsDialog(wx.Dialog):
         self._refresh()
 
     def _autosize_columns(self) -> None:
-        width = max(320, self._list.GetClientSize().width)
-        self._list.SetColumnWidth(0, max(180, int(width * 0.28)))
-        self._list.SetColumnWidth(1, max(130, int(width * 0.18)))
-        self._list.SetColumnWidth(2, max(190, int(width * 0.38)))
-        self._list.SetColumnWidth(3, max(85, int(width * 0.12)))
-
-    def _kind_label(self, kind: str) -> str:
-        for value, label in _ARTIFACT_KINDS:
-            if value == kind:
-                return label
-        return kind
-
-    def _current_filter(self) -> str:
-        idx = self._filter_choice.GetSelection()
-        if 0 <= idx < len(_ARTIFACT_KINDS):
-            return _ARTIFACT_KINDS[idx][0]
-        return "all"
+        width = max(420, self._list.GetClientSize().width)
+        self._list.SetColumnWidth(0, max(220, int(width * 0.36)))
+        self._list.SetColumnWidth(1, max(230, int(width * 0.52)))
+        self._list.SetColumnWidth(2, max(90, int(width * 0.12)))
 
     def _refresh(self) -> None:
-        self._filtered_indices = []
-        filter_kind = self._current_filter()
         self._list.Freeze()
         try:
             self._list.DeleteAllItems()
             for artifact_index, artifact in enumerate(self._artifacts):
-                kind = str(getattr(artifact, "kind", "general"))
-                if filter_kind != "all" and kind != filter_kind:
-                    continue
-                self._filtered_indices.append(artifact_index)
                 idx = self._list.InsertItem(self._list.GetItemCount(), getattr(artifact, "title", ""))
-                self._list.SetItem(idx, 1, self._kind_label(kind))
-                self._list.SetItem(idx, 2, str(getattr(artifact, "path", "")))
+                self._list.SetItem(idx, 1, str(getattr(artifact, "path", "")))
                 export_flag = "✓" if bool(getattr(artifact, "include_in_export", True)) else ""
-                self._list.SetItem(idx, 3, export_flag)
+                self._list.SetItem(idx, 2, export_flag)
                 self._list.SetItemData(idx, artifact_index)
         finally:
             self._list.Thaw()
@@ -237,9 +213,9 @@ class SharedArtifactsDialog(wx.Dialog):
 
     def _selected_artifact(self) -> tuple[int, object] | None:
         selected = self._list.GetFirstSelected()
-        if selected < 0 or selected >= len(self._filtered_indices):
+        if selected < 0:
             return None
-        artifact_index = self._filtered_indices[selected]
+        artifact_index = self._list.GetItemData(selected)
         if artifact_index < 0 or artifact_index >= len(self._artifacts):
             return None
         return artifact_index, self._artifacts[artifact_index]
@@ -258,7 +234,6 @@ class SharedArtifactsDialog(wx.Dialog):
         edit = SharedArtifactEditDialog(
             self,
             title=default_title,
-            kind="general",
             note="",
             include_in_export=True,
             tags=[],
@@ -282,7 +257,6 @@ class SharedArtifactsDialog(wx.Dialog):
             artifact = self._on_add(
                 self._prefix,
                 source_path,
-                kind=result.kind,
                 title=result.title,
                 note=result.note,
                 include_in_export=result.include_in_export,
@@ -302,7 +276,6 @@ class SharedArtifactsDialog(wx.Dialog):
         edit = SharedArtifactEditDialog(
             self,
             title=str(getattr(artifact, "title", "")),
-            kind=str(getattr(artifact, "kind", "general")),
             note=str(getattr(artifact, "note", "")),
             include_in_export=bool(getattr(artifact, "include_in_export", True)),
             tags=list(getattr(artifact, "tags", [])),
@@ -318,7 +291,6 @@ class SharedArtifactsDialog(wx.Dialog):
         updated = self._on_update(
             self._prefix,
             str(getattr(artifact, "id", "")),
-            kind=result.kind,
             title=result.title,
             note=result.note,
             include_in_export=result.include_in_export,

@@ -39,13 +39,11 @@ def test_upload_shared_artifact_registers_metadata(tmp_path: Path) -> None:
     artifact = service.upload_shared_artifact(
         "SYS",
         source,
-        kind="tz",
         title="Main TZ",
         note="contract",
         tags=["project", "baseline"],
     )
 
-    assert artifact.kind == "tz"
     assert artifact.title == "Main TZ"
     assert (tmp_path / "SYS" / artifact.path).is_file()
     saved = service.get_document("SYS")
@@ -64,7 +62,6 @@ def test_upload_shared_artifact_rejects_large_file(tmp_path: Path) -> None:
         service.upload_shared_artifact(
             "SYS",
             oversized,
-            kind="general",
             title="Big",
         )
 
@@ -78,7 +75,6 @@ def test_remove_shared_artifact_can_delete_file(tmp_path: Path) -> None:
     artifact = service.upload_shared_artifact(
         "SYS",
         source,
-        kind="pssa",
         title="PSSA",
     )
 
@@ -98,7 +94,6 @@ def test_update_shared_artifact_changes_metadata(tmp_path: Path) -> None:
     artifact = service.upload_shared_artifact(
         "SYS",
         source,
-        kind="general",
         title="Overview",
         note="v1",
         tags=["doc"],
@@ -107,14 +102,12 @@ def test_update_shared_artifact_changes_metadata(tmp_path: Path) -> None:
     updated = service.update_shared_artifact(
         "SYS",
         artifact.id,
-        kind="system_overview",
         title="System Overview",
         note="v2",
         include_in_export=False,
         tags=["core", "architecture"],
     )
 
-    assert updated.kind == "system_overview"
     assert updated.title == "System Overview"
     assert updated.note == "v2"
     assert updated.include_in_export is False

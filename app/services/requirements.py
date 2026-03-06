@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 import shutil
 import uuid
 from collections.abc import Mapping, Sequence
@@ -16,6 +17,7 @@ from ..core.document_store import (
     DocumentLabels,
     DocumentNotFoundError,
     LabelDef,
+    SharedArtifact,
     RequirementIDCollisionError,
     RequirementNotFoundError,
     RequirementPage,
@@ -24,6 +26,7 @@ from ..core.document_store import (
 from ..core.model import Requirement
 
 MAX_REQUIREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_SHARED_ARTIFACT_BYTES = 50 * 1024 * 1024
 
 # Re-export selected helpers so callers do not need to depend on ``document_store``.
 @dataclass(frozen=True, slots=True)
@@ -41,7 +44,9 @@ __all__ = [
     "DocumentNotFoundError",
     "DocumentInventoryEntry",
     "LabelDef",
+    "SharedArtifact",
     "MAX_REQUIREMENT_ATTACHMENT_BYTES",
+    "MAX_SHARED_ARTIFACT_BYTES",
     "RequirementIDCollisionError",
     "RequirementNotFoundError",
     "RequirementPage",
@@ -379,6 +384,94 @@ class RequirementsService:
         relative_path = self._copy_attachment_asset(prefix, source)
         return {"id": attachment_id, "path": relative_path, "note": note}
 
+    def upload_shared_artifact(
+        self,
+        prefix: str,
+        source: Path,
+        *,
+        kind: str,
+        title: str,
+        note: str = "",
+        include_in_export: bool = True,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Copy ``source`` into the document shared folder and register metadata."""
+        doc = self.get_document(prefix)
+        artifact = SharedArtifact(
+            id=str(uuid.uuid4()),
+            path=self._copy_shared_artifact_asset(prefix, source),
+            kind=kind.strip() or "general",
+            title=title.strip() or source.stem,
+            note=note,
+            include_in_export=bool(include_in_export),
+            tags=[str(tag).strip() for tag in (tags or []) if str(tag).strip()],
+        )
+        doc.shared_artifacts.append(artifact)
+        self.save_document(doc)
+        return artifact
+
+    def remove_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        delete_file: bool = False,
+    ) -> bool:
+        """Remove shared artifact metadata by id and optionally delete its file."""
+        doc = self.get_document(prefix)
+        target_index = -1
+        for idx, artifact in enumerate(doc.shared_artifacts):
+            if artifact.id == artifact_id:
+                target_index = idx
+                break
+        if target_index < 0:
+            return False
+        artifact = doc.shared_artifacts.pop(target_index)
+        self.save_document(doc)
+        if delete_file:
+            candidate = (self.root / prefix / artifact.path).resolve()
+            doc_root = (self.root / prefix).resolve()
+            with suppress(ValueError):
+                candidate.relative_to(doc_root)
+                if candidate.is_file():
+                    candidate.unlink()
+        return True
+
+    def update_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        kind: str | None = None,
+        title: str | None = None,
+        note: str | None = None,
+        include_in_export: bool | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Update metadata of an existing document-level shared artifact."""
+        doc = self.get_document(prefix)
+        target: SharedArtifact | None = None
+        for artifact in doc.shared_artifacts:
+            if artifact.id == artifact_id:
+                target = artifact
+                break
+        if target is None:
+            raise ValidationError(f"shared artifact id not found: {artifact_id}")
+
+        if kind is not None:
+            target.kind = kind.strip() or "general"
+        if title is not None:
+            target.title = title.strip()
+        if note is not None:
+            target.note = note
+        if include_in_export is not None:
+            target.include_in_export = bool(include_in_export)
+        if tags is not None:
+            target.tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+
+        self.save_document(doc)
+        return target
+
     def get_requirement_attachment_path(self, rid: str, attachment_id: str) -> Path:
         """Resolve the attachment file path for ``attachment_id`` on requirement ``rid``."""
         requirement = self.get_requirement(rid)
@@ -430,6 +523,36 @@ class RequirementsService:
                 )
         shutil.copy2(source, candidate)
         return str(Path("assets") / candidate.name)
+
+    def _copy_shared_artifact_asset(self, prefix: str, source: Path) -> str:
+        self.get_document(prefix)
+        if not source.exists():
+            raise ValidationError(f"shared artifact does not exist: {source}")
+        if not source.is_file():
+            raise ValidationError(f"shared artifact is not a file: {source}")
+        size = source.stat().st_size
+        if size > MAX_SHARED_ARTIFACT_BYTES:
+            raise ValidationError(
+                "shared artifact size exceeds limit of "
+                f"{MAX_SHARED_ARTIFACT_BYTES} bytes"
+            )
+        target_dir = self.root / prefix / "shared"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = source.name
+        candidate = target_dir / filename
+        if candidate.exists():
+            stem = candidate.stem
+            suffix = candidate.suffix
+            for idx in range(1, 10_000):
+                candidate = target_dir / f"{stem}-{idx}{suffix}"
+                if not candidate.exists():
+                    break
+            if candidate.exists():
+                raise ValidationError(
+                    f"shared artifact filename collision in shared: {candidate.name}"
+                )
+        shutil.copy2(source, candidate)
+        return str(Path("shared") / candidate.name)
 
     def link_requirements(
         self,

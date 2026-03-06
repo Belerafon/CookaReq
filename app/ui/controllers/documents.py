@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 import re
 from typing import Any
 
@@ -12,6 +13,7 @@ from ...services.requirements import (
     LabelDef,
     RequirementIDCollisionError,
     RequirementNotFoundError,
+    SharedArtifact,
     ValidationError,
     iter_links,
     parse_rid,
@@ -341,6 +343,71 @@ class DocumentsController:
         self.service.save_document(doc)
         self.load_documents()
         return self.documents[prefix]
+
+    def upload_shared_artifact(
+        self,
+        prefix: str,
+        source_path: str,
+        *,
+        kind: str,
+        title: str,
+        note: str = "",
+        include_in_export: bool = True,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Upload and register a document-level shared artifact."""
+        artifact = self.service.upload_shared_artifact(
+            prefix,
+            Path(source_path),
+            kind=kind,
+            title=title,
+            note=note,
+            include_in_export=include_in_export,
+            tags=tags,
+        )
+        self.load_documents()
+        return artifact
+
+    def remove_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        delete_file: bool = False,
+    ) -> bool:
+        """Remove document-level shared artifact by identifier."""
+        removed = self.service.remove_shared_artifact(
+            prefix,
+            artifact_id,
+            delete_file=delete_file,
+        )
+        if removed:
+            self.load_documents()
+        return removed
+
+    def update_shared_artifact(
+        self,
+        prefix: str,
+        artifact_id: str,
+        *,
+        kind: str | None = None,
+        title: str | None = None,
+        note: str | None = None,
+        include_in_export: bool | None = None,
+        tags: Sequence[str] | None = None,
+    ) -> SharedArtifact:
+        """Update document-level shared artifact metadata."""
+        artifact = self.service.update_shared_artifact(
+            prefix,
+            artifact_id,
+            kind=kind,
+            title=title,
+            note=note,
+            include_in_export=include_in_export,
+            tags=tags,
+        )
+        self.load_documents()
+        return artifact
 
     # ------------------------------------------------------------------
     def iter_links(self) -> Iterable[tuple[str, str]]:

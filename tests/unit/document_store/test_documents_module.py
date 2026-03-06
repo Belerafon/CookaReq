@@ -112,6 +112,17 @@ def test_document_from_mapping_roundtrip() -> None:
                 }
             ],
         },
+        "shared_artifacts": [
+            {
+                "id": "tz-main",
+                "path": "shared/tz.pdf",
+                "kind": "tz",
+                "title": "Main TZ",
+                "note": "Approved",
+                "include_in_export": True,
+                "tags": ["contract"],
+            }
+        ],
         "attributes": {"owner": "QA"},
     }
 
@@ -121,6 +132,8 @@ def test_document_from_mapping_roundtrip() -> None:
     assert document.parent == "ROOT"
     assert document.labels.allow_freeform is True
     assert document.labels.defs[0].color == "#123456"
+    assert len(document.shared_artifacts) == 1
+    assert document.shared_artifacts[0].kind == "tz"
     assert document.attributes == {"owner": "QA"}
 
     assert document.to_mapping() == {
@@ -136,8 +149,32 @@ def test_document_from_mapping_roundtrip() -> None:
                 }
             ],
         },
+        "shared_artifacts": [
+            {
+                "id": "tz-main",
+                "path": "shared/tz.pdf",
+                "kind": "tz",
+                "title": "Main TZ",
+                "note": "Approved",
+                "include_in_export": True,
+                "tags": ["contract"],
+            }
+        ],
         "attributes": {"owner": "QA"},
     }
+
+
+def test_document_from_mapping_rejects_duplicate_shared_artifacts() -> None:
+    with pytest.raises(ValidationError, match="shared_artifact ids must be unique"):
+        Document.from_mapping(
+            prefix="SYS",
+            data={
+                "shared_artifacts": [
+                    {"id": "dup", "path": "shared/a.md"},
+                    {"id": "dup", "path": "shared/b.md"},
+                ]
+            },
+        )
 
 
 def test_document_from_mapping_validates_parent_type() -> None:

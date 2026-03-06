@@ -196,6 +196,7 @@ class MainFrame(
                 on_new_document=self.on_new_document,
                 on_rename_document=self.on_rename_document,
                 on_delete_document=self.on_delete_document,
+                on_manage_shared_artifacts=self.on_manage_shared_artifacts,
             ),
             allow_label_shrink=True,
         )

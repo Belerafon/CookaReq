@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 if TYPE_CHECKING:  # pragma: no cover - imported for typing only
     from ..model import Requirement
@@ -105,6 +105,63 @@ class DocumentLabels:
         }
 
 
+@dataclass(slots=True)
+class SharedArtifact:
+    """Document-level artifact shared across all requirements."""
+
+    id: str
+    path: str
+    kind: str = "general"
+    title: str = ""
+    note: str = ""
+    include_in_export: bool = True
+    tags: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, Any]) -> SharedArtifact:
+        """Build a shared artifact entry from JSON mapping."""
+        if not isinstance(data, Mapping):
+            raise ValidationError("shared_artifact must be a mapping")
+        artifact_id = str(data.get("id", "")).strip()
+        if not artifact_id:
+            raise ValidationError("shared_artifact.id is required")
+        path = str(data.get("path", "")).strip()
+        if not path:
+            raise ValidationError("shared_artifact.path is required")
+        kind = str(data.get("kind", "general")).strip() or "general"
+        title = str(data.get("title", "")).strip()
+        note = str(data.get("note", ""))
+        include_in_export = bool(data.get("include_in_export", True))
+        raw_tags = data.get("tags", [])
+        if raw_tags in (None, ""):
+            tags = []
+        elif isinstance(raw_tags, list):
+            tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+        else:
+            raise ValidationError("shared_artifact.tags must be a list")
+        return cls(
+            id=artifact_id,
+            path=path,
+            kind=kind,
+            title=title,
+            note=note,
+            include_in_export=include_in_export,
+            tags=tags,
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Serialise shared artifact for JSON storage."""
+        return {
+            "id": self.id,
+            "path": self.path,
+            "kind": self.kind,
+            "title": self.title,
+            "note": self.note,
+            "include_in_export": self.include_in_export,
+            "tags": list(self.tags),
+        }
+
+
 @dataclass(slots=True, init=False)
 class Document:
     """Configuration describing a document in the hierarchy."""
@@ -113,6 +170,7 @@ class Document:
     title: str
     parent: str | None = None
     labels: DocumentLabels = field(default_factory=DocumentLabels)
+    shared_artifacts: list[SharedArtifact] = field(default_factory=list)
     attributes: dict[str, Any] = field(default_factory=dict)
 
     def __init__(
@@ -122,6 +180,7 @@ class Document:
         title: str,
         parent: str | None = None,
         labels: DocumentLabels | None = None,
+        shared_artifacts: Sequence[SharedArtifact] | None = None,
         attributes: Mapping[str, Any] | None = None,
         **extra: Any,
     ) -> None:
@@ -134,6 +193,7 @@ class Document:
         self.title = title
         self.parent = parent
         self.labels = labels or DocumentLabels()
+        self.shared_artifacts = list(shared_artifacts or [])
         self.attributes = dict(attributes or {})
 
     @classmethod
@@ -162,6 +222,20 @@ class Document:
             labels = DocumentLabels.from_mapping(labels_raw)
         else:
             raise ValidationError("labels must be a mapping")
+        shared_artifacts_raw = data.get("shared_artifacts")
+        if shared_artifacts_raw in (None, ""):
+            shared_artifacts: list[SharedArtifact] = []
+        elif isinstance(shared_artifacts_raw, list):
+            shared_artifacts = [
+                SharedArtifact.from_mapping(entry) for entry in shared_artifacts_raw
+            ]
+        else:
+            raise ValidationError("shared_artifacts must be a list")
+        seen_artifact_ids: set[str] = set()
+        for artifact in shared_artifacts:
+            if artifact.id in seen_artifact_ids:
+                raise ValidationError("shared_artifact ids must be unique")
+            seen_artifact_ids.add(artifact.id)
         attributes_raw = data.get("attributes", {})
         if attributes_raw in (None, ""):
             attributes = {}
@@ -174,6 +248,7 @@ class Document:
             title=title,
             parent=parent,
             labels=labels,
+            shared_artifacts=shared_artifacts,
             attributes=attributes,
         )
 
@@ -183,6 +258,9 @@ class Document:
             "title": self.title,
             "parent": self.parent,
             "labels": self.labels.to_mapping(),
+            "shared_artifacts": [
+                artifact.to_mapping() for artifact in self.shared_artifacts
+            ],
             "attributes": dict(self.attributes),
         }
 
@@ -205,6 +283,7 @@ __all__ = [
     "RequirementIDCollisionError",
     "LabelDef",
     "DocumentLabels",
+    "SharedArtifact",
     "Document",
     "RequirementPage",
 ]

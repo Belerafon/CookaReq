@@ -641,6 +641,34 @@ class MainFrameDocumentsMixin:
         target = parent_prefix if parent_prefix in self.docs_controller.documents else None
         self._refresh_documents(select=target, force_reload=True)
 
+    def on_manage_shared_artifacts(self: MainFrame, prefix: str) -> None:
+        """Open the dialog managing document-level shared artifacts."""
+        controller = self.docs_controller
+        if controller is None:
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        document = controller.documents.get(prefix)
+        if document is None:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
+        from . import SharedArtifactsDialog
+
+        artifacts = list(document.shared_artifacts)
+        dlg = SharedArtifactsDialog(
+            self,
+            prefix=prefix,
+            root=controller.root,
+            artifacts=artifacts,
+            on_add=controller.upload_shared_artifact,
+            on_remove=controller.remove_shared_artifact,
+            on_update=controller.update_shared_artifact,
+        )
+        try:
+            dlg.ShowModal()
+        finally:
+            dlg.Destroy()
+        self._refresh_documents(select=prefix, force_reload=True)
+
     def _on_doc_changing(self: MainFrame, event: wx.TreeEvent) -> None:
         """Request confirmation before switching documents."""
         if event.GetItem() == event.GetOldItem():

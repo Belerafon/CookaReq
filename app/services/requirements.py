@@ -27,6 +27,9 @@ from ..core.model import Requirement
 
 MAX_REQUIREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_SHARED_ARTIFACT_BYTES = 50 * 1024 * 1024
+ALLOWED_SHARED_ARTIFACT_EXPORT_SUFFIXES = frozenset({
+    ".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".log", ".ini"
+})
 
 # Re-export selected helpers so callers do not need to depend on ``document_store``.
 @dataclass(frozen=True, slots=True)
@@ -47,6 +50,7 @@ __all__ = [
     "SharedArtifact",
     "MAX_REQUIREMENT_ATTACHMENT_BYTES",
     "MAX_SHARED_ARTIFACT_BYTES",
+    "ALLOWED_SHARED_ARTIFACT_EXPORT_SUFFIXES",
     "RequirementIDCollisionError",
     "RequirementNotFoundError",
     "RequirementPage",
@@ -384,6 +388,13 @@ class RequirementsService:
         relative_path = self._copy_attachment_asset(prefix, source)
         return {"id": attachment_id, "path": relative_path, "note": note}
 
+    @staticmethod
+    def can_include_shared_artifact_in_export(source: Path | str) -> bool:
+        """Return whether ``source`` uses a text format allowed in export preface."""
+
+        suffix = Path(source).suffix.lower()
+        return suffix in ALLOWED_SHARED_ARTIFACT_EXPORT_SUFFIXES
+
     def upload_shared_artifact(
         self,
         prefix: str,
@@ -396,6 +407,11 @@ class RequirementsService:
     ) -> SharedArtifact:
         """Copy ``source`` into the document shared folder and register metadata."""
         doc = self.get_document(prefix)
+        if include_in_export and not self.can_include_shared_artifact_in_export(source):
+            raise ValidationError(
+                "only text shared artifacts can be included in export introduction: "
+                ".txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+            )
         artifact = SharedArtifact(
             id=str(uuid.uuid4()),
             path=self._copy_shared_artifact_asset(prefix, source),
@@ -460,6 +476,13 @@ class RequirementsService:
         if note is not None:
             target.note = note
         if include_in_export is not None:
+            if include_in_export:
+                source = self.root / prefix / target.path
+                if not self.can_include_shared_artifact_in_export(source):
+                    raise ValidationError(
+                        "only text shared artifacts can be included in export introduction: "
+                        ".txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+                    )
             target.include_in_export = bool(include_in_export)
         if tags is not None:
             target.tags = [str(tag).strip() for tag in tags if str(tag).strip()]

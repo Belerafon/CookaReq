@@ -3243,3 +3243,23 @@ msgstr "Отсутствует"
 
 msgid "File is missing on disk."
 msgstr "Файл отсутствует на диске."
+
+
+msgid "Data Module Artifacts"
+msgstr "Артефакты модуля данных"
+
+
+msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте. Для включения в пролог экспорта используйте UTF-8 текстовые файлы (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+
+
+msgid "Text files (*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini)|*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini|All files (*.*)|*.*"
+msgstr "Текстовые файлы (*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini)|*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini|Все файлы (*.*)|*.*"
+
+
+msgid "This file type cannot be added to export introduction. Allowed text formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+msgstr "Этот тип файла нельзя добавить во вступление экспорта. Допустимые текстовые форматы: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+
+
+msgid "Only text artifacts can be included in export introduction. Allowed formats: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"
+msgstr "Во вступление экспорта можно включать только текстовые артефакты. Допустимые форматы: .txt, .md, .csv, .json, .yaml, .yml, .log, .ini"

@@ -158,6 +158,7 @@ class MainFrame(
             on_export_requirements=self.on_export_requirements,
             on_open_settings=self.on_open_settings,
             on_manage_labels=self.on_manage_labels,
+            on_open_data_module_artifacts=self.on_open_data_module_artifacts,
             on_open_recent=self.on_open_recent,
             on_toggle_column=self.on_toggle_column,
             on_toggle_log_console=self.on_toggle_log_console,

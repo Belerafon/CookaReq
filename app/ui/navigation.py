@@ -27,6 +27,7 @@ class Navigation:
         on_export_requirements: Callable[[wx.Event], None],
         on_open_settings: Callable[[wx.Event], None],
         on_manage_labels: Callable[[wx.Event], None],
+        on_open_data_module_artifacts: Callable[[wx.Event], None],
         on_open_recent: Callable[[wx.CommandEvent], None],
         on_toggle_column: Callable[[wx.CommandEvent], None],
         on_toggle_log_console: Callable[[wx.CommandEvent], None],
@@ -49,6 +50,7 @@ class Navigation:
         self.on_export_requirements = on_export_requirements
         self.on_open_settings = on_open_settings
         self.on_manage_labels = on_manage_labels
+        self.on_open_data_module_artifacts = on_open_data_module_artifacts
         self.on_open_recent = on_open_recent
         self.on_toggle_column = on_toggle_column
         self.on_toggle_log_console = on_toggle_log_console
@@ -91,6 +93,7 @@ class Navigation:
         )
         settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
         labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
+        data_module_artifacts_item = file_menu.Append(wx.ID_ANY, _("Data Module Artifacts"))
         exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
         self.frame.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.frame.Bind(wx.EVT_MENU, self.on_new_requirement, new_item)
@@ -98,6 +101,7 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_export_requirements, export_item)
         self.frame.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.frame.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
+        self.frame.Bind(wx.EVT_MENU, self.on_open_data_module_artifacts, data_module_artifacts_item)
         self.frame.Bind(wx.EVT_MENU, lambda _evt: self.frame.Close(), exit_item)
         self._rebuild_recent_menu()
         self.manage_labels_id = labels_item.GetId()

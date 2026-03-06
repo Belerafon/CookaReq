@@ -33,7 +33,7 @@ def test_upload_shared_artifact_registers_metadata(tmp_path: Path) -> None:
     document = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", document)
     service = RequirementsService(tmp_path)
-    source = tmp_path / "tz.pdf"
+    source = tmp_path / "tz.txt"
     source.write_bytes(b"tz")
 
     artifact = service.upload_shared_artifact(
@@ -63,6 +63,7 @@ def test_upload_shared_artifact_rejects_large_file(tmp_path: Path) -> None:
             "SYS",
             oversized,
             title="Big",
+            include_in_export=False,
         )
 
 
@@ -76,6 +77,7 @@ def test_remove_shared_artifact_can_delete_file(tmp_path: Path) -> None:
         "SYS",
         source,
         title="PSSA",
+        include_in_export=False,
     )
 
     removed = service.remove_shared_artifact("SYS", artifact.id, delete_file=True)
@@ -112,3 +114,40 @@ def test_update_shared_artifact_changes_metadata(tmp_path: Path) -> None:
     assert updated.note == "v2"
     assert updated.include_in_export is False
     assert updated.tags == ["core", "architecture"]
+
+
+def test_upload_shared_artifact_rejects_non_text_export_inclusion(tmp_path: Path) -> None:
+    document = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", document)
+    service = RequirementsService(tmp_path)
+    source = tmp_path / "diagram.pdf"
+    source.write_bytes(b"%PDF")
+
+    with pytest.raises(ValidationError, match="only text shared artifacts can be included in export introduction"):
+        service.upload_shared_artifact(
+            "SYS",
+            source,
+            title="Diagram",
+            include_in_export=True,
+        )
+
+
+def test_update_shared_artifact_rejects_non_text_export_inclusion(tmp_path: Path) -> None:
+    document = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", document)
+    service = RequirementsService(tmp_path)
+    source = tmp_path / "diagram.pdf"
+    source.write_bytes(b"%PDF")
+    artifact = service.upload_shared_artifact(
+        "SYS",
+        source,
+        title="Diagram",
+        include_in_export=False,
+    )
+
+    with pytest.raises(ValidationError, match="only text shared artifacts can be included in export introduction"):
+        service.update_shared_artifact(
+            "SYS",
+            artifact.id,
+            include_in_export=True,
+        )

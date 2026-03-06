@@ -1045,3 +1045,52 @@ class ConfigManager:
         self.set_value("det_editor_x", int(x))
         self.set_value("det_editor_y", int(y))
         self.set_value("det_editor_max", bool(frame.IsMaximized()))
+
+    # ------------------------------------------------------------------
+    # shared artifacts dialog
+    def get_shared_artifacts_column_width(self, index: int, default: int = -1) -> int:
+        """Return persisted width for shared-artifacts column ``index``."""
+
+        key = f"shared_artifacts_col_width_{index}"
+        value = self._raw.get(key, _MISSING)
+        if value is _MISSING:
+            return int(default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return int(default)
+
+    def set_shared_artifacts_column_width(self, index: int, width: int) -> None:
+        """Persist shared-artifacts column width for ``index``."""
+
+        self._raw[f"shared_artifacts_col_width_{index}"] = int(width)
+
+    def restore_shared_artifacts_dialog_geometry(self, dialog: wx.Dialog) -> None:
+        """Restore persisted geometry for the shared artifacts dialog."""
+
+        size, position = self._normalise_window_geometry(
+            self.get_value("shared_artifacts_w", default=1120),
+            self.get_value("shared_artifacts_h", default=680),
+            self.get_value("shared_artifacts_x", default=-1),
+            self.get_value("shared_artifacts_y", default=-1),
+            min_size=(980, 560),
+            max_size=(3200, 2400),
+        )
+        dialog.SetSize(size)
+        if position is not None:
+            dialog.SetPosition(position)
+        else:
+            dialog.CenterOnParent()
+        if bool(self.get_value("shared_artifacts_max", default=False)):
+            dialog.Maximize(True)
+
+    def save_shared_artifacts_dialog_geometry(self, dialog: wx.Dialog) -> None:
+        """Persist geometry and maximized state for the shared artifacts dialog."""
+
+        width, height = dialog.GetSize()
+        x, y = dialog.GetPosition()
+        self.set_value("shared_artifacts_w", int(width))
+        self.set_value("shared_artifacts_h", int(height))
+        self.set_value("shared_artifacts_x", int(x))
+        self.set_value("shared_artifacts_y", int(y))
+        self.set_value("shared_artifacts_max", bool(dialog.IsMaximized()))

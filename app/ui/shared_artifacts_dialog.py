@@ -112,43 +112,29 @@ class SharedArtifactsDialog(wx.Dialog):
         main = wx.BoxSizer(wx.VERTICAL)
 
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
+        self._add_btn = wx.Button(self, label=_("Add file"))
+        self._add_btn.SetToolTip(_("Select and register a new shared artifact file."))
+        toolbar.Add(self._add_btn, 0)
         toolbar.AddStretchSpacer(1)
-        self._open_file_btn = wx.Button(self, label=_("Open file"))
-        self._open_file_btn.SetToolTip(_("Open selected file using the system default application."))
-        toolbar.Add(self._open_file_btn, 0)
         main.Add(toolbar, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.EXPAND, 10)
 
-        list_row = wx.BoxSizer(wx.HORIZONTAL)
         self._list = wx.ListCtrl(
             self,
             style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
         self._list.InsertColumn(0, _("Title"))
         self._list.InsertColumn(1, _("File"))
-        self._list.InsertColumn(2, _("Export"))
-        list_row.Add(self._list, 1, wx.EXPAND | wx.RIGHT, 10)
+        self._list.InsertColumn(2, _("File size"))
+        self._list.InsertColumn(3, _("Export"))
 
-        actions = wx.BoxSizer(wx.VERTICAL)
-        self._add_btn = wx.Button(self, label=_("Add"))
-        self._edit_btn = wx.Button(self, label=_("Edit"))
-        self._toggle_export_btn = wx.Button(self, label=_("Toggle export"))
-        self._remove_btn = wx.Button(self, label=_("Remove"))
+        main.Add(self._list, 1, wx.ALL | wx.EXPAND, 10)
+
+        close_row = wx.BoxSizer(wx.HORIZONTAL)
+        close_row.AddStretchSpacer(1)
         self._close_btn = wx.Button(self, id=wx.ID_CLOSE, label=_("Close"))
-
-        self._add_btn.SetToolTip(_("Select and register a new shared artifact file."))
-        self._edit_btn.SetToolTip(_("Edit metadata of the selected shared artifact."))
-        self._toggle_export_btn.SetToolTip(_("Enable or disable inclusion in export introduction."))
-        self._remove_btn.SetToolTip(_("Remove metadata entry for the selected shared artifact."))
         self._close_btn.SetToolTip(_("Close this dialog."))
-
-        actions.Add(self._add_btn, 0, wx.BOTTOM, 5)
-        actions.Add(self._edit_btn, 0, wx.BOTTOM, 5)
-        actions.Add(self._toggle_export_btn, 0, wx.BOTTOM, 5)
-        actions.Add(self._remove_btn, 0, wx.BOTTOM, 5)
-        actions.Add(self._close_btn, 0)
-        list_row.Add(actions, 0, wx.ALIGN_TOP)
-
-        main.Add(list_row, 1, wx.ALL | wx.EXPAND, 10)
+        close_row.Add(self._close_btn, 0)
+        main.Add(close_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
 
         hint = _(
             "Shared artifacts are available to all requirements in this data module."
@@ -171,22 +157,38 @@ class SharedArtifactsDialog(wx.Dialog):
         self.SetSize((1120, 680))
 
         self._add_btn.Bind(wx.EVT_BUTTON, self._on_add_click)
-        self._edit_btn.Bind(wx.EVT_BUTTON, self._on_edit_click)
-        self._toggle_export_btn.Bind(wx.EVT_BUTTON, self._on_toggle_export_click)
-        self._remove_btn.Bind(wx.EVT_BUTTON, self._on_remove_click)
-        self._open_file_btn.Bind(wx.EVT_BUTTON, self._on_open_file_click)
-        self._close_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CLOSE))
         self._list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_edit_click)
-        self._list.Bind(wx.EVT_LIST_ITEM_SELECTED, lambda _evt: self._sync_buttons_state())
         self._list.Bind(wx.EVT_SIZE, lambda evt: (evt.Skip(), self._autosize_columns()))
+        self._list.Bind(wx.EVT_CONTEXT_MENU, self._on_context_menu)
+        self._list.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self._on_context_menu)
+        self._close_btn.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CLOSE))
 
         self._refresh()
 
     def _autosize_columns(self) -> None:
         width = max(420, self._list.GetClientSize().width)
-        self._list.SetColumnWidth(0, max(220, int(width * 0.36)))
-        self._list.SetColumnWidth(1, max(230, int(width * 0.52)))
-        self._list.SetColumnWidth(2, max(90, int(width * 0.12)))
+        self._list.SetColumnWidth(0, max(220, int(width * 0.30)))
+        self._list.SetColumnWidth(1, max(260, int(width * 0.44)))
+        self._list.SetColumnWidth(2, max(120, int(width * 0.16)))
+        self._list.SetColumnWidth(3, max(90, int(width * 0.10)))
+
+    def _resolve_artifact_file(self, artifact: object) -> Path | None:
+        path = str(getattr(artifact, "path", "")).strip()
+        if not path:
+            return None
+        return (self._document_root / path).resolve()
+
+    @staticmethod
+    def _format_file_size(size_bytes: int) -> str:
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(max(0, size_bytes))
+        for idx, unit in enumerate(units):
+            is_last = idx == len(units) - 1
+            if size < 1024 or is_last:
+                if unit == "B":
+                    return f"{int(size)} {unit}"
+                return f"{size:.1f} {unit}"
+            size /= 1024
 
     def _refresh(self) -> None:
         self._list.Freeze()
@@ -195,21 +197,17 @@ class SharedArtifactsDialog(wx.Dialog):
             for artifact_index, artifact in enumerate(self._artifacts):
                 idx = self._list.InsertItem(self._list.GetItemCount(), getattr(artifact, "title", ""))
                 self._list.SetItem(idx, 1, str(getattr(artifact, "path", "")))
+                candidate = self._resolve_artifact_file(artifact)
+                size_label = _("Missing")
+                if candidate is not None and candidate.exists() and candidate.is_file():
+                    size_label = self._format_file_size(candidate.stat().st_size)
+                self._list.SetItem(idx, 2, size_label)
                 export_flag = "✓" if bool(getattr(artifact, "include_in_export", True)) else ""
-                self._list.SetItem(idx, 2, export_flag)
+                self._list.SetItem(idx, 3, export_flag)
                 self._list.SetItemData(idx, artifact_index)
         finally:
             self._list.Thaw()
         self._autosize_columns()
-        self._sync_buttons_state()
-
-    def _sync_buttons_state(self) -> None:
-        selected = self._selected_artifact()
-        enabled = selected is not None
-        self._remove_btn.Enable(enabled)
-        self._edit_btn.Enable(enabled)
-        self._toggle_export_btn.Enable(enabled)
-        self._open_file_btn.Enable(enabled)
 
     def _selected_artifact(self) -> tuple[int, object] | None:
         selected = self._list.GetFirstSelected()
@@ -317,17 +315,55 @@ class SharedArtifactsDialog(wx.Dialog):
         if selected is None:
             return
         _artifact_index, artifact = selected
-        path = str(getattr(artifact, "path", "")).strip()
-        if not path:
+        candidate = self._resolve_artifact_file(artifact)
+        if candidate is None:
             return
-        candidate = (self._document_root / path).resolve()
-        launch_path = str(candidate if candidate.exists() else Path(path))
-        if not wx.LaunchDefaultApplication(launch_path):
+        if not candidate.exists() or not candidate.is_file():
+            wx.MessageBox(
+                _("File is missing on disk."),
+                _("Shared artifact"),
+                style=wx.OK | wx.ICON_WARNING,
+            )
+            return
+        if not wx.LaunchDefaultApplication(str(candidate)):
             wx.MessageBox(
                 _("Unable to open file with the default application."),
                 _("Error"),
                 style=wx.OK | wx.ICON_ERROR,
             )
+
+    def _on_context_menu(self, event: wx.Event) -> None:
+        if isinstance(event, wx.ListEvent):
+            item_index = event.GetIndex()
+            if item_index >= 0:
+                self._list.Select(item_index)
+                self._list.Focus(item_index)
+        selected = self._selected_artifact()
+
+        menu = wx.Menu()
+        open_item = menu.Append(wx.ID_ANY, _("Open file"))
+        edit_item = menu.Append(wx.ID_ANY, _("Edit"))
+        toggle_export_item = menu.Append(wx.ID_ANY, _("Toggle export"))
+        remove_item = menu.Append(wx.ID_ANY, _("Remove"))
+
+        if selected is None:
+            open_item.Enable(False)
+            edit_item.Enable(False)
+            toggle_export_item.Enable(False)
+            remove_item.Enable(False)
+        else:
+            _artifact_index, artifact = selected
+            candidate = self._resolve_artifact_file(artifact)
+            if candidate is None or not candidate.exists() or not candidate.is_file():
+                open_item.Enable(False)
+
+        menu.Bind(wx.EVT_MENU, self._on_open_file_click, open_item)
+        menu.Bind(wx.EVT_MENU, self._on_edit_click, edit_item)
+        menu.Bind(wx.EVT_MENU, self._on_toggle_export_click, toggle_export_item)
+        menu.Bind(wx.EVT_MENU, self._on_remove_click, remove_item)
+
+        self._list.PopupMenu(menu)
+        menu.Destroy()
 
     def _on_remove_click(self, _event: wx.CommandEvent) -> None:
         selected = self._selected_artifact()

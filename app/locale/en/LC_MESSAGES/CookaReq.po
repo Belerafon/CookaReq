@@ -3191,3 +3191,15 @@ msgstr "Remove metadata entry for the selected shared artifact."
 
 msgid "Close this dialog."
 msgstr "Close this dialog."
+
+msgid "Add file"
+msgstr "Add file"
+
+msgid "File size"
+msgstr "File size"
+
+msgid "Missing"
+msgstr "Missing"
+
+msgid "File is missing on disk."
+msgstr "File is missing on disk."

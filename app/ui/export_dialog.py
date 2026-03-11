@@ -349,9 +349,8 @@ class RequirementExportDialog(wx.Dialog):
         self.docx_formula_choice = wx.Choice(
             self.docx_formula_box,
             choices=[
-                _("Automatic (OMML, then SVG/PNG fallback)"),
+                _("Automatic (OMML, then PNG fallback)"),
                 _("MathML (LaTeX → MathML → OMML)"),
-                _("SVG (LaTeX → SVG → PNG)"),
                 _("PNG (LaTeX → PNG)"),
                 _("Plain text"),
             ],
@@ -637,12 +636,10 @@ class RequirementExportDialog(wx.Dialog):
         selection = 0
         if self._docx_formula_renderer == "mathml":
             selection = 1
-        elif self._docx_formula_renderer == "svg":
-            selection = 2
         elif self._docx_formula_renderer == "png":
-            selection = 3
+            selection = 2
         elif self._docx_formula_renderer == "text":
-            selection = 4
+            selection = 3
         self.docx_formula_choice.SetSelection(selection)
 
     def _ensure_extension(self, path: str) -> str:
@@ -770,10 +767,8 @@ class RequirementExportDialog(wx.Dialog):
             if self.docx_formula_choice.GetSelection() == 1:
                 docx_renderer = "mathml"
             elif self.docx_formula_choice.GetSelection() == 2:
-                docx_renderer = "svg"
-            elif self.docx_formula_choice.GetSelection() == 3:
                 docx_renderer = "png"
-            elif self.docx_formula_choice.GetSelection() == 4:
+            elif self.docx_formula_choice.GetSelection() == 3:
                 docx_renderer = "text"
         return RequirementExportPlan(
             path=Path(path),
@@ -792,25 +787,22 @@ class RequirementExportDialog(wx.Dialog):
 
     def get_state(self) -> ExportDialogState:
         path = self.file_picker.GetPath() or None
+        docx_renderer = self._docx_formula_renderer
+        if self._current_format() == ExportFormat.DOCX:
+            selection = self.docx_formula_choice.GetSelection()
+            docx_renderer = {
+                0: "auto",
+                1: "mathml",
+                2: "png",
+                3: "text",
+            }.get(selection, "auto")
         return ExportDialogState(
             path=path,
             format=self._current_format().value,
             columns=self._checked_fields(),
             order=list(self._field_order),
             empty_fields_placeholder=self.txt_empty_fields_checkbox.GetValue(),
-            docx_formula_renderer=(
-                "auto"
-                if self.docx_formula_choice.GetSelection() == 0
-                else "mathml"
-                if self.docx_formula_choice.GetSelection() == 1
-                else "svg"
-                if self.docx_formula_choice.GetSelection() == 2
-                else "png"
-                if self.docx_formula_choice.GetSelection() == 3
-                else "text"
-            )
-            if self._current_format() == ExportFormat.DOCX
-            else self._docx_formula_renderer,
+            docx_formula_renderer=docx_renderer,
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),

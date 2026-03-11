@@ -2965,8 +2965,8 @@ msgstr ""
 "({options}); откройте точную папку, которая непосредственно содержит "
 "директории документов."
 
-msgid "Automatic (OMML, then SVG/PNG fallback)"
-msgstr "Автоматически (OMML, затем резервно SVG/PNG)"
+msgid "Automatic (OMML, then PNG fallback)"
+msgstr "Автоматически (OMML, затем резервно PNG)"
 
 msgid "Columns sort field"
 msgstr "Поле сортировки столбцов"

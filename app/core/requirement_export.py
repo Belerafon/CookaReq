@@ -589,6 +589,7 @@ def _escape_html(text: str) -> str:
 
 _ATTACHMENT_LINK_RE = re.compile(r"!\[([^\]]*)\]\(attachment:([^)]+)\)")
 _INLINE_FORMULA_RE = re.compile(r"\\\((.+?)\\\)|(?<!\\)\$(?!\$)(.+?)(?<!\\)\$")
+_INLINE_PAREN_FORMULA_RE = re.compile(r"(?<!\\)\(([^()\n]{1,200})\)")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
 
 
@@ -665,6 +666,14 @@ def _looks_like_inline_formula(candidate: str) -> bool:
     return any(ch.isalpha() for ch in stripped) or any(
         token in stripped for token in ("\\", "^", "_", "{", "}", "=", "+", "-", "*", "/")
     )
+
+
+def _looks_like_parenthesized_inline_formula(candidate: str) -> bool:
+    stripped = candidate.strip()
+    if not stripped:
+        return False
+    has_formula_markers = any(token in stripped for token in ("\\", "^", "_", "{", "}"))
+    return has_formula_markers and _looks_like_inline_formula(stripped)
 
 
 def _latex_to_png(latex: str) -> bytes | None:
@@ -1248,24 +1257,48 @@ def _docx_add_markdown(
                 continue
             if line.strip():
                 paragraph = _next_paragraph()
-                last_idx = 0
-                for match in _INLINE_FORMULA_RE.finditer(line):
-                    text_segment = line[last_idx:match.start()]
-                    if text_segment:
-                        paragraph.add_run(strip_markdown(text_segment))
-                    formula = (match.group(1) or match.group(2) or "").strip()
-                    if formula and _looks_like_inline_formula(formula):
-                        _render_formula_run(
-                            paragraph,
-                            formula,
-                            formula_renderer=formula_renderer,
-                        )
-                    elif match.group(0):
-                        paragraph.add_run(strip_markdown(match.group(0)))
-                    last_idx = match.end()
-                tail = line[last_idx:]
-                if tail:
-                    paragraph.add_run(strip_markdown(tail))
+
+                def _render_line_segment(segment: str) -> None:
+                    segment_last_idx = 0
+                    for inline_match in _INLINE_FORMULA_RE.finditer(segment):
+                        text_segment = segment[segment_last_idx:inline_match.start()]
+                        if text_segment:
+                            paragraph.add_run(strip_markdown(text_segment))
+                        formula = (inline_match.group(1) or inline_match.group(2) or "").strip()
+                        if formula and _looks_like_inline_formula(formula):
+                            _render_formula_run(
+                                paragraph,
+                                formula,
+                                formula_renderer=formula_renderer,
+                            )
+                        elif inline_match.group(0):
+                            paragraph.add_run(strip_markdown(inline_match.group(0)))
+                        segment_last_idx = inline_match.end()
+                    tail_segment = segment[segment_last_idx:]
+                    if tail_segment:
+                        paragraph.add_run(strip_markdown(tail_segment))
+
+                if formula_renderer != "text":
+                    last_idx = 0
+                    for paren_match in _INLINE_PAREN_FORMULA_RE.finditer(line):
+                        segment_before = line[last_idx:paren_match.start()]
+                        if segment_before:
+                            _render_line_segment(segment_before)
+                        wrapped_formula = paren_match.group(1).strip()
+                        if _looks_like_parenthesized_inline_formula(wrapped_formula):
+                            _render_formula_run(
+                                paragraph,
+                                wrapped_formula,
+                                formula_renderer=formula_renderer,
+                            )
+                        else:
+                            _render_line_segment(paren_match.group(0))
+                        last_idx = paren_match.end()
+                    remainder = line[last_idx:]
+                    if remainder:
+                        _render_line_segment(remainder)
+                else:
+                    _render_line_segment(line)
             else:
                 _next_paragraph()
             idx += 1

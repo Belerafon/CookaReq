@@ -403,36 +403,6 @@ def test_render_requirements_docx_renders_formula_png(tmp_path: Path) -> None:
         assert media_files
 
 
-def test_render_requirements_docx_renders_formula_svg(tmp_path: Path) -> None:
-    pytest.importorskip("matplotlib")
-    pytest.importorskip("cairosvg")
-    doc = Document(prefix="SYS", title="System")
-    doc_dir = tmp_path / "SYS"
-    save_document(doc_dir, doc)
-    requirement = Requirement(
-        id=6,
-        title="Formula requirement",
-        statement="Energy \\(E = mc^2\\)",
-        type=RequirementType.REQUIREMENT,
-        status=Status.DRAFT,
-        owner="owner",
-        priority=Priority.MEDIUM,
-        source="spec",
-        verification=Verification.ANALYSIS,
-        attachments=[],
-        doc_prefix="SYS",
-        rid="SYS6",
-    )
-    save_item(doc_dir, doc, requirement.to_mapping())
-
-    export = build_requirement_export(tmp_path)
-    payload = render_requirements_docx(export, formula_renderer="svg")
-
-    with ZipFile(io.BytesIO(payload)) as archive:
-        media_files = [name for name in archive.namelist() if name.startswith("word/media/")]
-        assert media_files
-
-
 def test_render_requirements_docx_hides_empty_rationale_without_placeholder(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"
@@ -652,7 +622,6 @@ def test_render_requirements_docx_auto_formula_renderer_prefers_omml(monkeypatch
         raise AssertionError("Image fallback must not be used when OMML conversion succeeds")
 
     monkeypatch.setattr(module, "_latex_to_omml", fake_latex_to_omml)
-    monkeypatch.setattr(module, "_latex_to_svg_png", fail_if_called)
     monkeypatch.setattr(module, "_latex_to_png", fail_if_called)
 
     document = module.docx.Document()
@@ -673,16 +642,11 @@ def test_render_requirements_docx_auto_formula_renderer_falls_back_to_png(monkey
         calls.append(f"omml:{latex}")
         return None
 
-    def no_svg(latex: str) -> bytes | None:
-        calls.append(f"svg:{latex}")
-        return None
-
     def png_bytes(latex: str) -> bytes | None:
         calls.append(f"png:{latex}")
         return _PNG_BYTES
 
     monkeypatch.setattr(module, "_latex_to_omml", no_omml)
-    monkeypatch.setattr(module, "_latex_to_svg_png", no_svg)
     monkeypatch.setattr(module, "_latex_to_png", png_bytes)
 
     document = module.docx.Document()
@@ -691,7 +655,7 @@ def test_render_requirements_docx_auto_formula_renderer_falls_back_to_png(monkey
 
     xml = paragraph._p.xml
     assert "a:blip" in xml
-    assert calls == ["omml:a/b", "svg:a/b", "png:a/b"]
+    assert calls == ["omml:a/b", "png:a/b"]
 
 
 def test_render_requirements_docx_includes_context_preface(tmp_path: Path) -> None:

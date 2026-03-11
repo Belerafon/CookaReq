@@ -644,12 +644,6 @@ def _render_formula_run(
         if omml:
             _append_omml_run(paragraph, omml)
             return
-    if formula_renderer in {"auto", "svg"}:
-        image_bytes = _latex_to_svg_png(formula)
-        if image_bytes:
-            run = paragraph.add_run()
-            run.add_picture(BytesIO(image_bytes))
-            return
     if formula_renderer in {"auto", "png"}:
         image_bytes = _latex_to_png(formula)
         if image_bytes:
@@ -699,47 +693,6 @@ def _latex_to_png(latex: str) -> bytes | None:
     except Exception:  # pragma: no cover - rendering failures
         return None
 
-
-def _latex_to_svg_png(latex: str) -> bytes | None:
-    svg_bytes = _latex_to_svg(latex)
-    if not svg_bytes:
-        return None
-    return _svg_to_png(svg_bytes)
-
-
-def _latex_to_svg(latex: str) -> bytes | None:
-    try:
-        import matplotlib
-        from matplotlib import pyplot as plt
-    except ImportError:
-        return None
-    matplotlib.use("Agg", force=True)
-    try:
-        fig = plt.figure(figsize=(0.01, 0.01))
-        fig.text(0.0, 0.0, f"${latex}$", fontsize=12)
-        buffer = BytesIO()
-        fig.savefig(
-            buffer,
-            format="svg",
-            bbox_inches="tight",
-            pad_inches=0.1,
-            transparent=True,
-        )
-        plt.close(fig)
-        return buffer.getvalue()
-    except Exception:  # pragma: no cover - rendering failures
-        return None
-
-
-def _svg_to_png(svg_bytes: bytes) -> bytes | None:
-    try:
-        import cairosvg
-    except ImportError:
-        return None
-    try:
-        return cairosvg.svg2png(bytestring=svg_bytes)
-    except Exception:  # pragma: no cover - rendering failures
-        return None
 
 def _build_markdown_renderer() -> markdown.Markdown:
     renderer = markdown.Markdown(

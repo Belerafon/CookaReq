@@ -2943,8 +2943,8 @@ msgstr ""
 "({options}); open the exact folder that directly contains document "
 "directories."
 
-msgid "Automatic (OMML, then SVG/PNG fallback)"
-msgstr "Automatic (OMML, then SVG/PNG fallback)"
+msgid "Automatic (OMML, then PNG fallback)"
+msgstr "Automatic (OMML, then PNG fallback)"
 
 msgid "Columns sort field"
 msgstr "Columns sort field"

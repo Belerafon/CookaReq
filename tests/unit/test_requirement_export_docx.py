@@ -289,6 +289,62 @@ def test_render_requirements_docx_renders_single_dollar_formula_in_text_mode(tmp
 
 
 
+
+
+def test_render_requirements_docx_renders_parenthesized_latex_formula(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    rendered: list[str] = []
+
+    def capture_formula(
+        paragraph,
+        formula: str,
+        *,
+        formula_renderer: str,
+    ) -> None:
+        rendered.append(formula)
+        paragraph.add_run(f"[MATH:{formula}]")
+
+    monkeypatch.setattr(module, "_render_formula_run", capture_formula)
+
+    document = module.docx.Document()
+    module._docx_add_markdown(
+        document,
+        r"значения (800_{\text{-10}}) В на подключенной ХХ",
+        attachment_map={},
+        base_path=Path("."),
+        doc_prefix="SYS",
+        image_width=5.0,
+        formula_renderer="auto",
+    )
+
+    assert rendered == [r"800_{\text{-10}}"]
+
+
+def test_render_requirements_docx_keeps_parenthesized_latex_formula_in_text_mode(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    def fail_if_formula_renderer_called(*_args, **_kwargs):
+        raise AssertionError("formula renderer must not run in text mode")
+
+    monkeypatch.setattr(module, "_render_formula_run", fail_if_formula_renderer_called)
+
+    document = module.docx.Document()
+    module._docx_add_markdown(
+        document,
+        r"значения (800_{\text{-10}}) В на подключенной ХХ",
+        attachment_map={},
+        base_path=Path("."),
+        doc_prefix="SYS",
+        image_width=5.0,
+        formula_renderer="text",
+    )
+
+    paragraph_text = document.paragraphs[0].text
+    assert r"(800{\text{-10}})" in paragraph_text
+
+
+
 def test_render_requirements_docx_normalizes_escaped_newlines_for_formulas(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

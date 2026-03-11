@@ -100,7 +100,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   now tries LaTeX→MathML→OMML first and then falls back to SVG→PNG or PNG image
   rendering, so formulas stay visual in Word exports even when OMML conversion
   dependencies are unavailable; users can still force plain text/MathML/SVG/PNG
-  explicitly from the export dialog. Card exports (Markdown/HTML/DOCX/PDF) omit
+  explicitly from the export dialog. DOCX rendering also detects inline
+  parenthesized LaTeX-like fragments (for example, `(800_{\text{-10}})`) and
+  treats them as formulas in non-text renderer modes so Word output matches the
+  preview behavior for common engineering notation. Card exports (Markdown/HTML/DOCX/PDF) omit
   empty section blocks by default and only render placeholders when the user
   enables the explicit "show empty fields" option; section/meta labels and
   enumerated metadata values (type/status/priority) are passed through gettext

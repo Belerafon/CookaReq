@@ -53,8 +53,12 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   enums (status, priority, link types). The status set currently includes draft,
   in_review, approved, baselined, retired, rejected, deferred, superseded and
   needs_clarification, while verification values include not_defined,
-  inspection, analysis, demonstration and test. Any schema change must stay in
-  sync with the JSON representation and migrations for existing files.
+  inspection, analysis, demonstration and test. Requirements now persist
+  `verification_methods` as an ordered list to support multi-select workflows,
+  while legacy `verification` remains as the primary method for backward
+  compatibility with existing JSON, exports and integrations. Any schema change
+  must stay in sync with the JSON representation and migrations for existing
+  files.
   Attachments are stored as `{id, path, note}` entries, where `id` is referenced
   from Markdown statements and `path` points to the document-local assets file.
   Requirements can also include `context_docs` (relative Markdown paths under the

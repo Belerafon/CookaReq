@@ -55,6 +55,28 @@ msgstr "(Copy)"
 msgid "Acceptance criteria"
 msgstr "Acceptance criteria"
 
+
+msgid "Analytical methods"
+msgstr "Analytical methods"
+
+msgid "Audit"
+msgstr "Audit"
+
+msgid "Bench testing"
+msgstr "Bench testing"
+
+msgid "Design analysis"
+msgstr "Design analysis"
+
+msgid "Flight testing"
+msgstr "Flight testing"
+
+msgid "Ground testing"
+msgstr "Ground testing"
+
+msgid "Laboratory testing"
+msgstr "Laboratory testing"
+
 msgid "Analysis"
 msgstr "Analysis"
 

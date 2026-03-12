@@ -93,6 +93,28 @@ msgstr "Не определен"
 msgid "Inspection"
 msgstr "Инспекция"
 
+
+msgid "Analytical methods"
+msgstr "Аналитические методы"
+
+msgid "Audit"
+msgstr "Аудит"
+
+msgid "Bench testing"
+msgstr "Стендовые испытания"
+
+msgid "Design analysis"
+msgstr "Анализ конструкции"
+
+msgid "Flight testing"
+msgstr "Летные испытания"
+
+msgid "Ground testing"
+msgstr "Наземные испытания"
+
+msgid "Laboratory testing"
+msgstr "Лабораторные испытания"
+
 msgid "Analysis"
 msgstr "Анализ"
 

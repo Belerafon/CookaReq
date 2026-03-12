@@ -122,8 +122,8 @@
       "control": "enum",
       "multiline": false,
       "help": [
-        "Preferred method to prove compliance: inspection, analysis, demonstration or test.",
-        "Selecting a method early guides preparation of verification activities and needed tools.",
+        "Preferred methods to prove compliance: inspection, analysis, demonstration and/or test.",
+        "Selecting methods early guides preparation of verification activities and needed tools.",
         "It also clarifies expectations for acceptance."
       ]
     },

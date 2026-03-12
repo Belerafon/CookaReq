@@ -38,6 +38,50 @@ def test_requirement_defaults():
     assert req.modified_at == ""
 
 
+
+
+def test_requirement_verification_methods_backward_compatible_with_single_value():
+    req = Requirement.from_mapping({"id": 1, "statement": "S", "verification": "analysis"})
+    assert req.verification is Verification.ANALYSIS
+    assert req.verification_methods == [Verification.ANALYSIS]
+
+
+def test_requirement_verification_methods_roundtrip_with_multiple_values():
+    req = Requirement.from_mapping(
+        {
+            "id": 1,
+            "statement": "S",
+            "verification": "analysis",
+            "verification_methods": ["analysis", "test", "inspection"],
+        }
+    )
+    assert req.verification is Verification.ANALYSIS
+    assert req.verification_methods == [
+        Verification.ANALYSIS,
+        Verification.TEST,
+        Verification.INSPECTION,
+    ]
+    payload = req.to_mapping()
+    assert payload["verification"] == "analysis"
+    assert payload["verification_methods"] == ["analysis", "test", "inspection"]
+
+
+def test_requirement_verification_legacy_value_prepended_when_missing_in_methods():
+    req = Requirement.from_mapping(
+        {
+            "id": 1,
+            "statement": "S",
+            "verification": "demonstration",
+            "verification_methods": ["analysis", "test"],
+        }
+    )
+    assert req.verification is Verification.DEMONSTRATION
+    assert req.verification_methods == [
+        Verification.DEMONSTRATION,
+        Verification.ANALYSIS,
+        Verification.TEST,
+    ]
+
 def test_requirement_prefix_and_rid():
     data = {
         "id": 5,

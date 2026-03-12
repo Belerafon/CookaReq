@@ -87,6 +87,7 @@ class EditorPanel(wx.Panel):
         self._context_docs_list: AutoHeightListCtrl | None = None
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
+        self._verification_methods_list: wx.CheckListBox | None = None
         self._requirement_selected = True
         self._text_history_limit = 10
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
@@ -335,8 +336,11 @@ class EditorPanel(wx.Panel):
 
         content_sizer.Add(links_grid, 0, wx.EXPAND | wx.TOP, border)
 
-        for name in ("type", "priority", "verification"):
+        for name in ("type", "priority"):
             add_grid_field(name)
+
+        verification_sizer = self._create_verification_methods_section(content)
+        content_sizer.Add(verification_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         row = wx.BoxSizer(wx.HORIZONTAL)
         label = wx.StaticText(content, label=_("Approved at"))
@@ -404,6 +408,53 @@ class EditorPanel(wx.Panel):
         """Layout both the scrollable content and the outer panel."""
         self._content_panel.Layout()
         return super().Layout()
+
+
+    def _create_verification_methods_section(self, content: wx.Window) -> wx.StaticBoxSizer:
+        """Create checklist with multiple verification methods."""
+        box_sizer = HelpStaticBox(
+            content,
+            locale.field_label("verification"),
+            self._help_texts["verification"],
+        )
+        box = box_sizer.GetStaticBox()
+        choices = [locale.code_to_label("verification", method.value) for method in Verification]
+        checklist = wx.CheckListBox(box, choices=choices)
+        self._verification_methods_list = checklist
+        box_sizer.Add(checklist, 0, wx.EXPAND | wx.TOP, dip(self, 5))
+        return box_sizer
+
+    def _selected_verification_methods(self) -> list[str]:
+        """Return selected verification method codes in enum order."""
+        checklist = self._verification_methods_list
+        if checklist is None:
+            return [Verification.NOT_DEFINED.value]
+        selected: list[str] = []
+        for idx, method in enumerate(Verification):
+            if checklist.IsChecked(idx):
+                selected.append(method.value)
+        return selected or [Verification.NOT_DEFINED.value]
+
+    def _set_verification_methods(self, codes: list[str] | tuple[str, ...]) -> None:
+        """Apply selected verification methods to checklist and legacy choice."""
+        checklist = self._verification_methods_list
+        if checklist is None:
+            return
+        normalized: list[str] = []
+        for code in codes:
+            value = str(code).strip()
+            if not value:
+                continue
+            try:
+                method = Verification(value).value
+            except ValueError:
+                continue
+            if method not in normalized:
+                normalized.append(method)
+        if not normalized:
+            normalized = [Verification.NOT_DEFINED.value]
+        for idx, method in enumerate(Verification):
+            checklist.Check(idx, method.value in normalized)
 
     def _create_labels_section(self, content: wx.Window) -> wx.StaticBoxSizer:
         """Create compact labels selector section placed near requirement text."""
@@ -940,13 +991,10 @@ class EditorPanel(wx.Panel):
                 "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
                 "status": locale.code_to_label("status", Status.DRAFT.value),
                 "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
-                "verification": locale.code_to_label(
-                    "verification",
-                    Verification.NOT_DEFINED.value,
-                ),
             }
             for name, choice in self.enums.items():
                 choice.SetStringSelection(defaults[name])
+            self._set_verification_methods([Verification.NOT_DEFINED.value])
             self.attachments = []
             self.context_docs = []
             self.links = []
@@ -1037,6 +1085,13 @@ class EditorPanel(wx.Panel):
                 default_code = next(iter(enum_cls)).value
                 code = data.get(name, default_code)
                 choice.SetStringSelection(locale.code_to_label(name, code))
+            raw_methods = data.get("verification_methods")
+            methods: list[str]
+            if isinstance(raw_methods, list):
+                methods = [str(item) for item in raw_methods]
+            else:
+                methods = [str(data.get("verification", Verification.NOT_DEFINED.value))]
+            self._set_verification_methods(methods)
             labels = data.get("labels")
             self.extra.update(
                 {
@@ -1118,10 +1173,7 @@ class EditorPanel(wx.Panel):
                 self.enums["priority"].GetStringSelection(),
             ),
             "source": self.fields["source"].GetValue(),
-            "verification": locale.label_to_code(
-                "verification",
-                self.enums["verification"].GetStringSelection(),
-            ),
+            "verification_methods": self._selected_verification_methods(),
             "acceptance": self.fields["acceptance"].GetValue(),
             "conditions": self.fields["conditions"].GetValue(),
             "rationale": self.fields["rationale"].GetValue(),
@@ -1171,6 +1223,7 @@ class EditorPanel(wx.Panel):
         dt = self.approved_picker.GetValue()
         approved_at = dt.FormatISODate() if dt.IsValid() else None
         data["approved_at"] = approved_at
+        data["verification"] = data["verification_methods"][0]
         notes = self.notes_ctrl.GetValue()
         data["notes"] = notes
         self.extra["labels"] = data["labels"]
@@ -1743,7 +1796,7 @@ class EditorPanel(wx.Panel):
         req.modified_at = normalize_timestamp(mod) if mod else local_now_str()
         data = req.to_mapping()
         path = service.save_requirement_payload(prefix, data)
-        saved_payload, _ = service.load_item(prefix, req.id)
+        saved_payload, _mtime = service.load_item(prefix, req.id)
         saved_req = Requirement.from_mapping(saved_payload)
         saved_req.doc_prefix = prefix
         with self._bulk_update():
@@ -1781,6 +1834,7 @@ class EditorPanel(wx.Panel):
         snapshot = {
             "fields": fields_state,
             "enums": enums_state,
+            "verification_methods": self._selected_verification_methods(),
             "attachments": attachments_state,
             "context_docs": context_docs_state,
             "links": links_state,
@@ -1800,9 +1854,6 @@ class EditorPanel(wx.Panel):
             "type": locale.code_to_label("type", RequirementType.REQUIREMENT.value),
             "status": locale.code_to_label("status", Status.DRAFT.value),
             "priority": locale.code_to_label("priority", Priority.MEDIUM.value),
-            "verification": locale.code_to_label(
-                "verification", Verification.NOT_DEFINED.value
-            ),
         }
         for name, ctrl in self.fields.items():
             value = ctrl.GetValue().strip()
@@ -1814,6 +1865,8 @@ class EditorPanel(wx.Panel):
         for name, choice in self.enums.items():
             if choice.GetStringSelection() != defaults[name]:
                 return True
+        if self._selected_verification_methods() != [Verification.NOT_DEFINED.value]:
+            return True
         if self.attachments or self.links or self.context_docs:
             return True
         if self.extra.get("labels"):
@@ -1857,6 +1910,11 @@ class EditorPanel(wx.Panel):
                 label = locale.code_to_label(name, code)
                 if not choice.SetStringSelection(label) and choice.GetCount():
                     choice.SetSelection(0)
+            verification_methods = state.get("verification_methods", [Verification.NOT_DEFINED.value])
+            if isinstance(verification_methods, list):
+                self._set_verification_methods([str(value) for value in verification_methods])
+            else:
+                self._set_verification_methods([Verification.NOT_DEFINED.value])
 
             self.attachments = [dict(att) for att in state.get("attachments", [])]
             self._refresh_attachments()

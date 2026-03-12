@@ -94,6 +94,7 @@ class Requirement:
     priority: Priority
     source: str
     verification: Verification
+    verification_methods: list[Verification] = field(default_factory=list)
     acceptance: str | None = None
     conditions: str = ""
     rationale: str = ""
@@ -246,6 +247,51 @@ class Requirement:
         approved_raw = data.get("approved_at")
         approved_at = normalize_timestamp(approved_raw) if approved_raw else None
 
+        verification_raw = data.get("verification", Verification.ANALYSIS)
+        verification_methods_raw = data.get("verification_methods")
+        verification_methods: list[Verification] = []
+        if verification_methods_raw in (None, ""):
+            parsed_verification = _enum_value(
+                "verification",
+                Verification,
+                Verification.ANALYSIS,
+            )
+            verification_methods = [parsed_verification]
+        else:
+            if isinstance(verification_methods_raw, (str, bytes)) or not isinstance(
+                verification_methods_raw,
+                Sequence,
+            ):
+                raise TypeError("verification_methods must be a list")
+            for entry in verification_methods_raw:
+                if entry in (None, ""):
+                    continue
+                if isinstance(entry, Verification):
+                    method = entry
+                else:
+                    try:
+                        method = Verification(str(entry))
+                    except ValueError as exc:
+                        allowed = ", ".join(member.value for member in Verification)
+                        raise ValueError(
+                            "invalid verification_methods entry: "
+                            f"{entry!r}; expected one of: {allowed}"
+                        ) from exc
+                if method not in verification_methods:
+                    verification_methods.append(method)
+            if not verification_methods:
+                verification_methods = [Verification.NOT_DEFINED]
+            parsed_verification = verification_methods[0]
+
+        if verification_raw not in (None, ""):
+            parsed_verification = _enum_value(
+                "verification",
+                Verification,
+                parsed_verification,
+            )
+            if parsed_verification not in verification_methods:
+                verification_methods.insert(0, parsed_verification)
+
         return cls(
             id=req_id,
             title=title,
@@ -255,9 +301,8 @@ class Requirement:
             owner=owner,
             priority=_enum_value("priority", Priority, Priority.MEDIUM),
             source=source,
-            verification=_enum_value(
-                "verification", Verification, Verification.ANALYSIS
-            ),
+            verification=parsed_verification,
+            verification_methods=verification_methods,
             acceptance=acceptance,
             conditions=conditions,
             rationale=rationale,
@@ -305,6 +350,18 @@ class Requirement:
             value = data.get(key)
             if isinstance(value, Enum):
                 data[key] = value.value
+        methods_payload: list[str] = []
+        for method in self.verification_methods:
+            if isinstance(method, Verification):
+                code = method.value
+            else:
+                code = str(method)
+            if code and code not in methods_payload:
+                methods_payload.append(code)
+        if not methods_payload:
+            fallback = self.verification
+            methods_payload = [fallback.value if isinstance(fallback, Verification) else str(fallback)]
+        data["verification_methods"] = methods_payload
         return data
 
 

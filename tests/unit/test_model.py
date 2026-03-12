@@ -82,6 +82,36 @@ def test_requirement_verification_legacy_value_prepended_when_missing_in_methods
         Verification.TEST,
     ]
 
+
+
+def test_requirement_verification_accepts_new_methods():
+    req = Requirement.from_mapping(
+        {
+            "id": 1,
+            "statement": "S",
+            "verification": "bench_testing",
+            "verification_methods": [
+                "bench_testing",
+                "laboratory_testing",
+                "flight_testing",
+                "ground_testing",
+                "analytical_methods",
+                "design_analysis",
+                "audit",
+            ],
+        }
+    )
+    assert req.verification is Verification.BENCH_TESTING
+    assert req.verification_methods == [
+        Verification.BENCH_TESTING,
+        Verification.LABORATORY_TESTING,
+        Verification.FLIGHT_TESTING,
+        Verification.GROUND_TESTING,
+        Verification.ANALYTICAL_METHODS,
+        Verification.DESIGN_ANALYSIS,
+        Verification.AUDIT,
+    ]
+
 def test_requirement_prefix_and_rid():
     data = {
         "id": 5,
@@ -115,7 +145,7 @@ def test_requirement_from_mapping_missing_metadata_defaults():
     assert req.owner == ""
     assert req.priority is Priority.MEDIUM
     assert req.source == ""
-    assert req.verification is Verification.ANALYSIS
+    assert req.verification is Verification.NOT_DEFINED
     assert req.labels == []
     assert req.links == []
     assert req.revision == 1

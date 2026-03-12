@@ -44,6 +44,13 @@ class Verification(StrEnum):
     """Enumerate possible verification methods."""
 
     NOT_DEFINED = "not_defined"
+    BENCH_TESTING = "bench_testing"
+    LABORATORY_TESTING = "laboratory_testing"
+    FLIGHT_TESTING = "flight_testing"
+    GROUND_TESTING = "ground_testing"
+    ANALYTICAL_METHODS = "analytical_methods"
+    DESIGN_ANALYSIS = "design_analysis"
+    AUDIT = "audit"
     INSPECTION = "inspection"
     ANALYSIS = "analysis"
     DEMONSTRATION = "demonstration"
@@ -247,14 +254,14 @@ class Requirement:
         approved_raw = data.get("approved_at")
         approved_at = normalize_timestamp(approved_raw) if approved_raw else None
 
-        verification_raw = data.get("verification", Verification.ANALYSIS)
+        verification_raw = data.get("verification", Verification.NOT_DEFINED)
         verification_methods_raw = data.get("verification_methods")
         verification_methods: list[Verification] = []
         if verification_methods_raw in (None, ""):
             parsed_verification = _enum_value(
                 "verification",
                 Verification,
-                Verification.ANALYSIS,
+                Verification.NOT_DEFINED,
             )
             verification_methods = [parsed_verification]
         else:

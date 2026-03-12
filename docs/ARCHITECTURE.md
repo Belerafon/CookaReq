@@ -53,7 +53,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   enums (status, priority, link types). The status set currently includes draft,
   in_review, approved, baselined, retired, rejected, deferred, superseded and
   needs_clarification, while verification values include not_defined,
-  inspection, analysis, demonstration and test. Requirements now persist
+  bench_testing, laboratory_testing, flight_testing, ground_testing,
+  analytical_methods, design_analysis, audit, inspection, analysis,
+  demonstration and test. Requirements now persist
   `verification_methods` as an ordered list to support multi-select workflows,
   while legacy `verification` remains as the primary method for backward
   compatibility with existing JSON, exports and integrations. Any schema change

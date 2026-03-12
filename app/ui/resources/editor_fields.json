@@ -122,7 +122,7 @@
       "control": "enum",
       "multiline": false,
       "help": [
-        "Preferred methods to prove compliance: inspection, analysis, demonstration and/or test.",
+        "Preferred methods to prove compliance: bench/laboratory/flight/ground testing, analytical methods, design analysis, audit, inspection, analysis, demonstration and/or test.",
         "Selecting methods early guides preparation of verification activities and needed tools.",
         "It also clarifies expectations for acceptance."
       ]

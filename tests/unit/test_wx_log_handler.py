@@ -52,18 +52,35 @@ def test_wx_log_handler_format_includes_timestamp() -> None:
     assert formatted == "1970-01-01 00:00:00 INFO: sample message"
 
 
-def test_read_text_log_tail_returns_last_segment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_startup_diagnostics_filters_noise(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     text_log = tmp_path / "cookareq.log"
     json_log = tmp_path / "cookareq.jsonl"
-    text_log.write_text("0123456789", encoding="utf-8")
+    text_log.write_text(
+        "\n".join(
+            [
+                "2026-03-13 16:00:55,450 INFO cookareq: Main frame close requested",
+                "2026-03-13 16:12:31,229 WARNING cookareq: Optional runtime dependencies are missing: mathml2omml",
+                "2026-03-13 16:12:31,230 WARNING cookareq: Feature may be degraded because module 'mathml2omml' is unavailable: DOCX formula conversion",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     monkeypatch.setattr(logging_module, "get_log_file_paths", lambda: (text_log, json_log))
 
-    assert logging_module._read_text_log_tail(max_chars=4) == "6789"
+    content = logging_module._read_startup_diagnostics(max_chars=10_000)
+
+    assert "Optional runtime dependencies are missing" in content
+    assert "Feature may be degraded because module" in content
+    assert "Main frame close requested" not in content
 
 
-def test_read_text_log_tail_returns_empty_when_file_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_startup_diagnostics_returns_empty_when_file_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     missing = Path('/tmp/does-not-exist.log')
-    monkeypatch.setattr(logging_module, "get_log_file_paths", lambda: (missing, missing.with_suffix('.jsonl')) )
+    monkeypatch.setattr(
+        logging_module,
+        "get_log_file_paths",
+        lambda: (missing, missing.with_suffix('.jsonl')),
+    )
 
-    assert logging_module._read_text_log_tail(max_chars=500) == ""
+    assert logging_module._read_startup_diagnostics(max_chars=500) == ""

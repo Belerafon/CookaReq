@@ -383,9 +383,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   tokens before persistence. Startup also runs `app/runtime_dependencies.py`
   checks and logs WARNING records for missing optional runtime modules (for
   example formula export backends) without aborting GUI/CLI launch.
-  The GUI log console attaches a wx logging handler and preloads the tail of
-  the text log file on startup so early startup diagnostics are visible inside
-  the application window, not only in the parent terminal.
+  The GUI log console attaches a wx logging handler and preloads only startup
+  dependency diagnostics from the text log file, so dependency warnings are
+  visible inside the application window without flooding the console with old
+  unrelated history.
 * **Utilities** — `app/util/` packages cancellation primitives, safe JSON
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with

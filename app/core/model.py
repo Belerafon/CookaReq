@@ -57,6 +57,36 @@ class Verification(StrEnum):
     TEST = "test"
 
 
+def normalized_verification_methods(requirement: "Requirement") -> list[Verification]:
+    """Return unique verification methods preserving stored order with fallback."""
+    methods = getattr(requirement, "verification_methods", []) or []
+    normalized: list[Verification] = []
+    seen: set[Verification] = set()
+    for method in methods:
+        if isinstance(method, Verification):
+            value = method
+        else:
+            try:
+                value = Verification(str(method))
+            except ValueError:
+                continue
+        if value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+
+    if normalized:
+        return normalized
+
+    fallback = getattr(requirement, "verification", Verification.NOT_DEFINED)
+    if isinstance(fallback, Verification):
+        return [fallback]
+    try:
+        return [Verification(str(fallback))]
+    except ValueError:
+        return [Verification.NOT_DEFINED]
+
+
 @dataclass(slots=True)
 class Attachment:
     """Represent a file attached to a requirement."""

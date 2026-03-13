@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from enum import Enum
 
-from ..core.model import Requirement
+from ..core.model import Requirement, normalized_verification_methods
 from . import locale
 
 
@@ -48,6 +48,13 @@ def _format_labels(requirement: Requirement) -> str:
     return ", ".join(labels)
 
 
+def _format_verification_methods(requirement: Requirement, *, use_locale: bool) -> str:
+    methods = normalized_verification_methods(requirement)
+    if use_locale:
+        return ", ".join(locale.code_to_label("verification", method.value) for method in methods)
+    return ", ".join(method.value for method in methods)
+
+
 def _format_value(value: object, field: str, *, use_locale: bool) -> str:
     if value is None:
         return ""
@@ -79,6 +86,9 @@ def build_tabular_export(
     for requirement in requirements:
         row: list[str] = []
         for field in fields:
+            if field == "verification":
+                row.append(_format_verification_methods(requirement, use_locale=use_locale))
+                continue
             if field == "labels":
                 row.append(_format_labels(requirement))
                 continue

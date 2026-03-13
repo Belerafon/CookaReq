@@ -12,7 +12,7 @@ from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from .. import columns
 from ..services.requirements import LabelDef, label_color, parse_rid, stable_color
-from ..core.model import Requirement, Status
+from ..core.model import Requirement, Status, normalized_verification_methods
 from ..core.markdown_utils import strip_markdown
 from ..i18n import _
 from ..log import logger
@@ -968,6 +968,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         value = self._statement_preview_text(getattr(req, "statement", ""))
                         self.list.SetItem(index, col, value)
                         continue
+                    if field == "verification":
+                        self.list.SetItem(index, col, self._verification_display_text(req))
+                        continue
                     value = getattr(req, field, "")
                     if isinstance(value, Enum):
                         value = locale.code_to_label(field, value.value)
@@ -976,6 +979,10 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             if is_frozen and callable(thaw):
                 with suppress(Exception):
                     thaw()
+
+    def _verification_display_text(self, req: Requirement) -> str:
+        methods = normalized_verification_methods(req)
+        return ", ".join(locale.code_to_label("verification", method.value) for method in methods)
 
     def _statement_preview_text(self, value: str) -> str:
         raw_text = str(value)

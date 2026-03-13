@@ -1223,32 +1223,19 @@ def _docx_add_markdown(
             if line.strip():
                 paragraph = _next_paragraph()
 
-                def _render_line_segment(segment: str) -> None:
-                    segment_last_idx = 0
-                    for inline_match in _INLINE_FORMULA_RE.finditer(segment):
-                        text_segment = segment[segment_last_idx:inline_match.start()]
-                        if text_segment:
-                            paragraph.add_run(strip_markdown(text_segment))
-                        formula = (inline_match.group(1) or inline_match.group(2) or "").strip()
-                        if formula and _looks_like_inline_formula(formula):
-                            _render_formula_run(
-                                paragraph,
-                                formula,
-                                formula_renderer=formula_renderer,
-                            )
-                        elif inline_match.group(0):
-                            paragraph.add_run(strip_markdown(inline_match.group(0)))
-                        segment_last_idx = inline_match.end()
-                    tail_segment = segment[segment_last_idx:]
-                    if tail_segment:
-                        paragraph.add_run(strip_markdown(tail_segment))
+                def _render_text_segment(segment: str) -> None:
+                    if segment:
+                        paragraph.add_run(strip_markdown(segment))
 
-                if formula_renderer != "text":
+                def _render_plain_segment(segment: str) -> None:
+                    if formula_renderer == "text":
+                        _render_text_segment(segment)
+                        return
+
                     last_idx = 0
-                    for paren_match in _INLINE_PAREN_FORMULA_RE.finditer(line):
-                        segment_before = line[last_idx:paren_match.start()]
-                        if segment_before:
-                            _render_line_segment(segment_before)
+                    for paren_match in _INLINE_PAREN_FORMULA_RE.finditer(segment):
+                        segment_before = segment[last_idx:paren_match.start()]
+                        _render_text_segment(segment_before)
                         wrapped_formula = paren_match.group(1).strip()
                         if _looks_like_parenthesized_inline_formula(wrapped_formula):
                             _render_formula_run(
@@ -1257,13 +1244,27 @@ def _docx_add_markdown(
                                 formula_renderer=formula_renderer,
                             )
                         else:
-                            _render_line_segment(paren_match.group(0))
+                            _render_text_segment(paren_match.group(0))
                         last_idx = paren_match.end()
-                    remainder = line[last_idx:]
-                    if remainder:
-                        _render_line_segment(remainder)
-                else:
-                    _render_line_segment(line)
+                    tail_segment = segment[last_idx:]
+                    _render_text_segment(tail_segment)
+
+                segment_last_idx = 0
+                for inline_match in _INLINE_FORMULA_RE.finditer(line):
+                    text_segment = line[segment_last_idx:inline_match.start()]
+                    _render_plain_segment(text_segment)
+                    formula = (inline_match.group(1) or inline_match.group(2) or "").strip()
+                    if formula and _looks_like_inline_formula(formula):
+                        _render_formula_run(
+                            paragraph,
+                            formula,
+                            formula_renderer=formula_renderer,
+                        )
+                    elif inline_match.group(0):
+                        _render_text_segment(inline_match.group(0))
+                    segment_last_idx = inline_match.end()
+                tail_segment = line[segment_last_idx:]
+                _render_plain_segment(tail_segment)
             else:
                 _next_paragraph()
             idx += 1

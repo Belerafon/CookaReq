@@ -112,7 +112,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   explicitly from the export dialog. DOCX rendering also detects inline
   parenthesized LaTeX-like fragments (for example, `(800_{\text{-10}})`) and
   treats them as formulas in non-text renderer modes so Word output matches the
-  preview behavior for common engineering notation. Card exports (Markdown/HTML/DOCX/PDF) omit
+  preview behavior for common engineering notation. Inline parsing handles
+  nested forms like `$(800_{\text{-10}})$` as one formula token to avoid extra
+  dollar markers or fragmented fallback text in DOCX output. Card exports (Markdown/HTML/DOCX/PDF) omit
   empty section blocks by default and only render placeholders when the user
   enables the explicit "show empty fields" option; section/meta labels and
   enumerated metadata values (type/status/priority) are passed through gettext

@@ -287,6 +287,70 @@ def test_render_requirements_docx_renders_single_dollar_formula_in_text_mode(tmp
         assert "$E = mc^2$" not in document_xml
 
 
+def test_render_requirements_docx_strips_dollars_for_parenthesized_dollar_formula_in_text_mode(
+    tmp_path: Path,
+) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=45,
+        title="Parenthesized dollar formula",
+        statement=r"Диапазон $(800_{\text{-10}})$ В",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS45",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="text")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "800" in document_xml
+        assert "text{-10}" in document_xml
+        assert "$(800" not in document_xml
+        assert "})$" not in document_xml
+
+
+def test_docx_add_markdown_renders_parenthesized_formula_inside_dollars_once(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    rendered: list[str] = []
+
+    def capture_formula(
+        paragraph,
+        formula: str,
+        *,
+        formula_renderer: str,
+    ) -> None:
+        rendered.append(formula)
+        paragraph.add_run(f"[MATH:{formula}]")
+
+    monkeypatch.setattr(module, "_render_formula_run", capture_formula)
+
+    document = module.docx.Document()
+    module._docx_add_markdown(
+        document,
+        r"Диапазон $(800_{\text{-10}})$ В",
+        attachment_map={},
+        base_path=Path("."),
+        doc_prefix="SYS",
+        image_width=5.0,
+        formula_renderer="auto",
+    )
+
+    assert rendered == [r"(800_{\text{-10}})"]
+    assert "$" not in document.paragraphs[0].text
+
+
 
 
 

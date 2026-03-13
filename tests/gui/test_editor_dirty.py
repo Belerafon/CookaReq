@@ -363,6 +363,41 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
         parent.Destroy()
 
 
+
+@pytest.mark.gui_smoke
+def test_editor_panel_verification_methods_compact_selector_updates_selection(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.model import Verification
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+
+        panel._set_verification_methods([Verification.ANALYSIS.value, Verification.TEST.value])
+        wx.Yield()
+
+        assert panel._selected_verification_methods() == [
+            Verification.ANALYSIS.value,
+            Verification.TEST.value,
+        ]
+        assert panel._verification_methods_panel is not None
+        shown_labels = [
+            child.GetLabel()
+            for child in panel._verification_methods_panel.GetChildren()
+            if isinstance(child, wx.StaticText) and child.GetLabel() != ", "
+        ]
+        from app.ui import locale
+
+        assert shown_labels == [
+            locale.code_to_label("verification", Verification.ANALYSIS.value),
+            locale.code_to_label("verification", Verification.TEST.value),
+        ]
+    finally:
+        frame.Destroy()
+
 def test_editor_panel_auto_resize_all_batches_layout(wx_app, monkeypatch):
     pytest.importorskip("wx")
     import wx

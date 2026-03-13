@@ -50,6 +50,34 @@ class _TextHistoryState:
     applying: bool = False
 
 
+class VerificationMethodsDialog(wx.Dialog):
+    """Dialog for selecting multiple verification methods."""
+
+    def __init__(self, parent: wx.Window, selected_codes: list[str]):
+        super().__init__(parent, title=locale.field_label("verification"))
+        self.SetMinSize((dip(self, 320), -1))
+
+        choices = [locale.code_to_label("verification", method.value) for method in Verification]
+        checklist = wx.CheckListBox(self, choices=choices)
+        self._checklist = checklist
+        selected = set(selected_codes)
+        for idx, method in enumerate(Verification):
+            checklist.Check(idx, method.value in selected)
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(checklist, 1, wx.EXPAND | wx.ALL, dip(self, 10))
+        root.Add(self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL), 0, wx.EXPAND | wx.ALL, dip(self, 10))
+        self.SetSizerAndFit(root)
+
+    def selected_codes(self) -> list[str]:
+        """Return selected verification method codes in enum order."""
+        selected: list[str] = []
+        for idx, method in enumerate(Verification):
+            if self._checklist.IsChecked(idx):
+                selected.append(method.value)
+        return selected or [Verification.NOT_DEFINED.value]
+
+
 class EditorPanel(wx.Panel):
     """Panel for creating and editing requirements."""
 
@@ -87,7 +115,8 @@ class EditorPanel(wx.Panel):
         self._context_docs_list: AutoHeightListCtrl | None = None
         self._label_defs: list[LabelDef] = []
         self._labels_allow_freeform = False
-        self._verification_methods_list: wx.CheckListBox | None = None
+        self._verification_methods_panel: wx.Panel | None = None
+        self._selected_verification_codes: list[str] = [Verification.NOT_DEFINED.value]
         self._requirement_selected = True
         self._text_history_limit = 10
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
@@ -386,6 +415,7 @@ class EditorPanel(wx.Panel):
         self.current_path: Path | None = None
         self.mtime: float | None = None
         self._refresh_labels_display()
+        self._refresh_verification_methods_display()
         self._refresh_attachments()
         self._refresh_context_docs()
         self._update_id_prefix_label()
@@ -411,35 +441,33 @@ class EditorPanel(wx.Panel):
 
 
     def _create_verification_methods_section(self, content: wx.Window) -> wx.StaticBoxSizer:
-        """Create checklist with multiple verification methods."""
+        """Create compact verification methods selector section."""
         box_sizer = HelpStaticBox(
             content,
             locale.field_label("verification"),
             self._help_texts["verification"],
         )
         box = box_sizer.GetStaticBox()
-        choices = [locale.code_to_label("verification", method.value) for method in Verification]
-        checklist = wx.CheckListBox(box, choices=choices)
-        self._verification_methods_list = checklist
-        box_sizer.Add(checklist, 0, wx.EXPAND | wx.TOP, dip(self, 5))
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        self._verification_methods_panel = wx.Panel(box)
+        self._verification_methods_panel.SetBackgroundColour(box.GetBackgroundColour())
+        self._verification_methods_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
+        line_height = self.GetCharHeight() + 6
+        self._verification_methods_panel.SetMinSize((-1, line_height))
+        self._verification_methods_panel.Bind(wx.EVT_LEFT_DOWN, self._on_verification_methods_click)
+        row.Add(self._verification_methods_panel, 1, wx.EXPAND | wx.RIGHT, 5)
+        edit_btn = wx.Button(box, label=_("Edit..."))
+        edit_btn.Bind(wx.EVT_BUTTON, self._on_verification_methods_click)
+        row.Add(edit_btn, 0)
+        box_sizer.Add(row, 0, wx.EXPAND | wx.TOP, dip(self, 5))
         return box_sizer
 
     def _selected_verification_methods(self) -> list[str]:
         """Return selected verification method codes in enum order."""
-        checklist = self._verification_methods_list
-        if checklist is None:
-            return [Verification.NOT_DEFINED.value]
-        selected: list[str] = []
-        for idx, method in enumerate(Verification):
-            if checklist.IsChecked(idx):
-                selected.append(method.value)
-        return selected or [Verification.NOT_DEFINED.value]
+        return list(self._selected_verification_codes) or [Verification.NOT_DEFINED.value]
 
     def _set_verification_methods(self, codes: list[str] | tuple[str, ...]) -> None:
-        """Apply selected verification methods to checklist and legacy choice."""
-        checklist = self._verification_methods_list
-        if checklist is None:
-            return
+        """Apply selected verification methods and refresh compact display."""
         normalized: list[str] = []
         for code in codes:
             value = str(code).strip()
@@ -453,8 +481,34 @@ class EditorPanel(wx.Panel):
                 normalized.append(method)
         if not normalized:
             normalized = [Verification.NOT_DEFINED.value]
-        for idx, method in enumerate(Verification):
-            checklist.Check(idx, method.value in normalized)
+        self._selected_verification_codes = normalized
+        self._refresh_verification_methods_display()
+
+    def _refresh_verification_methods_display(self) -> None:
+        panel = self._verification_methods_panel
+        if panel is None or not wx.GetApp():
+            return
+        sizer = panel.GetSizer()
+        if sizer:
+            sizer.Clear(True)
+        codes = self._selected_verification_methods()
+        for i, code in enumerate(codes):
+            label = locale.code_to_label("verification", code)
+            txt = wx.StaticText(panel, label=label)
+            txt.SetBackgroundColour(stable_color(code))
+            txt.Bind(wx.EVT_LEFT_DOWN, self._on_verification_methods_click)
+            sizer.Add(txt, 0, wx.RIGHT, 2)
+            if i < len(codes) - 1:
+                comma = wx.StaticText(panel, label=", ")
+                comma.Bind(wx.EVT_LEFT_DOWN, self._on_verification_methods_click)
+                sizer.Add(comma, 0, wx.RIGHT, 2)
+        panel.Layout()
+
+    def _on_verification_methods_click(self, _event: wx.Event) -> None:
+        dlg = VerificationMethodsDialog(self, self._selected_verification_methods())
+        if dlg.ShowModal() == wx.ID_OK:
+            self._set_verification_methods(dlg.selected_codes())
+        dlg.Destroy()
 
     def _create_labels_section(self, content: wx.Window) -> wx.StaticBoxSizer:
         """Create compact labels selector section placed near requirement text."""

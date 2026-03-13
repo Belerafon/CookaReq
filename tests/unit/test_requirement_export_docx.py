@@ -722,6 +722,32 @@ def test_render_requirements_docx_auto_formula_renderer_falls_back_to_png(monkey
     assert calls == ["omml:a/b", "png:a/b"]
 
 
+
+
+def test_render_requirements_docx_mathml_formula_renderer_falls_back_to_png(monkeypatch) -> None:
+    from app.core import requirement_export as module
+
+    calls: list[str] = []
+
+    def no_omml(latex: str) -> str | None:
+        calls.append(f"omml:{latex}")
+        return None
+
+    def png_bytes(latex: str) -> bytes | None:
+        calls.append(f"png:{latex}")
+        return _PNG_BYTES
+
+    monkeypatch.setattr(module, "_latex_to_omml", no_omml)
+    monkeypatch.setattr(module, "_latex_to_png", png_bytes)
+
+    document = module.docx.Document()
+    paragraph = document.add_paragraph()
+    module._render_formula_run(paragraph, "a/b", formula_renderer="mathml")
+
+    xml = paragraph._p.xml
+    assert "a:blip" in xml
+    assert calls == ["omml:a/b", "png:a/b"]
+
 def test_render_requirements_docx_includes_context_preface(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

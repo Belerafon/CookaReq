@@ -108,8 +108,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   formats with a selectable DOCX formula renderer. The default "Automatic" mode
   now tries LaTeX→MathML→OMML first and then falls back to PNG image rendering,
   so formulas stay visual in Word exports even when OMML conversion
-  dependencies are unavailable; users can still force plain text/MathML/PNG
-  explicitly from the export dialog. DOCX rendering also detects inline
+  dependencies are unavailable. The explicit MathML mode also degrades through
+  PNG before plain text so formulas remain visual whenever possible; users can
+  still force plain text/PNG explicitly from the export dialog. DOCX rendering also detects inline
   parenthesized LaTeX-like fragments (for example, `(800_{\text{-10}})`) and
   treats them as formulas in non-text renderer modes so Word output matches the
   preview behavior for common engineering notation. Inline parsing handles
@@ -380,7 +381,13 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   `api_base`.
 * **Logging and telemetry** — `app/log.py` configures rotating logs. Significant
   events are funnelled through `app/telemetry.log_event`, which masks sensitive
-  tokens before persistence.
+  tokens before persistence. Startup also runs `app/runtime_dependencies.py`
+  checks and logs an INFO diagnostics summary for optional runtime modules on
+  every startup, plus WARNING records when something is missing (for example
+  formula export backends), without aborting GUI/CLI launch.
+  The GUI log console attaches a wx logging handler for live session events.
+  Startup dependency diagnostics are emitted after the main frame is shown, so
+  warnings appear in-app without loading historical log files.
 * **Utilities** — `app/util/` packages cancellation primitives, safe JSON
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
@@ -394,8 +401,8 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
 ## Data flows
 
 ### Application startup
-1. `app/main.main()` configures logging and creates an
-   `ApplicationContext.for_gui()` instance.
+1. `app/main.main()` configures logging, performs startup dependency health
+   checks, and creates an `ApplicationContext.for_gui()` instance.
 2. The context loads configuration via `ConfigManager`, restores open documents
    and prepares service singletons.
 3. `MainFrame` wires controllers to wx events and registers listeners for MCP

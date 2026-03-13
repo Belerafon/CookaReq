@@ -9,6 +9,7 @@ from app import i18n
 from app.application import ApplicationContext
 from app.i18n import _
 from app.log import configure_logging
+from app.runtime_dependencies import log_missing_startup_dependencies
 from app.settings import AppSettings, load_app_settings
 
 from .commands import COMMANDS
@@ -37,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     configure_logging()
+    log_missing_startup_dependencies()
     context = ApplicationContext.for_cli(app_name=APP_NAME)
     parser = build_parser()
     args = parser.parse_args(argv)

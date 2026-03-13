@@ -41,6 +41,7 @@ class WxLogHandler(logging.Handler):
         """Redirect log output to ``new_target``."""
         self._target = new_target
 
+
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
         if not wx.GetApp():

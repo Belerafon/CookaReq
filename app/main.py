@@ -9,6 +9,7 @@ from app.application import ApplicationContext
 import sys
 
 from app.log import configure_logging, install_exception_hooks, logger
+from app.runtime_dependencies import log_missing_startup_dependencies
 from app.ui.main_frame import MainFrame
 
 APP_NAME = "CookaReq"
@@ -63,6 +64,7 @@ def main() -> None:
         model=context.requirement_model,
     )
     frame.Show()
+    log_missing_startup_dependencies()
     app.MainLoop()
 
 

@@ -380,7 +380,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   `api_base`.
 * **Logging and telemetry** — `app/log.py` configures rotating logs. Significant
   events are funnelled through `app/telemetry.log_event`, which masks sensitive
-  tokens before persistence.
+  tokens before persistence. Startup also runs `app/runtime_dependencies.py`
+  checks and logs WARNING records for missing optional runtime modules (for
+  example formula export backends) without aborting GUI/CLI launch.
 * **Utilities** — `app/util/` packages cancellation primitives, safe JSON
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
@@ -394,8 +396,8 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
 ## Data flows
 
 ### Application startup
-1. `app/main.main()` configures logging and creates an
-   `ApplicationContext.for_gui()` instance.
+1. `app/main.main()` configures logging, performs startup dependency health
+   checks, and creates an `ApplicationContext.for_gui()` instance.
 2. The context loads configuration via `ConfigManager`, restores open documents
    and prepares service singletons.
 3. `MainFrame` wires controllers to wx events and registers listeners for MCP

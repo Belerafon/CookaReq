@@ -70,8 +70,16 @@ def test_main_runs(monkeypatch):
 
     importlib.reload(main_module)
 
+    startup_calls: list[str] = []
+    monkeypatch.setattr(
+        main_module,
+        "log_missing_startup_dependencies",
+        lambda: startup_calls.append("deps"),
+    )
+
     main_module.main()
 
+    assert startup_calls == ["deps"]
     assert DummyWxApp.instances and DummyWxApp.instances[0].loop_ran
     assert DummyFrame.shown
     assert DummyFrame.instances and DummyFrame.instances[0].parent is None

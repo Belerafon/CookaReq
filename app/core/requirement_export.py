@@ -47,7 +47,7 @@ from .markdown_utils import (
     sanitize_html,
     strip_markdown,
 )
-from .model import Requirement
+from .model import Requirement, normalized_verification_methods
 
 __all__ = [
     "DocumentExport",
@@ -270,6 +270,7 @@ _EXPORT_META_FIELDS: tuple[tuple[str, str, bool], ...] = (
     ("type", "Requirement type", True),
     ("status", "Status", True),
     ("priority", "Priority", True),
+    ("verification", "Verification method", True),
     ("owner", "Owner", False),
     ("labels", "Labels", False),
     ("source", "Source", False),
@@ -296,6 +297,15 @@ def export_card_field_order() -> tuple[str, ...]:
     return ("rid", "title", *meta_fields, *section_fields)
 
 
+def _verification_methods_value(req: Requirement, *, localized: bool) -> str | None:
+    methods = normalized_verification_methods(req)
+    if localized:
+        values = [_localize_enum_code(method.value) or method.value for method in methods]
+    else:
+        values = [method.value for method in methods]
+    return ", ".join(values) if values else None
+
+
 def _meta_field_value(req: Requirement, field: str) -> str | None:
     if field == "type":
         return _localize_enum_code(req.type.value)
@@ -303,6 +313,8 @@ def _meta_field_value(req: Requirement, field: str) -> str | None:
         return _localize_enum_code(req.status.value)
     if field == "priority":
         return _localize_enum_code(getattr(req.priority, "value", None))
+    if field == "verification":
+        return _verification_methods_value(req, localized=True)
     if field == "owner":
         return req.owner or None
     if field == "labels":

@@ -145,3 +145,17 @@ def test_render_tabular_html_includes_header_lines():
     html = render_tabular_html(headers, rows, title="Export", header_lines=["Document revision: rev 4"])
 
     assert "<p><em>Document revision: rev 4</em></p>" in html
+
+
+@pytest.mark.unit
+def test_build_tabular_export_verification_uses_all_methods_in_display_and_raw_modes():
+    requirement = _make_requirement()
+    requirement.verification_methods = [Verification.ANALYSIS, Verification.TEST, Verification.INSPECTION]
+
+    display_headers, display_rows = build_tabular_export([requirement], ["verification"], value_style="display")
+    raw_headers, raw_rows = build_tabular_export([requirement], ["verification"], value_style="raw")
+
+    assert display_headers == ["Verification method"]
+    assert display_rows == [["Analysis, Test, Inspection"]]
+    assert raw_headers == ["Verification method"]
+    assert raw_rows == [["analysis, test, inspection"]]

@@ -236,3 +236,30 @@ def test_render_requirements_markdown_places_multi_label_requirement_once_in_lab
 
     assert "### Labels: API, Backend" in rendered
     assert rendered.count("#### SYS1") == 1
+
+
+def test_render_requirements_markdown_renders_all_verification_methods(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=5,
+        title="Verification",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        verification_methods=[Verification.ANALYSIS, Verification.TEST, Verification.INSPECTION],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS5",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    markdown = render_requirements_markdown(export)
+
+    assert "- **Verification method:** ``Analysis, Test, Inspection``" in markdown

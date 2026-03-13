@@ -86,8 +86,11 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   UTF-8 BOM (`utf-8-sig`) so Microsoft Excel detects Cyrillic text correctly
   across locale-specific default code pages, while the text helper builds the
   plain-text card exports used by the GUI export dialog and renders Markdown
-  tables as ASCII grids for readability. Card exports now support sorting by
-  `context_docs`; when that mode is selected the export dialog can prepend the
+  tables as ASCII grids for readability. Verification columns now render all
+  selected `verification_methods` (localized for display exports, raw codes for
+  CSV/TSV) instead of only the legacy primary `verification` value. Card
+  exports now support sorting by `context_docs`; when that mode is selected the
+  export dialog can prepend the
   resolved `context_docs` Markdown snippets before the requirement list.
   The HTML export cards render Markdown
   in requirement sections (including single-line breaks as `<br>`), convert

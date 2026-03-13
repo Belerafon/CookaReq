@@ -511,3 +511,21 @@ def test_load_column_widths_assigns_defaults(stubbed_list_panel_env):
         3: columns.default_column_width("status"),
         4: columns.default_column_width("priority"),
     }
+
+
+def test_verification_column_shows_all_selected_methods(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_columns(["verification"])
+    panel.set_requirements([
+        _req(
+            1,
+            "Multi verification",
+            verification=Verification.ANALYSIS,
+            verification_methods=[Verification.ANALYSIS, Verification.TEST, Verification.INSPECTION],
+        ),
+    ])
+
+    verification_col = panel._field_order.index("verification")
+    value = panel.list._cells[(0, verification_col)]
+    assert value == "Analysis, Test, Inspection"

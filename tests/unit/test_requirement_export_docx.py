@@ -689,3 +689,33 @@ def test_render_requirements_docx_includes_context_preface(tmp_path: Path) -> No
     assert "Context documents" in document_xml
     assert "related/math/overview.md" in document_xml
     assert "Overview" in document_xml
+
+
+def test_render_requirements_docx_renders_all_verification_methods(tmp_path: Path) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=7,
+        title="Verification",
+        statement="S",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        verification_methods=[Verification.ANALYSIS, Verification.TEST, Verification.INSPECTION],
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS7",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export)
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+        assert "Verification method" in document_xml
+        assert "Analysis, Test, Inspection" in document_xml

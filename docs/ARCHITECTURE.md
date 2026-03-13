@@ -382,8 +382,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
 * **Logging and telemetry** — `app/log.py` configures rotating logs. Significant
   events are funnelled through `app/telemetry.log_event`, which masks sensitive
   tokens before persistence. Startup also runs `app/runtime_dependencies.py`
-  checks and logs WARNING records for missing optional runtime modules (for
-  example formula export backends) without aborting GUI/CLI launch.
+  checks and logs an INFO diagnostics summary for optional runtime modules on
+  every startup, plus WARNING records when something is missing (for example
+  formula export backends), without aborting GUI/CLI launch.
   The GUI log console attaches a wx logging handler for live session events.
   Startup dependency diagnostics are emitted after the main frame is shown, so
   warnings appear in-app without loading historical log files.

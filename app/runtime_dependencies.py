@@ -29,14 +29,21 @@ def _is_module_available(module: str) -> bool:
 
 
 def log_missing_startup_dependencies() -> tuple[str, ...]:
-    """Log missing optional runtime dependencies without interrupting startup."""
+    """Log startup dependency diagnostics without interrupting startup."""
     missing: list[StartupDependency] = []
+    statuses: list[str] = []
     for dependency in STARTUP_DEPENDENCIES:
-        if not _is_module_available(dependency.module):
+        available = _is_module_available(dependency.module)
+        statuses.append(f"{dependency.module}={'ok' if available else 'missing'}")
+        if not available:
             missing.append(dependency)
 
+    logger.info(
+        "Startup optional dependency diagnostics: %s",
+        ", ".join(statuses),
+    )
+
     if not missing:
-        logger.debug("Startup dependency check passed: all optional runtime modules are available")
         return ()
 
     missing_modules = tuple(dep.module for dep in missing)

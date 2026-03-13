@@ -18,10 +18,11 @@ def test_log_missing_startup_dependencies_logs_missing_modules(monkeypatch: pyte
         lambda name: None if name in missing else object(),
     )
 
-    caplog.set_level(logging.WARNING, logger="cookareq")
+    caplog.set_level(logging.INFO, logger="cookareq")
     result = module.log_missing_startup_dependencies()
 
     assert result == ("mathml2omml",)
+    assert "Startup optional dependency diagnostics:" in caplog.text
     assert "Optional runtime dependencies are missing: mathml2omml. Feature impact:" in caplog.text
     assert "mathml2omml → DOCX formula conversion (MathML → OMML for Word)" in caplog.text
 
@@ -32,8 +33,9 @@ def test_log_missing_startup_dependencies_returns_empty_when_all_available(
 ) -> None:
     monkeypatch.setattr(module.importlib.util, "find_spec", lambda _name: object())
 
-    caplog.set_level(logging.DEBUG, logger="cookareq")
+    caplog.set_level(logging.INFO, logger="cookareq")
     result = module.log_missing_startup_dependencies()
 
     assert result == ()
-    assert "Startup dependency check passed" in caplog.text
+    assert "Startup optional dependency diagnostics:" in caplog.text
+    assert "missing" not in caplog.text

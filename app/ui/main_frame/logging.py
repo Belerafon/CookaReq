@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import wx
 
 from ...i18n import _
-from ...log import get_log_directory, logger, open_log_directory
+from ...log import get_log_directory, get_log_file_paths, logger, open_log_directory
 from ..helpers import create_copy_button, inherit_background
 from ..widgets import SectionContainer
 
@@ -41,6 +41,11 @@ class WxLogHandler(logging.Handler):
         """Redirect log output to ``new_target``."""
         self._target = new_target
 
+    @property
+    def max_chars(self) -> int:
+        """Maximum number of characters retained in the log console."""
+        return self._max_chars
+
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
         if not wx.GetApp():
@@ -58,6 +63,22 @@ class WxLogHandler(logging.Handler):
             excess = target.GetLastPosition() - self._max_chars
             if excess > 0:
                 target.Remove(0, excess)
+
+
+
+
+def _read_text_log_tail(*, max_chars: int) -> str:
+    """Return the tail of the text log file up to ``max_chars`` characters."""
+    if max_chars <= 0:
+        return ""
+    try:
+        text_log_path, _ = get_log_file_paths()
+        content = text_log_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if len(content) <= max_chars:
+        return content
+    return content[-max_chars:]
 
 
 class MainFrameLoggingMixin:
@@ -126,6 +147,9 @@ class MainFrameLoggingMixin:
             self.log_handler = WxLogHandler(self.log_console)
             logger.addHandler(self.log_handler)
         self.log_handler.setLevel(saved_log_level)
+        history_text = _read_text_log_tail(max_chars=self.log_handler.max_chars)
+        if history_text:
+            self.log_console.ChangeValue(history_text)
         self._populate_log_level_choice(saved_log_level)
         self.log_level_choice.Bind(wx.EVT_CHOICE, self.on_change_log_level)
 

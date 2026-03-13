@@ -656,7 +656,7 @@ def _render_formula_run(
         if omml:
             _append_omml_run(paragraph, omml)
             return
-    if formula_renderer in {"auto", "png"}:
+    if formula_renderer in {"auto", "mathml", "png"}:
         image_bytes = _latex_to_png(formula)
         if image_bytes:
             run = paragraph.add_run()

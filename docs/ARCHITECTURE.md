@@ -108,8 +108,9 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   formats with a selectable DOCX formula renderer. The default "Automatic" mode
   now tries LaTeX→MathML→OMML first and then falls back to PNG image rendering,
   so formulas stay visual in Word exports even when OMML conversion
-  dependencies are unavailable; users can still force plain text/MathML/PNG
-  explicitly from the export dialog. DOCX rendering also detects inline
+  dependencies are unavailable. The explicit MathML mode also degrades through
+  PNG before plain text so formulas remain visual whenever possible; users can
+  still force plain text/PNG explicitly from the export dialog. DOCX rendering also detects inline
   parenthesized LaTeX-like fragments (for example, `(800_{\text{-10}})`) and
   treats them as formulas in non-text renderer modes so Word output matches the
   preview behavior for common engineering notation. Inline parsing handles

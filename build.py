@@ -127,6 +127,7 @@ def main() -> None:
         "typer",
         "python_multipart",
         "latex2mathml",
+        "mathml2omml",
         
         # Core dependencies
         "pydantic",
@@ -194,6 +195,7 @@ def main() -> None:
         "matplotlib.mathtext",
         "latex2mathml",
         "latex2mathml.converter",
+        "mathml2omml",
     ]
 
     # Add all required packages to hidden imports
@@ -213,6 +215,8 @@ def main() -> None:
         "matplotlib",
         # Fallback formula rendering path (MathML conversion).
         "latex2mathml",
+        # DOCX OMML conversion backend for formula export.
+        "mathml2omml",
     ]
 
     excluded_modules = [

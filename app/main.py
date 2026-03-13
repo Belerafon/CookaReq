@@ -51,7 +51,6 @@ class CookaReqApp(wx.App):
 def main() -> None:
     """Run wx application with the main frame."""
     configure_logging()
-    log_missing_startup_dependencies()
     install_exception_hooks()
     context = ApplicationContext.for_gui(app_name=APP_NAME)
     config = context.config
@@ -65,6 +64,7 @@ def main() -> None:
         model=context.requirement_model,
     )
     frame.Show()
+    log_missing_startup_dependencies()
     app.MainLoop()
 
 

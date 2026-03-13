@@ -1,13 +1,11 @@
 """Tests for :class:`app.ui.main_frame.WxLogHandler`."""
 
 import logging
-from pathlib import Path
 import time
 
 import pytest
 
 from app.ui.main_frame import WxLogHandler
-from app.ui.main_frame import logging as logging_module
 
 pytestmark = pytest.mark.unit
 
@@ -50,37 +48,3 @@ def test_wx_log_handler_format_includes_timestamp() -> None:
     record.created = 0
     formatted = handler.format(record)
     assert formatted == "1970-01-01 00:00:00 INFO: sample message"
-
-
-def test_read_startup_diagnostics_filters_noise(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    text_log = tmp_path / "cookareq.log"
-    json_log = tmp_path / "cookareq.jsonl"
-    text_log.write_text(
-        "\n".join(
-            [
-                "2026-03-13 16:00:55,450 INFO cookareq: Main frame close requested",
-                "2026-03-13 16:12:31,229 WARNING cookareq: Optional runtime dependencies are missing: mathml2omml",
-                "2026-03-13 16:12:31,230 WARNING cookareq: Feature may be degraded because module 'mathml2omml' is unavailable: DOCX formula conversion",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr(logging_module, "get_log_file_paths", lambda: (text_log, json_log))
-
-    content = logging_module._read_startup_diagnostics(max_chars=10_000)
-
-    assert "Optional runtime dependencies are missing" in content
-    assert "Feature may be degraded because module" in content
-    assert "Main frame close requested" not in content
-
-
-def test_read_startup_diagnostics_returns_empty_when_file_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    missing = Path('/tmp/does-not-exist.log')
-    monkeypatch.setattr(
-        logging_module,
-        "get_log_file_paths",
-        lambda: (missing, missing.with_suffix('.jsonl')),
-    )
-
-    assert logging_module._read_startup_diagnostics(max_chars=500) == ""

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import wx
 
 from ...i18n import _
-from ...log import get_log_directory, get_log_file_paths, logger, open_log_directory
+from ...log import get_log_directory, logger, open_log_directory
 from ..helpers import create_copy_button, inherit_background
 from ..widgets import SectionContainer
 
@@ -41,10 +41,6 @@ class WxLogHandler(logging.Handler):
         """Redirect log output to ``new_target``."""
         self._target = new_target
 
-    @property
-    def max_chars(self) -> int:
-        """Maximum number of characters retained in the log console."""
-        return self._max_chars
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - GUI side effect
         """Append formatted ``record`` text to the log console."""
@@ -63,36 +59,6 @@ class WxLogHandler(logging.Handler):
             excess = target.GetLastPosition() - self._max_chars
             if excess > 0:
                 target.Remove(0, excess)
-
-
-
-
-def _read_startup_diagnostics(*, max_chars: int) -> str:
-    """Return startup dependency diagnostics from the text log file."""
-    if max_chars <= 0:
-        return ""
-    try:
-        text_log_path, _ = get_log_file_paths()
-        content = text_log_path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-
-    diagnostics: list[str] = []
-    for line in content.splitlines():
-        if (
-            "Optional runtime dependencies are missing:" in line
-            or "Feature may be degraded because module" in line
-            or "Startup dependency check passed:" in line
-        ):
-            diagnostics.append(line)
-
-    if not diagnostics:
-        return ""
-
-    joined = "\n".join(diagnostics)
-    if len(joined) <= max_chars:
-        return joined
-    return joined[-max_chars:]
 
 
 class MainFrameLoggingMixin:
@@ -161,9 +127,6 @@ class MainFrameLoggingMixin:
             self.log_handler = WxLogHandler(self.log_console)
             logger.addHandler(self.log_handler)
         self.log_handler.setLevel(saved_log_level)
-        history_text = _read_startup_diagnostics(max_chars=self.log_handler.max_chars)
-        if history_text:
-            self.log_console.ChangeValue(history_text)
         self._populate_log_level_choice(saved_log_level)
         self.log_level_choice.Bind(wx.EVT_CHOICE, self.on_change_log_level)
 

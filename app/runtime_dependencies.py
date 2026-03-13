@@ -40,14 +40,10 @@ def log_missing_startup_dependencies() -> tuple[str, ...]:
         return ()
 
     missing_modules = tuple(dep.module for dep in missing)
+    details = "; ".join(f"{dep.module} → {dep.feature}" for dep in missing)
     logger.warning(
-        "Optional runtime dependencies are missing: %s",
+        "Optional runtime dependencies are missing: %s. Feature impact: %s",
         ", ".join(missing_modules),
+        details,
     )
-    for dep in missing:
-        logger.warning(
-            "Feature may be degraded because module '%s' is unavailable: %s",
-            dep.module,
-            dep.feature,
-        )
     return missing_modules

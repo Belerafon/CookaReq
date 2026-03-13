@@ -22,8 +22,8 @@ def test_log_missing_startup_dependencies_logs_missing_modules(monkeypatch: pyte
     result = module.log_missing_startup_dependencies()
 
     assert result == ("mathml2omml",)
-    assert "Optional runtime dependencies are missing: mathml2omml" in caplog.text
-    assert "MathML → OMML for Word" in caplog.text
+    assert "Optional runtime dependencies are missing: mathml2omml. Feature impact:" in caplog.text
+    assert "mathml2omml → DOCX formula conversion (MathML → OMML for Word)" in caplog.text
 
 
 def test_log_missing_startup_dependencies_returns_empty_when_all_available(

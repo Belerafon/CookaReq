@@ -12,12 +12,13 @@ def test_build_pyinstaller_args_keeps_formula_preview_dependencies() -> None:
         root=root,
         icon=root / 'app' / 'resources' / 'app.ico',
         hidden_imports=['matplotlib.backends.backend_agg', 'latex2mathml.converter', 'mathml2omml'],
-        collect_packages=['matplotlib', 'latex2mathml', 'mathml2omml'],
+        collect_all_packages=['latex2mathml', 'mathml2omml'],
+        collect_data_packages=['matplotlib'],
         excluded_modules=['scipy'],
         onefile=False,
     )
 
-    assert '--collect-all=matplotlib' in args
+    assert '--collect-data=matplotlib' in args
     assert '--hidden-import=matplotlib.backends.backend_agg' in args
     assert '--collect-all=latex2mathml' in args
     assert '--hidden-import=latex2mathml.converter' in args
@@ -34,10 +35,25 @@ def test_build_pyinstaller_args_onefile_switch_replaces_onedir() -> None:
         root=root,
         icon=root / 'app' / 'resources' / 'app.ico',
         hidden_imports=[],
-        collect_packages=[],
+        collect_all_packages=[],
+        collect_data_packages=[],
         excluded_modules=[],
         onefile=True,
     )
 
     assert '--onefile' in args
     assert '--onedir' not in args
+
+
+def test_ensure_supported_python_rejects_non_312(monkeypatch) -> None:
+    class _V:
+        major = 3
+        minor = 13
+        micro = 1
+
+    monkeypatch.setattr(build.sys, 'version_info', _V())
+
+    import pytest
+
+    with pytest.raises(SystemExit, match=r'requires Python 3\.12\.x'):
+        build.ensure_supported_python()

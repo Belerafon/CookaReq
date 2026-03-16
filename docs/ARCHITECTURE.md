@@ -398,9 +398,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   Runtime dependencies for statement formula previews keep explicit hidden
   imports (`matplotlib` with `backend_agg`) while heavy package graph scans are
   reduced: Windows-specific optional modules (`wx.lib.wxcairo`) and
-  `matplotlib.tests` stay excluded, and `matplotlib` is bundled via
+  `matplotlib.tests` stay excluded, `matplotlib` is bundled via
   `--collect-data` instead of `--collect-all` to avoid unnecessary hook imports
-  during freeze.
+  during freeze, and `mathml2omml` is forced through `--collect-all` so DOCX
+  OMML formula conversion modules are present in frozen builds.
 
 ## Data flows
 

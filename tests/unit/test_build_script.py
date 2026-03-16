@@ -57,3 +57,28 @@ def test_ensure_supported_python_rejects_non_312(monkeypatch) -> None:
 
     with pytest.raises(SystemExit, match=r'requires Python 3\.12\.x'):
         build.ensure_supported_python()
+
+
+def test_main_collects_mathml2omml(monkeypatch) -> None:
+    captured: dict[str, list[str]] = {}
+
+    monkeypatch.setattr(build, "ensure_supported_python", lambda: None)
+    monkeypatch.setattr(build, "update_version_json", lambda: None)
+    monkeypatch.setattr(build, "clean_build_dirs", lambda: None)
+
+    class _PI:
+        @staticmethod
+        def run(args: list[str]) -> None:
+            captured["args"] = args
+
+    import types
+    import sys
+
+    monkeypatch.setitem(sys.modules, "PyInstaller", types.SimpleNamespace(__main__=_PI))
+    monkeypatch.setitem(sys.modules, "PyInstaller.__main__", _PI)
+
+    build.main()
+
+    args = captured["args"]
+    assert "--hidden-import=mathml2omml" in args
+    assert "--collect-all=mathml2omml" in args

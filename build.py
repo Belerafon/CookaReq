@@ -127,12 +127,6 @@ def main() -> None:
     # Use __main__.py as the entry point to ensure proper package structure
     script = root / "app" / "__main__.py"
     icon = root / "app" / "resources" / "app.ico"
-    # Add data files
-    datas = [
-        (str(root / "app" / "resources"), "app/resources"),
-        # Include ui/resources directory with all its contents
-        (str(root / "app" / "ui" / "resources"), "app/ui/resources"),
-    ]
     # Get all required packages from pyproject.toml and dependencies
     required_packages = [
         # Main application packages
@@ -230,8 +224,9 @@ def main() -> None:
         "reportlab",
         "mcp",
         "typer",
-        # Fallback formula rendering path (MathML conversion).
+        # Formula conversion path for DOCX export (LaTeX → MathML → OMML).
         "latex2mathml",
+        "mathml2omml",
     ]
 
     # Keep formula preview assets without full package graph scan, which tries

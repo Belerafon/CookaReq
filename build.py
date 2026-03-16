@@ -12,6 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+SUPPORTED_PYTHON = (3, 12)
+
 def get_git_commit_date() -> str | None:
     """Get the date of the last commit from git."""
     try:
@@ -53,13 +56,28 @@ def clean_build_dirs() -> None:
             shutil.rmtree(dir_path, ignore_errors=True)
 
 
+def ensure_supported_python() -> None:
+    """Abort build when Python runtime is outside the supported minor version."""
+    current = (sys.version_info.major, sys.version_info.minor)
+    if current != SUPPORTED_PYTHON:
+        required = ".".join(str(part) for part in SUPPORTED_PYTHON)
+        got = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        raise SystemExit(
+            "CookaReq build requires Python "
+            f"{required}.x; current interpreter is {got}. "
+            "Use Python 3.12 to avoid missing binary wheels (for example jiter/openai) "
+            "and unsupported PyInstaller hooks."
+        )
+
+
 def _build_pyinstaller_args(
     *,
     script: Path,
     root: Path,
     icon: Path,
     hidden_imports: list[str],
-    collect_packages: list[str],
+    collect_all_packages: list[str],
+    collect_data_packages: list[str],
     excluded_modules: list[str],
     onefile: bool,
 ) -> list[str]:
@@ -72,7 +90,8 @@ def _build_pyinstaller_args(
         "--onedir",
         f"--paths={root}",
         *[f"--hidden-import={pkg}" for pkg in hidden_imports],
-        *[f"--collect-all={pkg}" for pkg in collect_packages],
+        *[f"--collect-all={pkg}" for pkg in collect_all_packages],
+        *[f"--collect-data={pkg}" for pkg in collect_data_packages],
         f"--add-data={(root / 'app' / 'resources')}{os.pathsep}app/resources",
         f"--add-data={(root / 'app' / 'ui' / 'resources')}{os.pathsep}app/ui/resources",
         f"--add-data={(root / 'app' / 'locale')}{os.pathsep}app/locale",
@@ -95,6 +114,8 @@ def _build_pyinstaller_args(
 def main() -> None:
     """Build project executables using PyInstaller."""
     import PyInstaller.__main__  # type: ignore
+
+    ensure_supported_python()
 
     # Update version.json with current git commit date
     update_version_json()
@@ -201,22 +222,22 @@ def main() -> None:
     # Add all required packages to hidden imports
     hidden_imports.extend(required_packages)
 
-    collect_packages = [
-        "wx",
+    collect_all_packages = [
         "jsonschema",
         "fastapi",
         "uvicorn",
-        "openai",
         "markdown",
         "reportlab",
         "mcp",
         "typer",
-        # Required for formula rendering in wx HtmlWindow previews.
-        "matplotlib",
         # Fallback formula rendering path (MathML conversion).
         "latex2mathml",
-        # DOCX OMML conversion backend for formula export.
-        "mathml2omml",
+    ]
+
+    # Keep formula preview assets without full package graph scan, which tries
+    # to import optional test modules and unavailable platform bindings.
+    collect_data_packages = [
+        "matplotlib",
     ]
 
     excluded_modules = [
@@ -229,6 +250,11 @@ def main() -> None:
         "pandas",
         "sklearn",
         "torch",
+        # Optional cairo binding is not required by the app and fails often on
+        # clean Windows hosts without cairo DLL.
+        "wx.lib.wxcairo",
+        # Matplotlib test package is never needed at runtime.
+        "matplotlib.tests",
     ]
 
     args = _build_pyinstaller_args(
@@ -236,7 +262,8 @@ def main() -> None:
         root=root,
         icon=icon,
         hidden_imports=hidden_imports,
-        collect_packages=collect_packages,
+        collect_all_packages=collect_all_packages,
+        collect_data_packages=collect_data_packages,
         excluded_modules=excluded_modules,
         onefile=any(a == "--onefile" for a in sys.argv[1:]),
     )

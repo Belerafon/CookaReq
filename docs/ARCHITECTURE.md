@@ -392,11 +392,15 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   dumping, time measurement and other helpers used by multiple layers.
 * **Build tooling** — `build.py` assembles distributable bundles with
   PyInstaller, reusing resources under `app/resources/` and localisation assets
-  from `app/locale/`. Runtime dependencies for statement formula previews
-  (`matplotlib` with `backend_agg`) are packaged explicitly so Windows bundles
-  keep rendering LaTeX snippets inside requirement preview forms. The
-  exclusion list intentionally does not remove `unittest`, because matplotlib
-  imports touch it in frozen runtimes.
+  from `app/locale/`. The script now hard-stops on non-3.12 interpreters so
+  packaging runs on the only supported runtime and does not silently fail later
+  on missing binary wheels (notably `jiter` pulled by `openai` on Python 3.13).
+  Runtime dependencies for statement formula previews keep explicit hidden
+  imports (`matplotlib` with `backend_agg`) while heavy package graph scans are
+  reduced: Windows-specific optional modules (`wx.lib.wxcairo`) and
+  `matplotlib.tests` stay excluded, and `matplotlib` is bundled via
+  `--collect-data` instead of `--collect-all` to avoid unnecessary hook imports
+  during freeze.
 
 ## Data flows
 

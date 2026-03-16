@@ -1,44 +1,30 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: Check if Python is installed
-where python >nul 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo Python is not installed or not in PATH. Please install Python 3.8 or later.
+:: Set Python 3.12 path
+set PYTHON312_PATH=C:\Users\home\AppData\Local\Programs\Python\Python312
+set PYTHON_EXE=%PYTHON312_PATH%\python.exe
+
+:: Check if Python 3.12 is installed
+if not exist "%PYTHON_EXE%" (
+    echo Python 3.12 is not found at %PYTHON_EXE%
+    echo Please install Python 3.12 or update the path in this script.
     exit /b 1
 )
 
-:: Create virtual environment if it doesn't exist
-if not exist "venv\Scripts\python.exe" (
-    echo Creating virtual environment...
-    python -m venv venv
-    if %ERRORLEVEL% neq 0 (
-        echo Failed to create virtual environment.
-        exit /b 1
-    )
-    
-    :: Activate the virtual environment and install dependencies
-    call venv\Scripts\activate
-    if %ERRORLEVEL% neq 0 (
-        echo Failed to activate virtual environment.
-        exit /b 1
-    )
-    
-    echo Installing build dependencies...
-    python -m pip install --upgrade pip
-    pip install -r requirements-build.txt
-    if %ERRORLEVEL% neq 0 (
-        echo Failed to install dependencies.
-        exit /b 1
-    )
-) else (
-    echo Using existing virtual environment
-    call venv\Scripts\activate
+echo Using Python 3.12 from: %PYTHON_EXE%
+
+:: Install build dependencies if needed
+echo Installing build dependencies...
+"%PYTHON_EXE%" -m pip install -r requirements-build.txt
+if %ERRORLEVEL% neq 0 (
+    echo Failed to install dependencies.
+    exit /b 1
 )
 
 :: Build the application
 echo Building the application...
-python build.py --onefile
+"%PYTHON_EXE%" build.py --onefile
 if %ERRORLEVEL% neq 0 (
     echo Build failed.
     exit /b 1

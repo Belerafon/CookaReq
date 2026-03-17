@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 import json
+import logging
 import re
 
 from reportlab.lib import colors
@@ -48,6 +49,8 @@ from .markdown_utils import (
     strip_markdown,
 )
 from .model import Requirement, normalized_verification_methods
+
+_LOGGER = logging.getLogger("cookareq")
 
 __all__ = [
     "DocumentExport",
@@ -619,11 +622,17 @@ def _latex_to_omml(latex: str) -> str | None:
         from latex2mathml.converter import convert as latex_to_mathml
         from mathml2omml import convert as mathml_to_omml
     except ImportError:
+        _LOGGER.info("DOCX formula OMML conversion skipped: optional dependencies are missing.")
         return None
     try:
         mathml = latex_to_mathml(latex)
         return mathml_to_omml(mathml)
     except Exception:  # pragma: no cover - conversion failures
+        _LOGGER.warning(
+            "DOCX formula OMML conversion failed; falling back to PNG/text. Formula: %r",
+            latex,
+            exc_info=True,
+        )
         return None
 
 
@@ -656,12 +665,27 @@ def _render_formula_run(
         if omml:
             _append_omml_run(paragraph, omml)
             return
+        _LOGGER.info(
+            "DOCX formula renderer fallback: OMML is unavailable for formula %r (mode=%s).",
+            formula,
+            formula_renderer,
+        )
     if formula_renderer in {"auto", "mathml", "png"}:
         image_bytes = _latex_to_png(formula)
         if image_bytes:
             run = paragraph.add_run()
             run.add_picture(BytesIO(image_bytes))
             return
+        _LOGGER.info(
+            "DOCX formula renderer fallback: PNG is unavailable for formula %r (mode=%s).",
+            formula,
+            formula_renderer,
+        )
+    _LOGGER.info(
+        "DOCX formula renderer fallback: writing plain text formula %r (mode=%s).",
+        formula,
+        formula_renderer,
+    )
     paragraph.add_run(formula)
 
 
@@ -687,6 +711,7 @@ def _latex_to_png(latex: str) -> bytes | None:
         import matplotlib
         from matplotlib import pyplot as plt
     except ImportError:
+        _LOGGER.info("DOCX formula PNG conversion skipped: matplotlib is unavailable.")
         return None
     matplotlib.use("Agg", force=True)
     try:
@@ -703,6 +728,11 @@ def _latex_to_png(latex: str) -> bytes | None:
         plt.close(fig)
         return buffer.getvalue()
     except Exception:  # pragma: no cover - rendering failures
+        _LOGGER.warning(
+            "DOCX formula PNG conversion failed; falling back to plain text. Formula: %r",
+            latex,
+            exc_info=True,
+        )
         return None
 
 

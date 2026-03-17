@@ -320,6 +320,40 @@ def test_render_requirements_docx_strips_dollars_for_parenthesized_dollar_formul
         assert "})$" not in document_xml
 
 
+def test_render_requirements_docx_auto_renders_parenthesized_dollar_formula_as_omml(tmp_path: Path) -> None:
+    pytest.importorskip("latex2mathml")
+    pytest.importorskip("mathml2omml")
+
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+    requirement = Requirement(
+        id=47,
+        title="Parenthesized dollar formula auto",
+        statement=r"В тексте требования $(800_{\text{-10}})$ .",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="owner",
+        priority=Priority.MEDIUM,
+        source="spec",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS47",
+    )
+    save_item(doc_dir, doc, requirement.to_mapping())
+
+    export = build_requirement_export(tmp_path)
+    payload = render_requirements_docx(export, formula_renderer="auto")
+
+    with ZipFile(io.BytesIO(payload)) as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "<m:oMath" in document_xml
+    assert "800" in document_xml
+    assert "text{-10}" not in document_xml
+
+
 def test_docx_add_markdown_renders_parenthesized_formula_inside_dollars_once(monkeypatch) -> None:
     from app.core import requirement_export as module
 

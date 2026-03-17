@@ -115,7 +115,10 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   treats them as formulas in non-text renderer modes so Word output matches the
   preview behavior for common engineering notation. Inline parsing handles
   nested forms like `$(800_{\text{-10}})$` as one formula token to avoid extra
-  dollar markers or fragmented fallback text in DOCX output. Card exports (Markdown/HTML/DOCX/PDF) omit
+  dollar markers or fragmented fallback text in DOCX output. When formula conversion
+  falls back (OMML→PNG→plain text), the exporter now logs INFO/WARNING diagnostics
+  with the attempted mode and formula payload to simplify troubleshooting in user
+  environments. Card exports (Markdown/HTML/DOCX/PDF) omit
   empty section blocks by default and only render placeholders when the user
   enables the explicit "show empty fields" option; section/meta labels and
   enumerated metadata values (type/status/priority) are passed through gettext

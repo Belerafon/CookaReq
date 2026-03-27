@@ -549,6 +549,119 @@ def summarize_specific_tool(
                 )
         return lines, consumed_args, None
 
+    if tool_name == "list_requirements":
+        prefix: Any | None = None
+        page: Any | None = None
+        per_page: Any | None = None
+        total: Any | None = None
+        returned_count: int | None = None
+        first_rid: str | None = None
+        last_rid: str | None = None
+
+        if isinstance(arguments, Mapping):
+            prefix = arguments.get("prefix")
+            page = arguments.get("page")
+            per_page = arguments.get("per_page")
+            consumed_args.update({"prefix", "page", "per_page", "fields"})
+
+        if isinstance(result, Mapping):
+            total = result.get("total")
+            page = result.get("page", page)
+            per_page = result.get("per_page", per_page)
+            consumed_result.update(
+                {"document", "total", "page", "per_page", "items", "usage_hint"}
+            )
+            document = result.get("document")
+            if isinstance(document, Mapping) and document.get("prefix"):
+                prefix = document.get("prefix")
+            items = result.get("items")
+            if isinstance(items, Sequence) and not isinstance(
+                items, (str, bytes, bytearray)
+            ):
+                returned_count = len(items)
+                if items:
+                    first = items[0]
+                    last = items[-1]
+                    if isinstance(first, Mapping) and first.get("rid"):
+                        first_rid = normalize_for_display(str(first.get("rid")))
+                    if isinstance(last, Mapping) and last.get("rid"):
+                        last_rid = normalize_for_display(str(last.get("rid")))
+
+        if prefix:
+            lines.append(
+                _("Document prefix: {prefix}").format(
+                    prefix=format_value_snippet(prefix)
+                )
+            )
+
+        page_value = page if isinstance(page, int) and page > 0 else None
+        per_page_value = per_page if isinstance(per_page, int) and per_page > 0 else None
+        total_value = total if isinstance(total, int) and total >= 0 else None
+        if (
+            page_value is not None
+            and per_page_value is not None
+            and total_value is not None
+            and returned_count is not None
+        ):
+            if returned_count > 0:
+                start_item = (page_value - 1) * per_page_value + 1
+                end_item = start_item + returned_count - 1
+                lines.append(
+                    _(
+                        "Requested slice: page {page}, per page {per_page} (items {start}–{end} of {total})."
+                    ).format(
+                        page=format_value_snippet(page_value),
+                        per_page=format_value_snippet(per_page_value),
+                        start=format_value_snippet(start_item),
+                        end=format_value_snippet(end_item),
+                        total=format_value_snippet(total_value),
+                    )
+                )
+                if end_item < total_value:
+                    next_page = page_value + 1
+                    next_start = end_item + 1
+                    next_end = min(total_value, next_start + per_page_value - 1)
+                    lines.append(
+                        _(
+                            "Hint: next call `list_requirements(prefix=\"{prefix}\", page={page}, per_page={per_page})` will return items {start}–{end}."
+                        ).format(
+                            prefix=normalize_for_display(str(prefix or "")),
+                            page=format_value_snippet(next_page),
+                            per_page=format_value_snippet(per_page_value),
+                            start=format_value_snippet(next_start),
+                            end=format_value_snippet(next_end),
+                        )
+                    )
+            else:
+                lines.append(
+                    _(
+                        "Requested slice: page {page}, per page {per_page}; this page has no items (total: {total})."
+                    ).format(
+                        page=format_value_snippet(page_value),
+                        per_page=format_value_snippet(per_page_value),
+                        total=format_value_snippet(total_value),
+                    )
+                )
+
+        if returned_count is not None:
+            lines.append(
+                _("Returned requirements: {count}").format(
+                    count=format_value_snippet(returned_count)
+                )
+            )
+        if first_rid and last_rid:
+            lines.append(
+                _("RID range: {first} … {last}").format(
+                    first=format_value_snippet(first_rid),
+                    last=format_value_snippet(last_rid),
+                )
+            )
+        elif first_rid:
+            lines.append(
+                _("RID: {rid}").format(rid=format_value_snippet(first_rid))
+            )
+        return lines, consumed_args, consumed_result
+
     if tool_name == "search_requirements":
         if isinstance(arguments, Mapping):
             query = arguments.get("query")

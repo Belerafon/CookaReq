@@ -143,3 +143,42 @@ def test_create_user_document_arguments_use_preview(monkeypatch) -> None:
     assert "Alpha" in preview_line and "Gamma" in preview_line
     assert "lines: 3, tokens: ≈9, characters: 16" in preview_line
     assert preview_line.endswith("Gamma`")
+
+
+def test_list_requirements_summary_reports_requested_slice_and_rid_range() -> None:
+    snapshot = ToolResultSnapshot(
+        call_id="call-list-1",
+        tool_name="list_requirements",
+        status="succeeded",
+        arguments={
+            "prefix": "SYS",
+            "page": 3,
+            "per_page": 50,
+            "fields": ["title", "statement"],
+        },
+        result={
+            "document": {"prefix": "SYS", "title": "System"},
+            "total": 217,
+            "page": 3,
+            "per_page": 50,
+            "items": [
+                {"rid": "SYS101", "title": "Requirement 101"},
+                {"rid": "SYS102", "title": "Requirement 102"},
+                {"rid": "SYS150", "title": "Requirement 150"},
+            ],
+            "usage_hint": "legacy hint",
+        },
+    )
+
+    summary = summarize_tool_results([snapshot])[0]
+    assert "Document prefix: `SYS`" in summary.bullet_lines
+    assert (
+        "Requested slice: page 3, per page 50 (items 101–103 of 217)."
+        in summary.bullet_lines
+    )
+    assert "Returned requirements: 3" in summary.bullet_lines
+    assert "RID range: `SYS101` … `SYS150`" in summary.bullet_lines
+    hint_line = next(line for line in summary.bullet_lines if line.startswith("Hint:"))
+    assert "page=4" in hint_line
+    assert "items 104–153" in hint_line
+    assert all("legacy hint" not in line for line in summary.bullet_lines)

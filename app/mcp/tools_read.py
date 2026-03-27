@@ -129,9 +129,16 @@ def _build_list_pagination_hint(page: RequirementPage, returned: int) -> str:
             "or directory and try again."
         )
 
+    start_index = (page_number - 1) * requested + 1
+    if returned > 0:
+        end_index = start_index + returned - 1
+        slice_text = f"items {start_index}–{end_index} of {total}"
+    else:
+        end_index = start_index - 1
+        slice_text = f"starting from item {start_index} of {total}"
     base = (
-        f"Requested {requested} requirements on page {page_number}; received {returned} "
-        f"of {total}."
+        f"Requested page {page_number} with per_page={requested}; returned {returned} "
+        f"requirements ({slice_text})."
     )
 
     if returned == 0:
@@ -139,10 +146,13 @@ def _build_list_pagination_hint(page: RequirementPage, returned: int) -> str:
 
     if page_number * requested < total:
         next_page = page_number + 1
+        next_start = end_index + 1
+        next_end = min(total, next_start + requested - 1)
         return (
             base
-            + f" To fetch the rest, call list_requirements with page={next_page} and the same "
-            f"per_page, or set per_page={total} to retrieve everything at once."
+            + " To continue, call list_requirements with "
+            + f"page={next_page}, per_page={requested} to fetch items {next_start}–{next_end}, "
+            + f"or call page=1, per_page={total} to fetch all items at once."
         )
 
     return base + " This is the last page; no additional records are available."

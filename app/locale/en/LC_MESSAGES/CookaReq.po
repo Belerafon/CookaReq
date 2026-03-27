@@ -3275,3 +3275,21 @@ msgstr "Context: {title}"
 
 msgid "invalid shared artifacts registry"
 msgstr "invalid shared artifacts registry"
+
+msgid "Document prefix: {prefix}"
+msgstr "Document prefix: {prefix}"
+
+msgid "Requested slice: page {page}, per page {per_page} (items {start}–{end} of {total})."
+msgstr "Requested slice: page {page}, per page {per_page} (items {start}–{end} of {total})."
+
+msgid "Hint: next call `list_requirements(prefix=\"{prefix}\", page={page}, per_page={per_page})` will return items {start}–{end}."
+msgstr "Hint: next call `list_requirements(prefix=\"{prefix}\", page={page}, per_page={per_page})` will return items {start}–{end}."
+
+msgid "Requested slice: page {page}, per page {per_page}; this page has no items (total: {total})."
+msgstr "Requested slice: page {page}, per page {per_page}; this page has no items (total: {total})."
+
+msgid "Returned requirements: {count}"
+msgstr "Returned requirements: {count}"
+
+msgid "RID range: {first} … {last}"
+msgstr "RID range: {first} … {last}"

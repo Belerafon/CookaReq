@@ -100,9 +100,10 @@ def test_list_requirements_usage_hint_reports_remaining(tmp_path):
     result = list_requirements(tmp_path, prefix="SYS", per_page=1)
 
     assert result["usage_hint"].startswith(
-        "Requested 1 requirements on page 1; received 1 of 2."
+        "Requested page 1 with per_page=1; returned 1 requirements (items 1–1 of 2)."
     )
-    assert "page=2" in result["usage_hint"]
+    assert "page=2, per_page=1" in result["usage_hint"]
+    assert "items 2–2" in result["usage_hint"]
 
 
 def test_list_requirements_invalid_fields_returns_full_payload(tmp_path):

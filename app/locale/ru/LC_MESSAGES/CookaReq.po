@@ -3297,3 +3297,21 @@ msgstr "Контекст: {title}"
 
 msgid "invalid shared artifacts registry"
 msgstr "некорректный реестр общих артефактов"
+
+msgid "Document prefix: {prefix}"
+msgstr "Префикс документа: {prefix}"
+
+msgid "Requested slice: page {page}, per page {per_page} (items {start}–{end} of {total})."
+msgstr "Запрошенный диапазон: страница {page}, на страницу {per_page} (элементы {start}–{end} из {total})."
+
+msgid "Hint: next call `list_requirements(prefix=\"{prefix}\", page={page}, per_page={per_page})` will return items {start}–{end}."
+msgstr "Подсказка: следующий вызов `list_requirements(prefix=\"{prefix}\", page={page}, per_page={per_page})` вернёт элементы {start}–{end}."
+
+msgid "Requested slice: page {page}, per page {per_page}; this page has no items (total: {total})."
+msgstr "Запрошенный диапазон: страница {page}, на страницу {per_page}; на этой странице нет элементов (всего: {total})."
+
+msgid "Returned requirements: {count}"
+msgstr "Возвращено требований: {count}"
+
+msgid "RID range: {first} … {last}"
+msgstr "Диапазон RID: {first} … {last}"

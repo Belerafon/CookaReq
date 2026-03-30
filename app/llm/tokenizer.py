@@ -154,6 +154,8 @@ def count_text_tokens(text: object, *, model: str | None = None) -> TokenCountRe
                     encoding = fallback("cl100k_base")
                 except KeyError:  # pragma: no cover - defensive
                     encoding = None
+                except Exception:  # pragma: no cover - defensive
+                    encoding = None
         if encoding is not None:
             try:
                 tokens = len(encoding.encode(text_value, disallowed_special=()))

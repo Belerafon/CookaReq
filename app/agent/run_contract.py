@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import datetime
 import json
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from collections.abc import Mapping, Sequence
 
 from ..util.time import utc_now_iso
@@ -577,7 +577,7 @@ class AgentRunPayload:
     """Deterministic payload exposed as ``raw_result`` for chat entries."""
 
     ok: bool
-    status: Literal["succeeded", "failed"]
+    status: Literal["pending", "running", "succeeded", "failed"]
     result_text: str
     events: AgentEventLog = field(default_factory=AgentEventLog)
     tool_results: list[ToolResultSnapshot] = field(default_factory=list)
@@ -635,7 +635,16 @@ class AgentRunPayload:
     def from_dict(cls, payload: Mapping[str, Any]) -> AgentRunPayload:
         ok = bool(payload.get("ok"))
         status_value = payload.get("status")
-        status = "succeeded" if status_value == "succeeded" else "failed"
+        status_raw = str(status_value).strip().lower() if status_value is not None else ""
+        if status_raw in {"pending", "running", "succeeded", "failed"}:
+            status = cast(
+                Literal["pending", "running", "succeeded", "failed"],
+                status_raw,
+            )
+        elif ok:
+            status = "succeeded"
+        else:
+            status = "failed"
         result_value = payload.get("result")
         if isinstance(result_value, str):
             result_text = result_value

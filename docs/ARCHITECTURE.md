@@ -308,9 +308,7 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     updates for the same tool merge timestamps/status and synthesise missing
     events (for example, attaching error-code tags or an "Applying updates"
     placeholder) so the transcript and log export always include a coherent
-    timeline. When the LLM trace is incomplete the view model generates a
-    fallback request snapshot to keep the agent response bubble and tool log in
-    sync.
+    timeline.
   * Агент формирует канонический таймлайн `timeline` внутри
     `AgentRunPayload`: он следует порядку `event_log`, включает LLM-степы,
     вызовы инструментов и маркер завершения агента. UI получает уже
@@ -320,6 +318,12 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     LLM preview в полноценный `LlmTrace` и повторно строит таймлайн через
     `ensure_canonical_agent_payload`, чтобы сохранённый `raw_result`
     отражал фактический порядок событий без дальнейших эвристик в UI.
+    Во время стриминга pending-entry также получает канонический
+    `AgentRunPayload` на каждом входящем LLM/tool update, поэтому промежуточный
+    рендер и финальный рендер используют один и тот же путь вычисления порядка.
+    Источник событий для streaming canonicalization хранится в `_AgentRunHandle`
+    (`event_log`), чтобы порядок live-обновлений не зависел от диагностических
+    fallback-полей `ChatEntry`.
     Таймлайн используется одинаково для построения карточек
     (`_build_agent_events`) и экспорта plain-текста
     (`_entry_conversation_messages`), поэтому последовательность шагов и вызовов
@@ -332,19 +336,16 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     сохраняя последовательность `sequence` и краткие срезы полезной нагрузки.
     Дополнительно в `diagnostic.timeline_debug` записывается плоский снимок
     таймлайна (в порядке событий) с сопоставлением `llm_step`/`tool_*` записей
-    и снимков инструментов, чтобы UI больше не восстанавливал порядок
-    эвристиками. Если `timeline` отсутствует, слой UI пересобирает его из
-    согласованных `event_log`, `llm_trace` и `tool_results`, сохраняя порядок
-    `event_log` и аккуратно вставляя недостающие LLM-степы/вызовы инструментов.
-    Сортировка по времени нормализуется и устойчиво обрабатывает некорректные
-    метки, чтобы восстановление не падало на неожиданных форматах.
-    Контроллеры и тестовые хелперы обязаны подавать уже
-    канонизированный `AgentRunPayload` (согласованный `event_log`,
-    `llm_trace` и `tool_results`), используя `build_agent_timeline` для
-    фиксации порядка перед сохранением или рендерингом.
+    и снимков инструментов. Слой UI не пересобирает таймлайн из fallback-
+    источников: если в `AgentRunPayload` нет валидного `timeline`, запись
+    считается неполной и рендерится без канонического порядка шагов. Поэтому
+    контроллеры и тестовые хелперы обязаны подавать уже канонизированный
+    `AgentRunPayload` (согласованный `event_log`, `llm_trace` и
+    `tool_results`), используя `build_agent_timeline` до сохранения/рендера.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
-  status, start/finish timestamps and an ordered timeline of events. The LLM
+  status (`pending`/`running`/`succeeded`/`failed`), start/finish timestamps
+  and an ordered timeline of events. The LLM
   trace records each request/response pair so the UI can present the turn
   without guessing which payload belongs to which step.
 * The transcript view (`SegmentListView`, `TurnCard`, `MessageSegmentPanel`)

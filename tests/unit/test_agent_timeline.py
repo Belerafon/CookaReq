@@ -491,6 +491,22 @@ def test_agent_run_payload_derives_checksum_when_missing_from_payload() -> None:
     assert parsed.timeline_checksum == timeline_checksum(timeline)
 
 
+def test_agent_run_payload_preserves_running_status_from_payload() -> None:
+    payload = AgentRunPayload.from_dict(
+        {
+            "ok": True,
+            "status": "running",
+            "result": "",
+            "events": {"events": []},
+            "llm_trace": {"steps": []},
+            "timeline": [],
+        }
+    )
+
+    assert payload.status == "running"
+    assert payload.ok is True
+
+
 def test_assess_timeline_integrity_detects_mismatch_and_gaps() -> None:
     timeline = (
         AgentTimelineEntry(

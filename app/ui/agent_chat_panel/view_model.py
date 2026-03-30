@@ -21,7 +21,6 @@ from ...agent.timeline_utils import (
     assess_timeline_integrity,
     timeline_checksum,
 )
-from ...agent.run_contract import build_agent_timeline
 from ..text import normalize_for_display
 from ...util.time import utc_now_iso
 from .history_utils import (
@@ -390,11 +389,10 @@ def _agent_timeline_fingerprint(
         return ("timeline", len(payload.timeline), checksum)
 
     return (
-        "fallback",
+        "missing",
         integrity.status,
         integrity.checksum or payload.timeline_checksum if payload is not None else None,
-        len(tool_snapshots),
-        len(llm_trace.steps),
+        len(payload.timeline) if payload is not None else 0,
     )
 
 
@@ -427,47 +425,15 @@ def _collect_agent_sources(
     reasoning_source: Any
 
     if payload is None:
-        tool_snapshots = tool_snapshots_from(entry.tool_results or raw_result)
-        reasoning_source = entry.reasoning or (
-            diagnostic_payload.get("reasoning") if diagnostic_payload else None
-        )
-        if diagnostic_payload and isinstance(diagnostic_payload, Mapping):
-            diagnostic_event_log = diagnostic_payload.get("event_log")
-            if isinstance(diagnostic_event_log, Sequence):
-                try:
-                    event_log = AgentEventLog.from_dict({"events": diagnostic_event_log})
-                except Exception:
-                    event_log = AgentEventLog()
-        llm_trace = _build_llm_trace_from_diagnostic(
-            diagnostic_payload,
-            prompt_timestamp=prompt_timestamp,
-            response_timestamp=response_timestamp,
-        )
-        if llm_trace is None:
-            llm_trace = LlmTrace()
+        tool_snapshots = ()
+        reasoning_source = entry.reasoning
+        llm_trace = LlmTrace()
         final_text = entry.display_response or entry.response or ""
     else:
         event_log = payload.events
-        if not event_log.events and diagnostic_payload:
-            diagnostic_event_log = diagnostic_payload.get("event_log")
-            if isinstance(diagnostic_event_log, Sequence):
-                try:
-                    event_log = AgentEventLog.from_dict({"events": diagnostic_event_log})
-                except Exception:
-                    event_log = payload.events
         tool_snapshots = payload.tool_results
-        reasoning_source = payload.reasoning or (
-            diagnostic_payload.get("reasoning") if diagnostic_payload else None
-        )
+        reasoning_source = payload.reasoning
         llm_trace = payload.llm_trace
-        if not llm_trace.steps:
-            fallback_trace = _build_llm_trace_from_diagnostic(
-                diagnostic_payload,
-                prompt_timestamp=prompt_timestamp,
-                response_timestamp=response_timestamp,
-            )
-            if fallback_trace is not None:
-                llm_trace = fallback_trace
         final_text = (
             entry.display_response
             or payload.result_text
@@ -492,7 +458,6 @@ def _collect_agent_sources(
 def _resolve_agent_timeline(
     entry: ChatEntry,
     payload: AgentRunPayload | None,
-    event_log: AgentEventLog,
     tool_snapshots: Sequence[ToolResultSnapshot],
     llm_trace: LlmTrace,
     *,
@@ -516,33 +481,6 @@ def _resolve_agent_timeline(
     if payload is not None and payload.timeline and integrity.status == "valid":
         timeline_entries = tuple(payload.timeline)
         source = "payload"
-        if llm_trace.steps and not any(
-            entry.kind == "llm_step" for entry in timeline_entries
-        ):
-            timeline_entries = ()
-        if tool_snapshots and not any(
-            entry.kind == "tool_call" for entry in timeline_entries
-        ):
-            timeline_entries = ()
-    elif payload is not None and payload.timeline:
-        source = "payload"
-
-    if not timeline_entries:
-        reconstructed = build_agent_timeline(
-            event_log,
-            tool_results=tool_snapshots,
-            llm_trace=llm_trace,
-        )
-        if reconstructed:
-            timeline_entries = tuple(reconstructed)
-            timeline_integrity = assess_timeline_integrity(
-                timeline_entries,
-                declared_checksum=payload.timeline_checksum
-                if payload is not None
-                else entry.timeline_checksum,
-            )
-            timeline_status = timeline_integrity.status
-            source = "payload"
 
     cache["agent_timeline_entries_fingerprint"] = fingerprint
     cache["agent_timeline_entries"] = (timeline_entries, source, timeline_status)
@@ -596,7 +534,6 @@ def _build_agent_turn(
     timeline_entries, timeline_source, timeline_status = _resolve_agent_timeline(
         entry,
         payload,
-        event_log,
         tool_snapshots,
         llm_trace,
         integrity=integrity,

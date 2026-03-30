@@ -204,3 +204,25 @@ def test_record_tool_snapshot_ignores_invalid_payload() -> None:
 
     assert [snapshot.call_id for snapshot in ordered] == ["tool-1"]
     assert "tool-2" not in handle.tool_snapshots
+
+
+def test_record_event_sets_sequence_and_fallback_timestamp() -> None:
+    handle = _handle()
+
+    handle.record_event(
+        kind="llm_step",
+        payload={"index": 1},
+        occurred_at="",
+    )
+    handle.record_event(
+        kind="tool_result",
+        payload={"call_id": "tool-1"},
+        occurred_at="2025-10-02T08:00:00+00:00",
+    )
+
+    assert len(handle.event_log.events) == 2
+    first, second = handle.event_log.events
+    assert first.sequence == 0
+    assert second.sequence == 1
+    assert isinstance(first.occurred_at, str) and first.occurred_at.strip()
+    assert second.occurred_at == "2025-10-02T08:00:00+00:00"

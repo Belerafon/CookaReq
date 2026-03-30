@@ -355,5 +355,10 @@ class AgentChatHistory:
                 self._store.path,
             )
 
+    # ------------------------------------------------------------------
+    def stored_conversation_ids(self) -> set[str]:
+        """Return conversation ids currently present in the persistent store."""
+        return self._store.conversation_ids()
+
 
 __all__ = ["AgentChatHistory"]

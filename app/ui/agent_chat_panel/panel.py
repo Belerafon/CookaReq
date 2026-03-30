@@ -1827,6 +1827,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             handle.pending_entry = None
             handle.tool_snapshots.clear()
             handle.tool_order.clear()
+            handle.event_log.events.clear()
             handle.latest_llm_response = None
             handle.latest_reasoning_segments = None
             should_render = True
@@ -2752,6 +2753,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.pending_entry = None
         handle.tool_snapshots.clear()
         handle.tool_order.clear()
+        handle.event_log.events.clear()
         self._save_history_to_store()
         self._notify_history_changed()
 
@@ -2768,6 +2770,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             handle.tool_snapshots.clear()
             handle.tool_order.clear()
             handle.llm_trace_preview.clear()
+            handle.event_log.events.clear()
             self._request_transcript_refresh(force=True, immediate=True)
             batch_section = self._batch_section
             if batch_section is not None:
@@ -2894,6 +2897,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         handle.tool_snapshots.clear()
         handle.tool_order.clear()
         handle.llm_trace_preview.clear()
+        handle.event_log.events.clear()
         handle.latest_llm_response = None
         handle.latest_reasoning_segments = None
         batch_section = self._batch_section
@@ -3434,6 +3438,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         entry_id = self._entry_identifier(conversation, entry)
         if not tool_results:
             entry.tool_results = None
+            self._refresh_pending_entry_payload(entry, handle)
             self._request_transcript_refresh(
                 conversation=conversation,
                 entry_ids=[entry_id] if entry_id else None,
@@ -3473,14 +3478,13 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
 
         cloned_results = tool_snapshot_dicts(snapshots)
         for snapshot in snapshots:
-            self._append_event_log(
-                entry,
+            handle.record_event(
                 kind="tool_result",
                 payload=snapshot.to_dict(),
                 occurred_at=snapshot.last_observed_at or snapshot.started_at,
-                source="tool_stream",
             )
         entry.tool_results = cloned_results if cloned_results else None
+        self._refresh_pending_entry_payload(entry, handle)
         self._request_transcript_refresh(
             conversation=conversation,
             entry_ids=[entry_id] if entry_id else None,
@@ -3506,12 +3510,10 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         occurred_value = payload.get("occurred_at") or payload.get("timestamp")
         if isinstance(occurred_value, str) and occurred_value.strip():
             occurred_at = occurred_value
-        self._append_event_log(
-            entry,
+        handle.record_event(
             kind="llm_step",
             payload=payload,
             occurred_at=occurred_at,
-            source="llm_stream",
         )
         response_payload = payload.get("response")
         updated = False
@@ -3536,6 +3538,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 handle.latest_reasoning_segments = reasoning_segments
                 updated = True
         if updated:
+            self._refresh_pending_entry_payload(entry, handle)
             conversation = self._get_conversation_by_id(handle.conversation_id)
             entry_id = self._entry_identifier(conversation, entry)
             self._request_transcript_refresh(
@@ -3543,6 +3546,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
                 entry_ids=[entry_id] if entry_id else None,
                 force=entry_id is None,
             )
+
+    def _refresh_pending_entry_payload(
+        self,
+        entry: ChatEntry,
+        handle: _AgentRunHandle,
+    ) -> None:
+        """Rebuild canonical running payload for an in-flight entry."""
+
+        event_log = AgentEventLog(events=[event for event in handle.event_log.events])
+
+        snapshots = tuple(tool_snapshots_from(entry.tool_results))
+        if not snapshots:
+            snapshots = tuple(handle.tool_snapshots.values())
+
+        payload = AgentRunPayload(
+            ok=True,
+            status="running",
+            result_text=entry.display_response or entry.response or "",
+            events=event_log,
+            reasoning=list(entry.reasoning or ()),
+            tool_results=list(snapshots),
+            llm_trace=LlmTrace(),
+            tool_schemas=None,
+            diagnostic=None,
+        )
+        canonical_payload = ensure_canonical_agent_payload(
+            payload,
+            tool_snapshots=snapshots,
+            llm_trace_preview=handle.llm_trace_preview,
+        )
+        entry.raw_result = canonical_payload.to_dict()
+        entry.refresh_timeline_metadata()
 
     def _update_entry_llm_steps(
         self, entry: ChatEntry, payload: Mapping[str, Any]

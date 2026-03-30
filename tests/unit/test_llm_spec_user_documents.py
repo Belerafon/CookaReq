@@ -61,3 +61,34 @@ def test_system_prompt_mentions_user_document_guidance() -> None:
     assert "encoding" in prompt
     assert "clamped_to_limit" in prompt
     assert "continuation_hint" in prompt
+
+
+def test_requirement_tool_fields_are_arrays_not_strings() -> None:
+    for tool_name in ("list_requirements", "get_requirement", "search_requirements"):
+        entry = _tool_entry(tool_name)
+        params = entry["parameters"]  # type: ignore[index]
+        properties = params["properties"]  # type: ignore[index]
+        fields = properties["fields"]  # type: ignore[index]
+        assert fields["type"] == ["array", "null"]
+
+
+def test_system_prompt_mentions_pagination_follow_up_guidance() -> None:
+    prompt = SYSTEM_PROMPT
+    assert "usage_hint" in prompt
+    assert "incrementing `page`" in prompt
+    assert "never as a JSON-encoded string" in prompt
+    assert "Pagination is 1-based" in prompt
+    assert "from page 1 to page 2" in prompt
+
+
+def test_requirement_tool_pagination_defaults_are_explicit() -> None:
+    for tool_name in ("list_requirements", "search_requirements"):
+        entry = _tool_entry(tool_name)
+        params = entry["parameters"]  # type: ignore[index]
+        properties = params["properties"]  # type: ignore[index]
+        page = properties["page"]  # type: ignore[index]
+        per_page = properties["per_page"]  # type: ignore[index]
+        assert page["minimum"] == 1
+        assert page["default"] == 1
+        assert per_page["minimum"] == 1
+        assert per_page["default"] == 50

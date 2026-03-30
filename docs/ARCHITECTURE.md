@@ -221,8 +221,14 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   and `tokenizer.py` estimates prompt size. The parser also tolerates malformed
   tool arguments (concatenated fragments, unescaped control characters) and can
   synthesise assistant text from reasoning segments when the model responds with
-  tool calls only. The package is designed so new providers can be introduced
-  behind the same `LLMClient` API.
+  tool calls only. The shared tool spec (`spec.py`) keeps requirement listing
+  contracts strict (`fields` must be JSON arrays, not stringified JSON) and
+  explicitly instructs the model to advance pagination (`page` increments driven
+  by `usage_hint` / `total,page,per_page`) instead of repeatedly requesting the
+  first page. Pagination semantics are fixed as 1-based with explicit defaults
+  (`page=1`, `per_page=50`) in the tool schema to reduce ambiguity in model
+  tool calls. The package is designed so new providers can be introduced behind
+  the same `LLMClient` API.
 * **MCP server (`app/mcp/`)** — `server.py` now focuses on FastAPI endpoint
   wiring, auth middleware, and uvicorn lifecycle. Supporting infrastructure is
   split into `service_cache.py` (thread-safe `RequirementsService` cache by base

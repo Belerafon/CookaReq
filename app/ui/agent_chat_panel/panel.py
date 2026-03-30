@@ -967,6 +967,7 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
             if conv.conversation_id not in ids_to_remove
         ]
         self._session.history.set_conversations(remaining)
+        self._session.history.mark_structure_dirty()
         if self.conversations:
             if self.active_conversation_id not in {
                 conv.conversation_id for conv in self.conversations
@@ -978,12 +979,38 @@ class AgentChatPanel(ConfirmPreferencesMixin, wx.Panel):
         else:
             self._set_active_conversation_id(None)
         self._save_history_to_store()
+        self._ensure_deleted_conversations_persisted(ids_to_remove)
         if total_before and len(ids_to_remove) >= total_before:
             self._session.history.compact_store()
         self._notify_history_changed()
         if removed_active:
             self.input.SetValue("")
         self.input.SetFocus()
+
+    def _ensure_deleted_conversations_persisted(self, removed_ids: set[str]) -> None:
+        """Verify deleted conversation ids are absent from disk and retry if needed."""
+        if not removed_ids:
+            return
+        store_ids = self._session.history.stored_conversation_ids()
+        stale_ids = removed_ids & store_ids
+        if not stale_ids:
+            return
+        logger.error(
+            "Deleted agent chat conversations still present in store %s: %s. Retrying full history sync.",
+            self.history_path,
+            sorted(stale_ids),
+        )
+        self._session.history.mark_all_conversations_dirty()
+        self._session.history.mark_structure_dirty()
+        self._save_history_to_store()
+        retried_store_ids = self._session.history.stored_conversation_ids()
+        lingering_ids = removed_ids & retried_store_ids
+        if lingering_ids:
+            logger.error(
+                "Failed to remove agent chat conversations from persistent store %s after retry: %s",
+                self.history_path,
+                sorted(lingering_ids),
+            )
 
     def cancel_agent_run(self) -> _AgentRunHandle | None:
         """Abort the current agent run and reconcile the transcript."""

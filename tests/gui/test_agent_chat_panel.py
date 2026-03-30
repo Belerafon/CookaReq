@@ -6106,6 +6106,33 @@ def test_agent_chat_panel_persists_between_instances(tmp_path, wx_app):
     destroy_panel(frame2, panel2)
 
 
+def test_agent_chat_panel_deleted_chat_does_not_reappear_after_restart(tmp_path, wx_app):
+    class EchoAgent:
+        def run_command(self, text, *, history=None, context=None, cancellation=None, on_tool_result=None, on_llm_step=None):
+            return {"ok": True, "error": None, "result": text}
+
+    wx, frame1, panel1 = create_panel(tmp_path, wx_app, EchoAgent())
+    panel1.input.SetValue("chat to delete")
+    panel1._on_send(None)
+    flush_wx_events(wx)
+
+    assert panel1.history_list.GetItemCount() == 1
+    panel1._remove_conversations([panel1.conversations[0]])
+    flush_wx_events(wx)
+    assert panel1.history_list.GetItemCount() == 0
+    destroy_panel(frame1, panel1)
+
+    metadata, conversations = read_history_database(history_db_path(tmp_path))
+    assert metadata.get("active_id") in (None, "")
+    assert conversations == []
+
+    wx, frame2, panel2 = create_panel(tmp_path, wx_app, EchoAgent())
+    assert panel2.history == []
+    assert panel2.history_list.GetItemCount() == 1
+    assert panel2.conversations[0].entries == []
+    destroy_panel(frame2, panel2)
+
+
 def test_agent_chat_panel_handles_invalid_history(tmp_path, wx_app):
     wx = pytest.importorskip("wx")
     from app.ui.agent_chat_panel import AgentChatPanel

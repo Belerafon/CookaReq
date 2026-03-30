@@ -231,6 +231,29 @@ class HistoryStore:
         return ids
 
     # ------------------------------------------------------------------
+    def conversation_ids(self) -> set[str]:
+        """Return identifiers currently persisted in the conversations table."""
+        if not self._path.exists():
+            return set()
+        try:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                rows = conn.execute("SELECT id FROM conversations").fetchall()
+        except sqlite3.Error:  # pragma: no cover - defensive logging
+            logger.exception(
+                "Failed to read persisted conversation identifiers from %s",
+                self._path,
+            )
+            return set()
+
+        ids: set[str] = set()
+        for row in rows:
+            value = row["id"] if isinstance(row, sqlite3.Row) else (row[0] if row else None)
+            if isinstance(value, str) and value:
+                ids.add(value)
+        return ids
+
+    # ------------------------------------------------------------------
     def save(
         self,
         conversations: Iterable[ChatConversation],

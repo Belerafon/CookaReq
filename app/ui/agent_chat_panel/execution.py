@@ -9,9 +9,10 @@ from collections.abc import Callable
 
 from concurrent.futures import Future, ThreadPoolExecutor
 
-from ...agent.run_contract import ToolResultSnapshot
+from ...agent.run_contract import AgentEvent, AgentEventLog, ToolResultSnapshot
 from ...util.cancellation import CancellationEvent
 from ...llm.tokenizer import TokenCountResult
+from ...util.time import utc_now_iso
 
 
 class AgentCommandExecutor(Protocol):
@@ -60,6 +61,7 @@ class _AgentRunHandle:
     latest_llm_response: str | None = None
     latest_reasoning_segments: tuple[dict[str, str], ...] | None = None
     llm_trace_preview: list[dict[str, Any]] = field(default_factory=list)
+    event_log: AgentEventLog = field(default_factory=AgentEventLog)
 
     @property
     def is_cancelled(self) -> bool:
@@ -135,6 +137,25 @@ class _AgentRunHandle:
         if call_id not in self.tool_order:
             self.tool_order.append(call_id)
         return tuple(self.tool_snapshots[identifier] for identifier in self.tool_order)
+
+    def record_event(
+        self,
+        *,
+        kind: str,
+        payload: Mapping[str, Any] | None = None,
+        occurred_at: str | None = None,
+    ) -> None:
+        sequence = len(self.event_log.events)
+        event_payload = dict(payload) if isinstance(payload, Mapping) else {}
+        timestamp = str(occurred_at or "").strip() or utc_now_iso()
+        self.event_log.events.append(
+            AgentEvent(
+                kind=kind,
+                occurred_at=timestamp,
+                payload=event_payload,
+                sequence=sequence,
+            )
+        )
 
 
 __all__ = [

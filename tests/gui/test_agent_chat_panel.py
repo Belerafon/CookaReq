@@ -2580,24 +2580,48 @@ def test_turn_card_attaches_tools_to_stream_only_response(wx_app):
             response_at=None,
             tool_results=[
                 {
+                    "call_id": "call-1",
                     "tool_name": "demo_tool",
-                    "status": "completed",
+                    "status": "succeeded",
+                    "started_at": "2025-01-01T10:01:01+00:00",
                     "completed_at": "2025-01-01T10:01:05+00:00",
                     "result": {"ok": True},
                 }
             ],
             raw_payload={
-                "diagnostic": {
-                    "llm_steps": [
+                "ok": True,
+                "status": "succeeded",
+                "result_text": "",
+                "events": {"events": []},
+                "llm_trace": {
+                    "steps": [
                         {
-                            "step": 1,
+                            "index": 1,
+                            "occurred_at": response_ts,
+                            "request": [{"role": "user", "content": "hi"}],
                             "response": {
                                 "content": "Streamed answer",
-                                "timestamp": response_ts,
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "name": "demo_tool",
+                                        "arguments": {},
+                                    }
+                                ],
                             },
                         }
                     ]
-                }
+                },
+                "tool_results": [
+                    {
+                        "call_id": "call-1",
+                        "tool_name": "demo_tool",
+                        "status": "succeeded",
+                        "started_at": "2025-01-01T10:01:01+00:00",
+                        "completed_at": "2025-01-01T10:01:05+00:00",
+                        "result": {"ok": True},
+                    }
+                ],
             },
         )
         panel = render_turn_card(
@@ -2685,7 +2709,8 @@ def test_turn_card_shows_reasoning_for_each_step(wx_app):
         raw_payload = {
             "ok": True,
             "status": "succeeded",
-            "result": "done",
+            "result_text": "done",
+            "events": {"events": []},
             "llm_trace": {
                 "steps": [
                     {
@@ -2727,6 +2752,13 @@ def test_turn_card_shows_reasoning_for_each_step(wx_app):
                     "started_at": "2025-01-01T10:00:20+00:00",
                     "completed_at": "2025-01-01T10:00:25+00:00",
                 },
+            ],
+            "timeline": [
+                {"kind": "llm_step", "sequence": 0, "occurred_at": "2025-01-01T10:00:00+00:00", "step_index": 1},
+                {"kind": "tool_call", "sequence": 1, "occurred_at": "2025-01-01T10:00:10+00:00", "call_id": "call-1", "status": "succeeded", "step_index": 1},
+                {"kind": "llm_step", "sequence": 2, "occurred_at": "2025-01-01T10:00:25+00:00", "step_index": 2},
+                {"kind": "tool_call", "sequence": 3, "occurred_at": "2025-01-01T10:00:30+00:00", "call_id": "call-2", "status": "succeeded", "step_index": 2},
+                {"kind": "agent_finished", "sequence": 4, "occurred_at": "2025-01-01T10:00:40+00:00"},
             ],
         }
         conversation, entry_timeline = build_entry_timeline(
@@ -2883,7 +2915,8 @@ def test_turn_card_orders_tools_by_timestamp_without_event_log(wx_app):
         raw_payload = {
             "ok": True,
             "status": "succeeded",
-            "result": "done",
+            "result_text": "done",
+            "events": {"events": []},
             "llm_trace": {
                 "steps": [
                     {
@@ -2925,6 +2958,13 @@ def test_turn_card_orders_tools_by_timestamp_without_event_log(wx_app):
                     "started_at": "2025-01-01T10:00:30+00:00",
                     "completed_at": "2025-01-01T10:00:35+00:00",
                 },
+            ],
+            "timeline": [
+                {"kind": "llm_step", "sequence": 0, "occurred_at": "2025-01-01T10:00:00+00:00", "step_index": 1},
+                {"kind": "tool_call", "sequence": 1, "occurred_at": "2025-01-01T10:00:10+00:00", "call_id": "call-1", "status": "succeeded", "step_index": 1},
+                {"kind": "llm_step", "sequence": 2, "occurred_at": "2025-01-01T10:00:25+00:00", "step_index": 2},
+                {"kind": "tool_call", "sequence": 3, "occurred_at": "2025-01-01T10:00:30+00:00", "call_id": "call-2", "status": "succeeded", "step_index": 2},
+                {"kind": "agent_finished", "sequence": 4, "occurred_at": "2025-01-01T10:00:40+00:00"},
             ],
         }
 
@@ -3139,11 +3179,10 @@ def test_turn_card_orders_sections(wx_app):
         prompt_ts = "2024-06-11 18:41:03"
         response_ts = "2024-06-11 18:42:07"
         raw_payload = {
-            "llm_message": {
-                "id": "msg-1",
-                "content": "assistant reply",
-                "role": "assistant",
-            },
+            "ok": True,
+            "status": "succeeded",
+            "result_text": "assistant",
+            "events": {"events": []},
             "reasoning": [{"type": "analysis", "text": "think"}],
             "llm_trace": {
                 "steps": [
@@ -3158,6 +3197,21 @@ def test_turn_card_orders_sections(wx_app):
                     }
                 ]
             },
+            "tool_results": [
+                {
+                    "call_id": "call-1",
+                    "tool_name": "demo_tool",
+                    "status": "succeeded",
+                    "started_at": "2025-09-30T20:50:10+00:00",
+                    "completed_at": "2025-09-30T20:50:11+00:00",
+                    "result": {"status": "ok"},
+                }
+            ],
+            "timeline": [
+                {"kind": "llm_step", "sequence": 0, "occurred_at": "2024-06-11T18:41:03+00:00", "step_index": 1},
+                {"kind": "tool_call", "sequence": 1, "occurred_at": "2025-09-30T20:50:10+00:00", "call_id": "call-1", "status": "succeeded", "step_index": 1},
+                {"kind": "agent_finished", "sequence": 2, "occurred_at": "2024-06-11T18:42:07+00:00"},
+            ],
         }
         tool_payload = {
             "tool_name": "demo_tool",
@@ -3190,7 +3244,7 @@ def test_turn_card_orders_sections(wx_app):
 
         bubbles = collect_message_bubbles(panel)
         reasoning_bubbles = find_reasoning_bubbles(panel, entry_timeline.entry_id)
-        assert len(bubbles) == 4
+        assert len(bubbles) == 5
 
         user_bubble = next(b for b in bubbles if "You" in bubble_header_text(b))
         assert "You" in bubble_header_text(user_bubble)
@@ -4207,9 +4261,16 @@ def test_tool_summary_includes_llm_exchange(wx_app):
                 }
             ],
             raw_payload={
-                "diagnostic": {
-                    "llm_steps": [
+                "ok": False,
+                "status": "failed",
+                "result_text": "Agent answer",
+                "events": {"events": []},
+                "llm_trace": {
+                    "steps": [
                         {
+                            "index": 1,
+                            "occurred_at": "2025-01-01T09:59:35+00:00",
+                            "request": [{"role": "user", "content": "update title"}],
                             "response": {
                                 "content": "Applying updates",
                                 "tool_calls": [
@@ -4223,10 +4284,29 @@ def test_tool_summary_includes_llm_exchange(wx_app):
                                         },
                                     }
                                 ],
-                            }
+                            },
                         }
                     ]
-                }
+                },
+                "tool_results": [
+                    {
+                        "tool_name": "update_requirement_field",
+                        "tool_call_id": "call-1",
+                        "call_id": "call-1",
+                        "started_at": "2025-01-01T09:59:30+00:00",
+                        "completed_at": "2025-01-01T09:59:45+00:00",
+                        "status": "failed",
+                        "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "Missing rid",
+                        },
+                    }
+                ],
+                "timeline": [
+                    {"kind": "llm_step", "sequence": 0, "occurred_at": "2025-01-01T09:59:35+00:00", "step_index": 1},
+                    {"kind": "tool_call", "sequence": 1, "occurred_at": "2025-01-01T09:59:30+00:00", "call_id": "call-1", "status": "failed", "step_index": 1},
+                    {"kind": "agent_finished", "sequence": 2, "occurred_at": "2025-01-01T10:01:00+00:00"},
+                ],
             },
         )
 
@@ -5238,11 +5318,12 @@ def test_agent_chat_panel_cancellation_preserves_llm_step(tmp_path, wx_app):
         assert _("Generation cancelled") in display_text
         assert entry.reasoning
         assert entry.reasoning[0]["text"] == "Перевести требование"
-        diagnostic = entry.raw_result["diagnostic"]
-        assert "llm_steps" in diagnostic
-        steps = diagnostic["llm_steps"]
-        assert isinstance(steps, list) and steps
-        assert steps[0]["response"]["content"] == "Initial translation plan"
+        raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else {}
+        payload = AgentRunPayload.from_dict(raw_result)
+        assert payload.llm_trace.steps
+        assert payload.llm_trace.steps[0].response.get("content") == "Initial translation plan"
+        assert any(event.kind == "llm_step" for event in payload.timeline)
+        assert entry.timeline_status == "valid"
     finally:
         if frame is not None and panel is not None:
             destroy_panel(frame, panel)
@@ -6315,6 +6396,12 @@ def test_handle_streamed_tool_results_coalesces_renders(
     assert not force
     expected_entry = panel._entry_identifier(conversation, entry)
     assert updated_entries == [expected_entry]
+    raw_result = entry.raw_result if isinstance(entry.raw_result, Mapping) else {}
+    parsed_payload = AgentRunPayload.from_dict(raw_result)
+    assert parsed_payload.status == "running"
+    assert parsed_payload.tool_results
+    assert any(event.kind == "tool_call" for event in parsed_payload.timeline)
+    assert entry.timeline_status in {"valid", "unknown"}
 
     destroy_panel(frame, panel)
 

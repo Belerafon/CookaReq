@@ -78,7 +78,7 @@ SYSTEM_PROMPT = (
         - Modifiability — structure requirements so they can be updated efficiently, with manageable versions, configurations, and change requests.
         If the prompt is purely conversational or the user already supplied the exact text that needs to be translated, reply in natural language without calling a tool, matching the language used in the user request. When the request involves translating, summarising, or otherwise rewriting requirements referenced only by RID or context summaries, call `get_requirement` first to fetch their latest statements before answering.
         If fulfilling the request requires multiple steps, analyse the problem first, outline a plan, execute the steps in order, verify the outcome after each critical stage, adjust the plan if verification fails, and report the final result along with any limitations.
-        When listing or searching requirements you may combine filters. `list_requirements` requires the `prefix` of the requirements document you want to inspect (for example, `SYS`). The system instructions include a "Requirements documents" section listing every available prefix with its requirement count—choose one of those values. Optional filters: `page`, `per_page`, `status`, `labels` and `fields`. `search_requirements` accepts `query`, `labels`, `status`, `page`, `per_page` and `fields`. Use `fields` to limit the payload to specific requirement attributes; the `rid` is always included even when not requested. Provide `fields` as an array of field names—the server falls back to the full payload when the value is malformed. Status values: draft, in_review, approved, baselined, retired, rejected, deferred, superseded, needs_clarification — always use these lowercase codes even when the user provides alternative wording or another language. Labels must be arrays of strings.
+        When listing or searching requirements you may combine filters. `list_requirements` requires the `prefix` of the requirements document you want to inspect (for example, `SYS`). The system instructions include a "Requirements documents" section listing every available prefix with its requirement count—choose one of those values. Optional filters: `page`, `per_page`, `status`, `labels` and `fields`. `search_requirements` accepts `query`, `labels`, `status`, `page`, `per_page` and `fields`. Pagination is 1-based: page 1 is the first page; when omitted, default to `page=1` and `per_page=50`. Use `fields` to limit the payload to specific requirement attributes; the `rid` is always included even when not requested. Provide `fields` strictly as a JSON array of field names (never as a JSON-encoded string). When list/search responses report additional pages via `usage_hint` or the `total/page/per_page` values, request the next page explicitly by incrementing `page` (for example, from page 1 to page 2) instead of repeating page 1. Keep `per_page` stable across follow-up pages unless the user asks to change it. Status values: draft, in_review, approved, baselined, retired, rejected, deferred, superseded, needs_clarification — always use these lowercase codes even when the user provides alternative wording or another language. Labels must be arrays of strings.
         When editing a requirement use the specialised tools described below: `update_requirement_field` changes exactly one field at a time. Allowed field names: {editable_fields}. Provide the new content via the `value` argument as a plain string (use ISO 8601 for timestamps; send an empty string when you need to clear optional text). The server increments the revision automatically.
         `set_requirement_labels` replaces the full label list; pass an array of strings (use [] to clear all labels).
         `set_requirement_attachments` replaces attachments; supply an array of objects such as {{"id": "uuid", "path": "assets/spec.pdf", "note": "optional comment"}} or [] to remove them.
@@ -131,12 +131,14 @@ TOOLS: list[dict[str, Any]] = [
                     "page": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "page number (1-based)",
+                        "default": 1,
+                        "description": "Page number (1-based): 1 is the first page.",
                     },
                     "per_page": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "number of items per page",
+                        "default": 50,
+                        "description": "Number of items per page; default is 50.",
                     },
                     "status": {
                         "type": ["string", "null"],
@@ -149,7 +151,7 @@ TOOLS: list[dict[str, Any]] = [
                         "description": "return requirements containing all labels",
                     },
                     "fields": {
-                        "type": ["array", "string", "null"],
+                        "type": ["array", "null"],
                         "items": {"type": "string"},
                         "uniqueItems": True,
                         "description": "restrict the returned requirement fields (RID is always included)",
@@ -180,7 +182,7 @@ TOOLS: list[dict[str, Any]] = [
                         "description": "Requirement identifier or list of identifiers to load (for example, SYS12 or [\"SYS1\", \"SYS2\"]).",
                     },
                     "fields": {
-                        "type": ["array", "string", "null"],
+                        "type": ["array", "null"],
                         "items": {"type": "string"},
                         "uniqueItems": True,
                         "description": "restrict the returned fields (RID is always included)",
@@ -216,15 +218,17 @@ TOOLS: list[dict[str, Any]] = [
                     "page": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "page number (1-based)",
+                        "default": 1,
+                        "description": "Page number (1-based): 1 is the first page.",
                     },
                     "per_page": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "number of items per page",
+                        "default": 50,
+                        "description": "Number of items per page; default is 50.",
                     },
                     "fields": {
-                        "type": ["array", "string", "null"],
+                        "type": ["array", "null"],
                         "items": {"type": "string"},
                         "uniqueItems": True,
                         "description": "restrict the returned requirement fields (RID is always included)",
@@ -800,4 +804,3 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
-

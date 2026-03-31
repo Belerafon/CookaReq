@@ -2,6 +2,8 @@ from pathlib import Path
 
 from types import SimpleNamespace
 
+import wx
+
 from app.core.document_store import Document, SharedArtifact
 from app.settings import MCPSettings
 from app.ui.main_frame.documents import MainFrameDocumentsMixin
@@ -215,3 +217,47 @@ def test_is_workspace_root_export_target_matches_parent_directory(tmp_path: Path
 
     assert frame._is_workspace_root_export_target(workspace / "export.txt") is True
     assert frame._is_workspace_root_export_target(workspace / "nested" / "export.txt") is False
+
+
+def test_warn_workspace_root_export_requires_reselect(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    frame = _WorkspaceExportFrame(current_dir=workspace)
+    calls: list[tuple[str, str, int]] = []
+
+    def _message_box(message: str, title: str, style: int) -> int:
+        calls.append((message, title, style))
+        return wx.OK
+
+    monkeypatch.setattr("app.ui.main_frame.documents.wx.MessageBox", _message_box)
+
+    proceed = frame._warn_workspace_root_export(
+        target_path=workspace / "archive.zip",
+        export_label="project archive",
+    )
+
+    assert proceed is False
+    assert calls
+    _, _, style = calls[0]
+    assert style == wx.OK | wx.CANCEL | wx.ICON_WARNING
+
+
+def test_warn_workspace_root_export_cancel_aborts(tmp_path: Path, monkeypatch) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    frame = _WorkspaceExportFrame(current_dir=workspace)
+
+    monkeypatch.setattr(
+        "app.ui.main_frame.documents.wx.MessageBox",
+        lambda *_args, **_kwargs: wx.CANCEL,
+    )
+
+    proceed = frame._warn_workspace_root_export(
+        target_path=workspace / "archive.zip",
+        export_label="project archive",
+    )
+
+    assert proceed is None

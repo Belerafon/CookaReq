@@ -925,7 +925,7 @@ class MainFrameDocumentsMixin:
         target_path: Path,
         export_label: str,
     ) -> bool | None:
-        """Warn about exporting to workspace root and ask whether to continue."""
+        """Warn about exporting to workspace root and require another location."""
         if not self._is_workspace_root_export_target(target_path):
             return True
         workspace_display = _format_display_path(self.current_dir or target_path.parent)
@@ -933,17 +933,15 @@ class MainFrameDocumentsMixin:
             "The selected folder \"{folder}\" is the project workspace and already "
             "contains .cookareq and JSON requirement files.\n\n"
             "Saving {export_label} here can clutter the workspace.\n"
-            "Choose \"No\" to select another folder.\n\n"
-            "Continue saving to this folder?"
+            "Please choose another folder.\n\n"
+            "Press \"OK\" to select a different directory or \"Cancel\" to abort export."
         ).format(folder=workspace_display, export_label=export_label)
         answer = wx.MessageBox(
             message,
             _("Potential workspace clutter"),
-            style=wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
+            style=wx.OK | wx.CANCEL | wx.ICON_WARNING,
         )
-        if answer == wx.YES:
-            return True
-        if answer == wx.NO:
+        if answer == wx.OK:
             return False
         return None
 

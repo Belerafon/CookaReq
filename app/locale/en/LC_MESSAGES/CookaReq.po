@@ -3306,8 +3306,8 @@ msgstr "ZIP archive (*.zip)|*.zip"
 msgid "Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?"
 msgstr "Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?"
 
-msgid "The selected folder \"{folder}\" is the project workspace and already contains .cookareq and JSON requirement files.\n\nSaving {export_label} here can clutter the workspace.\nChoose \"No\" to select another folder.\n\nContinue saving to this folder?"
-msgstr "The selected folder \"{folder}\" is the project workspace and already contains .cookareq and JSON requirement files.\n\nSaving {export_label} here can clutter the workspace.\nChoose \"No\" to select another folder.\n\nContinue saving to this folder?"
+msgid "The selected folder \"{folder}\" is the project workspace and already contains .cookareq and JSON requirement files.\n\nSaving {export_label} here can clutter the workspace.\nPlease choose another folder.\n\nPress \"OK\" to select a different directory or \"Cancel\" to abort export."
+msgstr "The selected folder \"{folder}\" is the project workspace and already contains .cookareq and JSON requirement files.\n\nSaving {export_label} here can clutter the workspace.\nPlease choose another folder.\n\nPress \"OK\" to select a different directory or \"Cancel\" to abort export."
 
 msgid "Potential workspace clutter"
 msgstr "Potential workspace clutter"

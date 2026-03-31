@@ -193,3 +193,25 @@ def test_render_preface_header_lines_flattens_markdown_lines() -> None:
     lines = frame._render_preface_header_lines([("Spec", "# Title\n\nvalue")])
 
     assert lines == ["Context: Spec", "# Title", "value"]
+
+
+class _WorkspaceExportFrame(MainFrameDocumentsMixin):
+    def __init__(self, current_dir: Path | None) -> None:
+        self.current_dir = current_dir
+
+
+def test_recommended_export_directory_uses_sibling_folder(tmp_path: Path) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    frame = _WorkspaceExportFrame(current_dir=workspace)
+
+    assert frame._recommended_export_directory() == tmp_path / "project_exports"
+
+
+def test_is_workspace_root_export_target_matches_parent_directory(tmp_path: Path) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    frame = _WorkspaceExportFrame(current_dir=workspace)
+
+    assert frame._is_workspace_root_export_target(workspace / "export.txt") is True
+    assert frame._is_workspace_root_export_target(workspace / "nested" / "export.txt") is False

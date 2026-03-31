@@ -901,6 +901,52 @@ class MainFrameDocumentsMixin:
             return "visible"
         return "all"
 
+    def _recommended_export_directory(self: MainFrame) -> Path | None:
+        """Return non-workspace directory recommended for exports."""
+        if not self.current_dir:
+            return None
+        parent = self.current_dir.parent
+        if parent == self.current_dir:
+            return self.current_dir
+        return parent / f"{self.current_dir.name}_exports"
+
+    def _is_workspace_root_export_target(self: MainFrame, path: Path) -> bool:
+        """Return True when export target points directly to opened workspace root."""
+        if not self.current_dir:
+            return False
+        try:
+            return path.resolve().parent == self.current_dir.resolve()
+        except OSError:
+            return path.parent == self.current_dir
+
+    def _warn_workspace_root_export(
+        self: MainFrame,
+        *,
+        target_path: Path,
+        export_label: str,
+    ) -> bool | None:
+        """Warn about exporting to workspace root and ask whether to continue."""
+        if not self._is_workspace_root_export_target(target_path):
+            return True
+        workspace_display = _format_display_path(self.current_dir or target_path.parent)
+        message = _(
+            "The selected folder \"{folder}\" is the project workspace and already "
+            "contains .cookareq and JSON requirement files.\n\n"
+            "Saving {export_label} here can clutter the workspace.\n"
+            "Choose \"No\" to select another folder.\n\n"
+            "Continue saving to this folder?"
+        ).format(folder=workspace_display, export_label=export_label)
+        answer = wx.MessageBox(
+            message,
+            _("Potential workspace clutter"),
+            style=wx.YES_NO | wx.CANCEL | wx.ICON_WARNING,
+        )
+        if answer == wx.YES:
+            return True
+        if answer == wx.NO:
+            return False
+        return None
+
     def on_export_requirements(self: MainFrame, _event: wx.Event) -> None:
         """Export requirements to a text or HTML file."""
         if not (self.docs_controller and self.current_doc_prefix and self.current_dir):
@@ -933,25 +979,36 @@ class MainFrameDocumentsMixin:
             summary_parts.append(revision_label)
         document_label = " — ".join(summary_parts)
         saved_state = self.config.get_export_dialog_state(self.current_dir)
-        default_path = self.current_dir / f"{doc.prefix}_requirements.txt"
-        dlg = RequirementExportDialog(
-            self,
-            available_fields=self.available_fields,
-            selected_fields=self.selected_fields,
-            document_label=document_label,
-            default_path=default_path,
-            saved_state=saved_state,
-            default_export_scope=self._default_export_scope(),
-        )
-        try:
-            if dlg.ShowModal() != wx.ID_OK:
+        recommended_dir = self._recommended_export_directory() or self.current_dir
+        default_path = recommended_dir / f"{doc.prefix}_requirements.txt"
+        while True:
+            dlg = RequirementExportDialog(
+                self,
+                available_fields=self.available_fields,
+                selected_fields=self.selected_fields,
+                document_label=document_label,
+                default_path=default_path,
+                saved_state=saved_state,
+                default_export_scope=self._default_export_scope(),
+            )
+            try:
+                if dlg.ShowModal() != wx.ID_OK:
+                    return
+                plan = dlg.get_plan()
+                dialog_state = dlg.get_state()
+            finally:
+                dlg.Destroy()
+            if plan is None:
                 return
-            plan = dlg.get_plan()
-            dialog_state = dlg.get_state()
-        finally:
-            dlg.Destroy()
-        if plan is None:
-            return
+            proceed = self._warn_workspace_root_export(
+                target_path=plan.path,
+                export_label=_("requirements export"),
+            )
+            if proceed is True:
+                break
+            if proceed is None:
+                return
+            saved_state = dialog_state
         self.config.set_export_dialog_state(self.current_dir, dialog_state)
 
         scope_sources = {
@@ -1141,17 +1198,34 @@ class MainFrameDocumentsMixin:
         dialog = wx.FileDialog(
             self,
             message=_("Save project archive"),
-            defaultDir=str(self.current_dir),
+            defaultDir=str(self._recommended_export_directory() or self.current_dir),
             defaultFile=default_name,
             wildcard=_("ZIP archive (*.zip)|*.zip"),
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         )
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
+        while True:
+            try:
+                if dialog.ShowModal() != wx.ID_OK:
+                    return
+                archive_path = Path(dialog.GetPath())
+            finally:
+                dialog.Destroy()
+            proceed = self._warn_workspace_root_export(
+                target_path=archive_path,
+                export_label=_("project archive"),
+            )
+            if proceed is True:
+                break
+            if proceed is None:
                 return
-            archive_path = Path(dialog.GetPath())
-        finally:
-            dialog.Destroy()
+            dialog = wx.FileDialog(
+                self,
+                message=_("Save project archive"),
+                defaultDir=str(self._recommended_export_directory() or self.current_dir),
+                defaultFile=archive_path.name,
+                wildcard=_("ZIP archive (*.zip)|*.zip"),
+                style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+            )
 
         if archive_path.suffix.lower() != ".zip":
             archive_path = archive_path.with_suffix(".zip")

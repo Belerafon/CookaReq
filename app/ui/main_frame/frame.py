@@ -156,6 +156,7 @@ class MainFrame(
             on_open_folder=self.on_open_folder,
             on_import_requirements=self.on_import_requirements,
             on_export_requirements=self.on_export_requirements,
+            on_export_project_archive=self.on_export_project_archive,
             on_open_settings=self.on_open_settings,
             on_manage_labels=self.on_manage_labels,
             on_open_data_module_artifacts=self.on_open_data_module_artifacts,

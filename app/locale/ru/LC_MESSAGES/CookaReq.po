@@ -3315,3 +3315,15 @@ msgstr "Возвращено требований: {count}"
 
 msgid "RID range: {first} … {last}"
 msgstr "Диапазон RID: {first} … {last}"
+
+msgid "Export Project Archive…"
+msgstr "Экспорт архива проекта…"
+
+msgid "Save project archive"
+msgstr "Сохранить архив проекта"
+
+msgid "ZIP archive (*.zip)|*.zip"
+msgstr "ZIP-архив (*.zip)|*.zip"
+
+msgid "Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?"
+msgstr "Архив создан: {filename}\nФайлов: {count}\n\nОткрыть папку назначения?"

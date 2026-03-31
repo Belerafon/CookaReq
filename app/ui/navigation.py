@@ -25,6 +25,7 @@ class Navigation:
         on_open_folder: Callable[[wx.Event], None],
         on_import_requirements: Callable[[wx.Event], None],
         on_export_requirements: Callable[[wx.Event], None],
+        on_export_project_archive: Callable[[wx.Event], None],
         on_open_settings: Callable[[wx.Event], None],
         on_manage_labels: Callable[[wx.Event], None],
         on_open_data_module_artifacts: Callable[[wx.Event], None],
@@ -48,6 +49,7 @@ class Navigation:
         self.on_open_folder = on_open_folder
         self.on_import_requirements = on_import_requirements
         self.on_export_requirements = on_export_requirements
+        self.on_export_project_archive = on_export_project_archive
         self.on_open_settings = on_open_settings
         self.on_manage_labels = on_manage_labels
         self.on_open_data_module_artifacts = on_open_data_module_artifacts
@@ -86,6 +88,7 @@ class Navigation:
         new_item = file_menu.Append(wx.ID_NEW, _("&New Requirement\tCtrl+N"))
         import_item = file_menu.Append(wx.ID_ANY, _("&Import Requirements…"))
         export_item = file_menu.Append(wx.ID_ANY, _("&Export Requirements…"))
+        export_archive_item = file_menu.Append(wx.ID_ANY, _("Export Project Archive…"))
         self.recent_menu = wx.Menu()
         self.recent_menu_item = file_menu.AppendSubMenu(
             self.recent_menu,
@@ -99,6 +102,7 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_new_requirement, new_item)
         self.frame.Bind(wx.EVT_MENU, self.on_import_requirements, import_item)
         self.frame.Bind(wx.EVT_MENU, self.on_export_requirements, export_item)
+        self.frame.Bind(wx.EVT_MENU, self.on_export_project_archive, export_archive_item)
         self.frame.Bind(wx.EVT_MENU, self.on_open_settings, settings_item)
         self.frame.Bind(wx.EVT_MENU, self.on_manage_labels, labels_item)
         self.frame.Bind(wx.EVT_MENU, self.on_open_data_module_artifacts, data_module_artifacts_item)

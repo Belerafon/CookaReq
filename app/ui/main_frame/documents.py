@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -17,6 +18,7 @@ from ...services.requirements import (
 )
 from ...core.document_store import get_document_revision
 from ...core.requirement_import import SequentialIDAllocator, build_requirements
+from ...core.project_archive import build_project_archive_name, create_project_archive
 from ...core.requirement_tabular_export import (
     render_tabular_delimited,
 )
@@ -1120,6 +1122,60 @@ class MainFrameDocumentsMixin:
                 _("Export finished with missing context files:\n\n{details}").format(
                     details=details
                 ),
+                _("Export completed"),
+                wx.ICON_WARNING,
+            )
+
+    def on_export_project_archive(self: MainFrame, _event: wx.Event) -> None:
+        """Export entire opened requirements project directory as ZIP archive."""
+        if not (self.docs_controller and self.current_dir):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        docs = self.docs_controller.documents
+        default_name = build_project_archive_name(
+            project_dir=self.current_dir,
+            docs=docs,
+            current_prefix=self.current_doc_prefix,
+            today=date.today(),
+        )
+        dialog = wx.FileDialog(
+            self,
+            message=_("Save project archive"),
+            defaultDir=str(self.current_dir),
+            defaultFile=default_name,
+            wildcard=_("ZIP archive (*.zip)|*.zip"),
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            archive_path = Path(dialog.GetPath())
+        finally:
+            dialog.Destroy()
+
+        if archive_path.suffix.lower() != ".zip":
+            archive_path = archive_path.with_suffix(".zip")
+
+        try:
+            files_count = create_project_archive(
+                project_dir=self.current_dir,
+                output_path=archive_path,
+            )
+        except OSError as exc:
+            logger.exception("Failed to export project archive to %s", archive_path)
+            wx.MessageBox(str(exc), _("Export failed"), wx.ICON_ERROR)
+            return
+
+        if wx.MessageBox(
+            _("Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?").format(
+                filename=archive_path.name,
+                count=files_count,
+            ),
+            _("Export completed"),
+            style=wx.YES_NO | wx.ICON_QUESTION,
+        ) == wx.YES and not open_directory(archive_path.parent):
+            wx.MessageBox(
+                _("Could not open export folder:\n%s") % archive_path.parent,
                 _("Export completed"),
                 wx.ICON_WARNING,
             )

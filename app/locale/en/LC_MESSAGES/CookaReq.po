@@ -3293,3 +3293,15 @@ msgstr "Returned requirements: {count}"
 
 msgid "RID range: {first} … {last}"
 msgstr "RID range: {first} … {last}"
+
+msgid "Export Project Archive…"
+msgstr "Export Project Archive…"
+
+msgid "Save project archive"
+msgstr "Save project archive"
+
+msgid "ZIP archive (*.zip)|*.zip"
+msgstr "ZIP archive (*.zip)|*.zip"
+
+msgid "Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?"
+msgstr "Archive created: {filename}\nFiles: {count}\n\nOpen destination folder?"

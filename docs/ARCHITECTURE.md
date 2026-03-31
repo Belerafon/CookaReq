@@ -149,7 +149,13 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
   match the list view behavior. The GUI export flow writes
   outputs into a dedicated directory and copies the document `assets/` folder
   alongside the export file, then prompts the user to open the export folder
-  with the file name shown for quick access.
+  with the file name shown for quick access. In addition to requirement-level
+  exports, the File menu now supports a full-project ZIP backup flow that packs
+  the currently opened requirements root (including hidden internal folders
+  such as `.cookareq` and every document subtree) into a user-selected archive.
+  The suggested archive file name is generated from the opened project
+  directory name, the top-level document revision (`doc_revision`) and current
+  date to keep snapshots traceable.
 
 ## Application services and configuration context
 

@@ -1057,7 +1057,7 @@ def build_agent_timeline(
     if not base_entries:
         ordered_extras = sorted(
             extra_entries,
-            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=True),
+            key=lambda entry: _entry_order_key(entry, prefer_llm_steps=False),
         )
         timeline.extend(ordered_extras)
         return _normalize_sequence(timeline)

@@ -26,6 +26,9 @@ so you know which modules are involved and which regressions to guard against.
 Design alternatives for larger product changes are tracked in standalone docs
 under `docs/`. For generalized contextual-artifact linking and context-centric
 requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
+For the agent chat transcript ordering refactor (single canonical timeline
+pipeline, fallback cleanup, and regression coverage strategy), see
+`docs/AGENT_TIMELINE_STABILIZATION_PLAN.md`.
 
 ## Core domain: requirements and traceability
 
@@ -342,12 +345,12 @@ requirement exports, see `docs/ASSOCIATED_ARTIFACTS_OPTIONS.md`.
     сохраняя последовательность `sequence` и краткие срезы полезной нагрузки.
     Дополнительно в `diagnostic.timeline_debug` записывается плоский снимок
     таймлайна (в порядке событий) с сопоставлением `llm_step`/`tool_*` записей
-    и снимков инструментов. Слой UI не пересобирает таймлайн из fallback-
-    источников: если в `AgentRunPayload` нет валидного `timeline`, запись
-    считается неполной и рендерится без канонического порядка шагов. Поэтому
-    контроллеры и тестовые хелперы обязаны подавать уже канонизированный
-    `AgentRunPayload` (согласованный `event_log`, `llm_trace` и
-    `tool_results`), используя `build_agent_timeline` до сохранения/рендера.
+    и снимков инструментов. Если в `AgentRunPayload` checksum таймлайна
+    повреждён или `timeline` отсутствует, UI выполняет единичное
+    восстановление canonical timeline из `event_log`/`llm_trace`/`tool_results`
+    и помечает источник как `recovered`; восстановлённый порядок и checksum
+    сразу записываются обратно в `raw_result`, чтобы последующие рендеры и
+    экспорты больше не ходили по fallback-веткам.
 * `app/agent/run_contract.py` defines the shared schema for tool snapshots and
   LLM traces. Every streamed update carries a stable identifier, canonical
   status (`pending`/`running`/`succeeded`/`failed`), start/finish timestamps

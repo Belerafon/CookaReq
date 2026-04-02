@@ -15,6 +15,7 @@ from ...agent.run_contract import (
     LlmTrace,
     LlmStep,
     ToolResultSnapshot,
+    build_agent_timeline,
 )
 from ...agent.timeline_utils import (
     TimelineIntegrity,
@@ -125,7 +126,7 @@ class AgentTurn:
     events: tuple[AgentTimelineEvent, ...]
     event_signature: tuple[tuple[Any, ...], ...] = ()
     timeline_is_authoritative: bool = False
-    timeline_source: Literal["payload", "event_log", "missing"] = "missing"
+    timeline_source: Literal["payload", "recovered", "missing"] = "missing"
     timeline_fingerprint: tuple[Any, ...] | None = None
 
 
@@ -393,7 +394,32 @@ def _agent_timeline_fingerprint(
         integrity.status,
         integrity.checksum or payload.timeline_checksum if payload is not None else None,
         len(payload.timeline) if payload is not None else 0,
+        len(payload.events.events) if payload is not None else 0,
+        len(tool_snapshots),
+        len(llm_trace.steps),
     )
+
+
+def _recover_agent_timeline(
+    payload: AgentRunPayload | None,
+    *,
+    integrity: TimelineIntegrity,
+) -> tuple[tuple[AgentTimelineEntry, ...], bool]:
+    if payload is None:
+        return (), False
+    if integrity.status == "valid" and payload.timeline:
+        return tuple(payload.timeline), False
+    try:
+        recovered = tuple(
+            build_agent_timeline(
+                payload.events,
+                tool_results=payload.tool_results,
+                llm_trace=payload.llm_trace,
+            )
+        )
+    except Exception:
+        return (), False
+    return recovered, bool(recovered)
 
 
 def _collect_agent_sources(
@@ -462,7 +488,7 @@ def _resolve_agent_timeline(
     llm_trace: LlmTrace,
     *,
     integrity: TimelineIntegrity | None = None,
-) -> tuple[tuple[AgentTimelineEntry, ...], Literal["payload", "missing"], str]:
+) -> tuple[tuple[AgentTimelineEntry, ...], Literal["payload", "recovered", "missing"], str]:
     cache = entry._ensure_view_cache()
     integrity = integrity or _timeline_integrity(entry, payload)
     fingerprint = _agent_timeline_fingerprint(
@@ -474,13 +500,23 @@ def _resolve_agent_timeline(
     if cached_entries is not None and cached_fingerprint == fingerprint:
         return cached_entries
 
-    source: Literal["payload", "missing"] = "missing"
+    source: Literal["payload", "recovered", "missing"] = "missing"
     timeline_entries: tuple[AgentTimelineEntry, ...] = ()
     timeline_status = integrity.status
 
     if payload is not None and payload.timeline and integrity.status == "valid":
         timeline_entries = tuple(payload.timeline)
         source = "payload"
+    elif payload is not None:
+        recovered_timeline, recovered = _recover_agent_timeline(
+            payload,
+            integrity=integrity,
+        )
+        if recovered:
+            timeline_entries = recovered_timeline
+            source = "recovered"
+            timeline_status = "recovered"
+            _persist_canonical_timeline(entry, payload, timeline_entries)
 
     cache["agent_timeline_entries_fingerprint"] = fingerprint
     cache["agent_timeline_entries"] = (timeline_entries, source, timeline_status)
@@ -796,6 +832,8 @@ def _persist_canonical_timeline(
 
     if payload is not None:
         payload.timeline = list(timeline_entries)
+        payload.timeline_checksum = timeline_checksum(payload.timeline)
+    resolved_checksum = timeline_checksum(timeline_entries) if timeline_entries else None
 
     raw_result = getattr(entry, "raw_result", None)
     updated_raw: dict[str, Any]
@@ -804,11 +842,15 @@ def _persist_canonical_timeline(
     updated_raw["timeline"] = [
         timeline_entry.to_dict() for timeline_entry in timeline_entries
     ]
+    updated_raw["timeline_checksum"] = resolved_checksum
 
     if payload is not None and "events" not in updated_raw:
         updated_raw["events"] = payload.events.to_dict()
 
     entry.raw_result = updated_raw
+    if isinstance(resolved_checksum, str):
+        entry.timeline_checksum = resolved_checksum
+        entry.timeline_status = "recovered"
 
 
 def _build_final_response(
@@ -1164,7 +1206,7 @@ def _build_agent_events(
             return _build_timestamp(occurred_at, source=source)
         return current
 
-    if timeline and timeline_status == "valid":
+    if timeline and timeline_status in {"valid", "recovered"}:
         ordered_timeline = sorted(timeline, key=lambda entry: entry.sequence)
         seen_responses: set[int] = set()
         final_added = False
@@ -1310,8 +1352,24 @@ def _build_agent_events(
         for tool_call in ordered_tools
     ]
 
+    def _fallback_event_sort_key(event: AgentTimelineEvent) -> tuple[Any, ...]:
+        timestamp_key = _sort_key_for_timestamp(event.timestamp)
+        step_index: int | None = None
+        if event.kind == "response" and event.response is not None:
+            step_index = event.response.step_index
+        elif event.kind == "tool" and event.tool_call is not None:
+            step_index = event.tool_call.step_index
+        return (
+            timestamp_key,
+            step_index is None,
+            step_index if step_index is not None else 0,
+            0 if event.kind == "response" else 1,
+        )
+
     ordered_events: list[AgentTimelineEvent] = []
-    for order_index, event in enumerate(response_events + tool_events):
+    for order_index, event in enumerate(
+        sorted(response_events + tool_events, key=_fallback_event_sort_key)
+    ):
         event.order_index = order_index
         event.sequence = order_index
         ordered_events.append(event)

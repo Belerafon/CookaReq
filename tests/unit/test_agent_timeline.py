@@ -220,6 +220,62 @@ def test_build_agent_timeline_merges_tool_snapshots_without_tool_events() -> Non
     ]
 
 
+def test_build_agent_timeline_without_event_log_interleaves_steps_and_tools() -> None:
+    timeline = build_agent_timeline(
+        AgentEventLog(events=[]),
+        tool_results=[
+            ToolResultSnapshot(
+                call_id="call-1",
+                tool_name="alpha",
+                status="succeeded",
+                started_at="2024-01-01T00:00:00Z",
+                completed_at="2024-01-01T00:00:00Z",
+            ),
+            ToolResultSnapshot(
+                call_id="call-2",
+                tool_name="beta",
+                status="succeeded",
+                started_at="2024-01-01T00:00:01Z",
+                completed_at="2024-01-01T00:00:01Z",
+            ),
+        ],
+        llm_trace=LlmTrace(
+            steps=[
+                LlmStep(
+                    index=1,
+                    occurred_at="2024-01-01T00:00:00Z",
+                    request=(),
+                    response={
+                        "content": "step1",
+                        "tool_calls": [
+                            {"id": "call-1", "name": "alpha", "arguments": {}}
+                        ],
+                    },
+                ),
+                LlmStep(
+                    index=2,
+                    occurred_at="2024-01-01T00:00:01Z",
+                    request=(),
+                    response={
+                        "content": "step2",
+                        "tool_calls": [
+                            {"id": "call-2", "name": "beta", "arguments": {}}
+                        ],
+                    },
+                ),
+            ]
+        ),
+    )
+
+    assert [entry.kind for entry in timeline] == [
+        "llm_step",
+        "tool_call",
+        "llm_step",
+        "tool_call",
+    ]
+    assert [entry.step_index for entry in timeline if entry.kind == "tool_call"] == [1, 2]
+
+
 def test_build_agent_timeline_handles_invalid_timestamp() -> None:
     event_log = AgentEventLog(
         events=[
@@ -582,6 +638,6 @@ def test_build_agent_events_fallback_renders_final_response_without_timeline() -
         timeline_status="damaged",
     )
 
-    assert [event.kind for event in events] == ["response", "response", "tool"]
-    assert events[1].response is final_response
-    assert events[-1].tool_call is tool_details
+    assert [event.kind for event in events] == ["response", "tool", "response"]
+    assert events[-1].response is final_response
+    assert events[1].tool_call is tool_details

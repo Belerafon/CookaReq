@@ -102,7 +102,7 @@ def _strip_diagnostic_event_log(value: Any) -> dict[str, Any] | None:
 def _normalise_timeline_status(value: Any) -> str:
     if isinstance(value, str):
         normalised = value.strip().lower()
-        if normalised in {"valid", "damaged", "missing"}:
+        if normalised in {"valid", "damaged", "missing", "recovered"}:
             return normalised
     return "unknown"
 
@@ -453,7 +453,11 @@ class ChatEntry:
             payload.timeline, declared_checksum=declared_checksum
         )
         status = integrity.status
-        if prior_status in {"missing", "damaged"} and status == "valid":
+        if (
+            prior_status in {"missing", "damaged"}
+            and status == "valid"
+            and not payload.timeline
+        ):
             status = prior_status
         checksum = integrity.checksum or declared_checksum
 

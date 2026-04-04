@@ -246,9 +246,9 @@ def test_schema_round_trip(tmp_path, wx_app, name, value_factory, expected_facto
 def test_set_columns_sanitizes_invalid_and_duplicates(tmp_path, wx_app):
     cfg = ConfigManager(app_name="TestApp", path=tmp_path / "cfg.ini")
 
-    cfg.set_columns(["id", "bogus", "derived_from", "id"])
+    cfg.set_columns(["id", "bogus", "derived_count", "id"])
 
-    assert cfg.get_columns() == ["id", "derived_from"]
+    assert cfg.get_columns() == ["id", "derived_count"]
 
 
 def test_get_columns_filters_unknown_entries(tmp_path, wx_app):

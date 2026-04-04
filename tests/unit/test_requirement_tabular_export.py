@@ -91,21 +91,19 @@ def test_build_tabular_export_formats_special_fields():
     requirement = _make_requirement()
     headers, rows = build_tabular_export(
         [requirement],
-        ["title", "labels", "links", "derived_from", "derived_count", "id"],
+        ["title", "labels", "links", "derived_count", "id"],
         derived_map={"SYS7": [1, 2, 3]},
     )
     assert headers == [
         "Short title",
         "Labels",
         "Links",
-        "Derived from",
         "Derived count",
         "Requirement ID (number)",
     ]
     assert rows == [[
         "Title\tWith Tab",
         "alpha, beta",
-        "SYS1 ⚠",
         "SYS1 ⚠",
         "3",
         "7",

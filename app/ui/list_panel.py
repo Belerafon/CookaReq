@@ -544,14 +544,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         self._link_display_cache[rid] = base
         return base
 
-    def _first_parent_text(self, req: Requirement) -> str:
-        links = getattr(req, "links", []) or []
-        if not links:
-            return ""
-        parent = links[0]
-        rid = getattr(parent, "rid", str(parent))
-        return self._link_display_text(rid)
-
     def _set_label_text(self, index: int, col: int, labels: list[str]) -> None:
         text = ", ".join(labels)
         self.list.SetItem(index, col, text)
@@ -932,10 +924,6 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                         value = getattr(req, "id", "")
                         display = f"* {value}".strip() if is_unsaved else str(value)
                         self.list.SetItem(index, col, display)
-                        continue
-                    if field == "derived_from":
-                        value = self._first_parent_text(req)
-                        self.list.SetItem(index, col, value)
                         continue
                     if field == "links":
                         links = getattr(req, "links", [])

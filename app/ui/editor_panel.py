@@ -24,6 +24,7 @@ from ..services.requirements import (
     rid_for,
     stable_color,
 )
+from ..core.document_store.documents import is_ancestor
 from ..core.model import (
     Priority,
     Requirement,
@@ -76,6 +77,192 @@ class VerificationMethodsDialog(wx.Dialog):
             if self._checklist.IsChecked(idx):
                 selected.append(method.value)
         return selected or [Verification.NOT_DEFINED.value]
+
+
+class RequirementLinkPickerDialog(wx.Dialog):
+    """Resizable multi-select dialog for choosing linked requirement RIDs."""
+
+    _CONFIG_PREFIX = "/editor/link_picker"
+
+    def __init__(
+        self,
+        parent: wx.Window,
+        candidates: list[dict[str, str]],
+        selected_rids: set[str] | None = None,
+        current_prefix: str | None = None,
+    ):
+        super().__init__(
+            parent,
+            title=_("Select linked requirements"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER | wx.MAXIMIZE_BOX,
+        )
+        self.SetMinSize((dip(self, 920), dip(self, 620)))
+        self._all_candidates = candidates
+        self._visible_candidates: list[dict[str, str]] = []
+        self._selected_rids = {rid.strip().upper() for rid in (selected_rids or set()) if rid.strip()}
+        self._current_prefix = (current_prefix or "").strip().upper()
+        self._source_options: list[tuple[str, str]] = []
+        self._source_filter_key = "all"
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        search_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_label = wx.StaticText(self, label=_("List"))
+        self._source_choice = wx.Choice(self)
+        self._source_choice.Bind(wx.EVT_CHOICE, self._on_source_change)
+        search_row.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 8))
+        search_row.Add(self._source_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 12))
+        search_label = wx.StaticText(self, label=_("Search"))
+        self._search_ctrl = wx.TextCtrl(self)
+        self._search_ctrl.SetHint(_("RID, title, or document"))
+        self._search_ctrl.Bind(wx.EVT_TEXT, self._on_search_change)
+        search_row.Add(search_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        search_row.Add(self._search_ctrl, 1, wx.LEFT | wx.EXPAND, dip(self, 8))
+        root.Add(search_row, 0, wx.ALL | wx.EXPAND, dip(self, 10))
+
+        self._checklist = wx.CheckListBox(self)
+        root.Add(self._checklist, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
+
+        buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
+        if buttons is not None:
+            root.Add(buttons, 0, wx.ALL | wx.EXPAND, dip(self, 10))
+        self.SetSizer(root)
+
+        self._build_source_options()
+        self._apply_filter("")
+        self._restore_layout()
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+
+    @property
+    def selected_rids(self) -> list[str]:
+        selected: list[str] = []
+        for index, row in enumerate(self._visible_candidates):
+            if self._checklist.IsChecked(index):
+                selected.append(row["rid"])
+        hidden = sorted(rid for rid in self._selected_rids if rid not in {row["rid"] for row in self._visible_candidates})
+        return selected + hidden
+
+    def _read_int(self, config: wx.ConfigBase, key: str, default: int) -> int:
+        try:
+            value = config.ReadInt(f"{self._CONFIG_PREFIX}/{key}")
+        except Exception:
+            return default
+        return value if isinstance(value, int) else default
+
+    def _write_int(self, config: wx.ConfigBase, key: str, value: int) -> None:
+        config.WriteInt(f"{self._CONFIG_PREFIX}/{key}", int(value))
+
+    def _restore_layout(self) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            self.SetSize((dip(self, 1020), dip(self, 720)))
+            self.CentreOnParent()
+            return
+        width = self._read_int(config, "w", dip(self, 1020))
+        height = self._read_int(config, "h", dip(self, 720))
+        width = max(dip(self, 920), min(width, 2400))
+        height = max(dip(self, 620), min(height, 1600))
+        self.SetSize((width, height))
+        x = self._read_int(config, "x", -1)
+        y = self._read_int(config, "y", -1)
+        if x != -1 and y != -1:
+            self.SetPosition((x, y))
+            rect = self.GetRect()
+            if not any(wx.Display(i).GetGeometry().Intersects(rect) for i in range(wx.Display.GetCount())):
+                self.CentreOnParent()
+        else:
+            self.CentreOnParent()
+
+    def _save_layout(self) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            return
+        width, height = self.GetSize()
+        x, y = self.GetPosition()
+        self._write_int(config, "w", width)
+        self._write_int(config, "h", height)
+        self._write_int(config, "x", x)
+        self._write_int(config, "y", y)
+        config.Flush()
+
+    def _on_close(self, event: wx.CloseEvent) -> None:
+        self._save_layout()
+        event.Skip()
+
+    def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
+        self._save_layout()
+        return super().Destroy()
+
+    def _on_search_change(self, _event: wx.CommandEvent) -> None:
+        self._apply_filter(self._search_ctrl.GetValue())
+
+    def _on_source_change(self, _event: wx.CommandEvent) -> None:
+        index = self._source_choice.GetSelection()
+        if 0 <= index < len(self._source_options):
+            self._source_filter_key = self._source_options[index][0]
+        self._apply_filter(self._search_ctrl.GetValue())
+
+    def _build_source_options(self) -> None:
+        options: list[tuple[str, str]] = [
+            ("high", _("Higher-level requirements")),
+            ("current", _("Current document requirements")),
+            ("all", _("All allowed requirements")),
+        ]
+        self._source_options = options
+        self._source_choice.Clear()
+        for _key, label in options:
+            self._source_choice.Append(label)
+        default_key = "high"
+        has_high = any(self._matches_source_filter(row, "high") for row in self._all_candidates)
+        if not has_high:
+            default_key = "all"
+        self._source_filter_key = default_key
+        selected = next((index for index, (key, _label) in enumerate(options) if key == default_key), 0)
+        self._source_choice.SetSelection(selected)
+
+    def _matches_source_filter(self, row: dict[str, str], key: str) -> bool:
+        prefix = str(row.get("prefix", "")).strip().upper()
+        if key == "all":
+            return True
+        if key == "current":
+            if not self._current_prefix:
+                return True
+            return prefix == self._current_prefix
+        if key == "high":
+            if not self._current_prefix:
+                return True
+            return bool(prefix) and prefix != self._current_prefix
+        return True
+
+    def _apply_filter(self, query: str) -> None:
+        remembered = set(self.selected_rids)
+        text = query.strip().lower()
+        filtered_by_source = [
+            row for row in self._all_candidates if self._matches_source_filter(row, self._source_filter_key)
+        ]
+        if text:
+            self._visible_candidates = [
+                row
+                for row in filtered_by_source
+                if text in row["rid"].lower()
+                or text in row["title"].lower()
+                or text in row["document"].lower()
+            ]
+        else:
+            self._visible_candidates = list(filtered_by_source)
+        self._checklist.Clear()
+        if not self._visible_candidates:
+            self._checklist.Append(_("No requirements available"))
+            self._checklist.Enable(False)
+            return
+        self._checklist.Enable(True)
+        for index, row in enumerate(self._visible_candidates):
+            label = f"{row['rid']} — {row['title']}" if row["title"] else row["rid"]
+            scope = str(row.get("scope", "")).strip()
+            if scope:
+                label = f"{label} ({scope})"
+            self._checklist.Append(label)
+            if row["rid"] in remembered or row["rid"] in self._selected_rids:
+                self._checklist.Check(index, True)
 
 
 class EditorPanel(wx.Panel):
@@ -277,7 +464,30 @@ class EditorPanel(wx.Panel):
         container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
 
-        add_text_field("source")
+        source_spec = text_specs["source"]
+        source_links_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_row = wx.BoxSizer(wx.VERTICAL)
+        source_label_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_label = wx.StaticText(content, label=labels[source_spec.name])
+        source_help_btn = make_help_button(content, self._help_texts[source_spec.name])
+        source_label_row.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        source_label_row.Add(source_help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        source_row.Add(source_label_row, 0, wx.TOP, border)
+        source_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
+        self._bind_autosize(source_ctrl)
+        self.fields[source_spec.name] = source_ctrl
+        self._install_text_history(source_ctrl)
+        source_row.Add(source_ctrl, 0, wx.EXPAND | wx.TOP, border)
+        source_links_row.Add(source_row, 1, wx.EXPAND | wx.RIGHT, border)
+
+        links_sizer = self._create_links_section(
+            locale.field_label("links"),
+            "links",
+            help_key="links",
+        )
+        source_links_row.Add(links_sizer, 1, wx.EXPAND)
+        content_sizer.Add(source_links_row, 0, wx.EXPAND | wx.TOP, border)
+
         add_grid_field("status")
 
         labels_sizer = self._create_labels_section(content)
@@ -348,22 +558,6 @@ class EditorPanel(wx.Panel):
 
         for name in ("modified_at", "owner", "revision"):
             add_grid_field(name)
-
-        # grouped links and metadata ------------------------------------
-        links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
-        links_grid.AddGrowableCol(0, 1)
-        links_grid.AddGrowableCol(1, 1)
-        links_grid.AddGrowableRow(0, 1)
-
-        # generic links section ----------------------------------------
-        ln_sizer = self._create_links_section(
-            locale.field_label("links"),
-            "links",
-            help_key="links",
-        )
-        links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.TOP, border)
-
-        content_sizer.Add(links_grid, 0, wx.EXPAND | wx.TOP, border)
 
         for name in ("type", "priority"):
             add_grid_field(name)
@@ -785,44 +979,23 @@ class EditorPanel(wx.Panel):
         )
         box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
-        id_ctrl = wx.TextCtrl(box)
-        id_ctrl.SetHint(_("Requirement ID"))
-        self._install_text_history(id_ctrl)
-        row.Add(id_ctrl, 1, wx.EXPAND | wx.RIGHT, 5)
+        links_panel = wx.Panel(box)
+        links_panel.SetBackgroundColour(box.GetBackgroundColour())
+        links_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
+        line_height = self.GetCharHeight() + 6
+        links_panel.SetMinSize((-1, line_height))
+        links_panel.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
+        row.Add(links_panel, 1, wx.EXPAND | wx.RIGHT, 5)
         add_btn = wx.Button(box, label=_("Add"))
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
-        row.Add(add_btn, 0, wx.RIGHT, 5)
-        remove_btn = wx.Button(box, label=_("Remove"))
-        remove_btn.Bind(
-            wx.EVT_BUTTON,
-            lambda _evt, a=attr: self._on_remove_link_generic(a),
-        )
-        row.Add(remove_btn, 0)
+        row.Add(add_btn, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.TOP, pad)
-        lst = wx.ListCtrl(box, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        lst.InsertColumn(0, _("ID"))
-        lst.InsertColumn(1, _("Title"))
-        lst.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
-        lst.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
-        lst.Bind(
-            wx.EVT_SIZE,
-            lambda evt, lc=lst: (evt.Skip(), self._autosize_link_columns(lc)),
-        )
-        lst.Bind(
-            wx.EVT_CONTEXT_MENU,
-            lambda evt, a=attr: self._on_links_context_menu(a, evt),
-        )
-        sizer.Add(lst, 1, wx.EXPAND | wx.TOP, pad)
-        # Hide the list and the remove button by default.
-        lst.Hide()
-        sizer.Show(lst, False)
-        remove_btn.Hide()
-        row.Show(remove_btn, False)
         id_attr = id_name or f"{attr}_id"
         list_attr = list_name or f"{attr}_list"
-        setattr(self, id_attr, id_ctrl)
-        setattr(self, list_attr, lst)
-        setattr(self, f"{attr}_remove", remove_btn)
+        setattr(self, id_attr, None)
+        setattr(self, list_attr, links_panel)
+        setattr(self, f"{attr}_panel", links_panel)
+        setattr(self, f"{attr}_add", add_btn)
         setattr(self, attr, [])
         return sizer
 
@@ -881,54 +1054,136 @@ class EditorPanel(wx.Panel):
             enriched.append(entry)
         return enriched
 
-    def _format_link_note(self, link: dict[str, Any]) -> str:
-        """Return human-readable text for ``link`` entry."""
-        rid = str(link.get("rid", "")).strip()
-        title = str(link.get("title", "")).strip()
-        doc_title = str(link.get("doc_title", "")).strip()
-        text = (f"{rid} — {title}" if rid else title) if title else rid
-        if doc_title and doc_title not in text:
-            suffix = f"({doc_title})"
-            text = f"{text} {suffix}" if text else suffix
-        return text.strip()
-
     def _link_widgets(self, attr: str):
         id_attr = f"{attr}_id"
         list_attr = f"{attr}_list"
         return getattr(self, id_attr), getattr(self, list_attr), getattr(self, attr)
 
     def _refresh_links_visibility(self, attr: str) -> None:
-        """Show list and remove button only when links exist."""
-        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        remove_btn = getattr(self, f"{attr}_remove", None)
-        visible = bool(links_list)
-        list_ctrl.Show(visible)
-        sizer = list_ctrl.GetContainingSizer()
-        if sizer:
-            sizer.Show(list_ctrl, visible)
-            sizer.Layout()
-        if remove_btn:
-            remove_btn.Show(visible)
-            btn_sizer = remove_btn.GetContainingSizer()
-            if btn_sizer:
-                btn_sizer.Show(remove_btn, visible)
-                btn_sizer.Layout()
-        box = list_ctrl.GetParent()
-        box.Layout()
-        self.Layout()
-        self.FitInside()
-        if visible:
-            self._autosize_link_columns(list_ctrl)
+        """Refresh compact comma-separated links display."""
+        self._rebuild_links_list(attr)
 
-    def _autosize_link_columns(self, list_ctrl: wx.ListCtrl) -> None:
-        """Adjust column widths for a two-column link list."""
-        list_ctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
-        total = list_ctrl.GetClientSize().width
-        id_width = list_ctrl.GetColumnWidth(0)
-        if total > id_width:
-            list_ctrl.SetColumnWidth(1, total - id_width)
-        else:
-            list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE)
+    def _collect_link_picker_candidates(self, attr: str) -> list[dict[str, str]]:
+        """Return selectable requirements for link picker."""
+        service = self._service
+        if service is None:
+            return []
+        try:
+            requirements = service.load_requirements()
+            docs_map = service.load_documents()
+            docs = {doc.prefix: doc.title for doc in docs_map.values()}
+        except Exception:  # pragma: no cover - service errors
+            logger.exception("Failed to collect link picker candidates")
+            return []
+        _id_ctrl, _list_ctrl, _links_list = self._link_widgets(attr)
+        current_rid = str(self.extra.get("rid", "")).strip()
+        current_prefix = (self._effective_prefix() or "").strip().upper()
+        rows: list[dict[str, str]] = []
+        for requirement in requirements:
+            rid = str(getattr(requirement, "rid", "") or "").strip()
+            if not rid or rid == current_rid:
+                continue
+            prefix = str(getattr(requirement, "doc_prefix", "") or "").strip()
+            if current_prefix and prefix and not is_ancestor(current_prefix, prefix, docs_map):
+                continue
+            rows.append(
+                {
+                    "rid": rid,
+                    "title": str(getattr(requirement, "title", "") or "").strip(),
+                    "document": docs.get(prefix, prefix),
+                    "prefix": prefix.upper(),
+                    "scope": f"{prefix.upper()} — {docs.get(prefix, prefix)}".strip(" —"),
+                }
+            )
+        rows.sort(key=lambda row: (row["rid"], row["title"]))
+        return rows
+
+    def _show_link_picker(self, attr: str, selected_rids: set[str] | None = None) -> list[str]:
+        """Open picker dialog and return selected RIDs."""
+        dialog = RequirementLinkPickerDialog(
+            self,
+            self._collect_link_picker_candidates(attr),
+            selected_rids=selected_rids,
+            current_prefix=self._effective_prefix(),
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return []
+            return dialog.selected_rids
+        finally:
+            dialog.Destroy()
+
+    def _on_links_click(self, attr: str, _event: wx.Event) -> None:
+        self._open_links_picker(attr)
+
+    def _validate_link_target(self, rid: str, *, attr: str) -> tuple[bool, bool]:
+        """Validate link target and return (is_valid, mark_suspect)."""
+        rid_value = rid.strip().upper()
+        if not rid_value:
+            return False, False
+        try:
+            prefix, item_id = parse_rid(rid_value)
+        except ValueError:
+            return False, False
+        _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
+        if any(str(entry.get("rid", "")).strip().upper() == rid_value for entry in links_list):
+            return False, False
+        service = self._service
+        own_prefix = self._effective_prefix()
+        if service is None or not own_prefix:
+            return True, False
+        try:
+            docs = service.load_documents()
+        except Exception:
+            logger.exception("Failed to load documents for link validation")
+            return True, False
+        if prefix not in docs:
+            return False, False
+        if not is_ancestor(own_prefix, prefix, docs):
+            return False, False
+        try:
+            service.load_item(prefix, item_id)
+        except Exception:
+            return True, True
+        return True, False
+
+    def _open_links_picker(self, attr: str) -> None:
+        """Open multi-select picker and apply the chosen links."""
+        _id_ctrl, _display_panel, links_list = self._link_widgets(attr)
+        selected = {str(entry.get("rid", "")).strip().upper() for entry in links_list if str(entry.get("rid", "")).strip()}
+        picked = self._show_link_picker(attr, selected_rids=selected)
+        if not picked and selected:
+            return
+        existing_by_rid = {
+            str(entry.get("rid", "")).strip().upper(): dict(entry)
+            for entry in links_list
+            if str(entry.get("rid", "")).strip()
+        }
+        updated: list[dict[str, Any]] = []
+        for rid in picked:
+            canonical = rid.strip().upper()
+            if not canonical:
+                continue
+            existing = existing_by_rid.get(canonical)
+            if existing is not None:
+                updated.append(existing)
+                continue
+            is_valid, mark_suspect = self._validate_link_target(canonical, attr=attr)
+            if not is_valid:
+                continue
+            metadata = self._lookup_link_metadata(canonical) or {}
+            updated.append(
+                {
+                    "rid": canonical,
+                    "revision": metadata.get("revision"),
+                    "suspect": mark_suspect,
+                    "title": metadata.get("title", ""),
+                    "doc_prefix": metadata.get("doc_prefix", ""),
+                    "doc_title": metadata.get("doc_title", ""),
+                }
+            )
+        links_list[:] = updated
+        self._refresh_links_visibility(attr)
 
     def _autosize_attachment_columns(self) -> None:
         """Resize attachment columns so file path stays readable."""
@@ -970,28 +1225,52 @@ class EditorPanel(wx.Panel):
         list_ctrl.SetMinSize(wx.Size(-1, target_height))
 
     def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
-        """Repopulate ListCtrl for given link attribute."""
-        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
+        """Render links as comma-separated RID chips similar to labels."""
+        _id_ctrl, panel, links_list = self._link_widgets(attr)
+        if select is not None:
+            pass
+        if not isinstance(panel, wx.Panel):
+            return
         if links_list:
-            enriched = self._augment_links_with_metadata(list(links_list))
-            links_list[:] = enriched
-        list_ctrl.DeleteAllItems()
-        for link in links_list:
-            src_rid = link["rid"]
-            idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), src_rid)
-            display = self._format_link_note(link)
-            if link.get("suspect"):
-                warning = _("Suspect link")
-                prefix = f"⚠ {warning}"
-                display = f"{prefix} — {display}" if display else prefix
-                list_ctrl.SetItemTextColour(idx, wx.RED)
-            else:
-                list_ctrl.SetItemTextColour(idx, wx.NullColour)
-            list_ctrl.SetItem(idx, 1, display)
-        if select is not None and 0 <= select < list_ctrl.GetItemCount():
-            list_ctrl.Select(select)
-            list_ctrl.Focus(select)
-            list_ctrl.EnsureVisible(select)
+            links_list[:] = self._augment_links_with_metadata(list(links_list))
+        sizer = panel.GetSizer()
+        if sizer is None:
+            return
+        sizer.Clear(True)
+        if not links_list:
+            placeholder = wx.StaticText(panel, label=_("(none)"))
+            placeholder.SetForegroundColour(wx.Colour("grey"))
+            placeholder.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
+            sizer.Add(placeholder, 0)
+        else:
+            for index, link in enumerate(links_list):
+                rid = str(link.get("rid", "")).strip()
+                if not rid:
+                    continue
+                doc_prefix = str(link.get("doc_prefix", "")).strip()
+                doc_title = str(link.get("doc_title", "")).strip()
+                scope = ""
+                if doc_prefix and doc_title:
+                    scope = f"{doc_prefix} — {doc_title}"
+                elif doc_prefix:
+                    scope = doc_prefix
+                elif doc_title:
+                    scope = doc_title
+                label = f"{rid} ({scope})" if scope else rid
+                if link.get("suspect"):
+                    label = f"⚠ {label}"
+                txt = wx.StaticText(panel, label=label)
+                if link.get("suspect"):
+                    txt.SetForegroundColour(wx.Colour(180, 0, 0))
+                txt.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
+                sizer.Add(txt, 0, wx.RIGHT, 2)
+                if index < len(links_list) - 1:
+                    comma = wx.StaticText(panel, label=", ")
+                    comma.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
+                    sizer.Add(comma, 0, wx.RIGHT, 2)
+        panel.Layout()
+        self.Layout()
+        self.FitInside()
 
     def set_link_suspect(self, attr: str, index: int, value: bool) -> None:
         """Set suspect flag for a link and refresh list display."""
@@ -1004,34 +1283,6 @@ class EditorPanel(wx.Panel):
         if current == new_value:
             return
         self._rebuild_links_list(attr, select=index)
-
-    def _on_links_context_menu(self, attr: str, event: wx.ContextMenuEvent) -> None:
-        """Handle context menu requests for link lists."""
-        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        if not links_list or event.GetEventObject() is not list_ctrl:
-            return
-        position = event.GetPosition()
-        index = list_ctrl.GetFirstSelected()
-        if position != wx.DefaultPosition:
-            local_pos = list_ctrl.ScreenToClient(position)
-            hit, _flags = list_ctrl.HitTest(local_pos)
-            if hit != wx.NOT_FOUND:
-                list_ctrl.Select(hit)
-                list_ctrl.Focus(hit)
-                index = hit
-        if index == -1 or not (0 <= index < len(links_list)):
-            return
-        suspect = bool(links_list[index].get("suspect", False))
-        menu = wx.Menu()
-        label = _("Clear suspect mark") if suspect else _("Mark as suspect")
-        item = menu.Append(wx.ID_ANY, label)
-        menu.Bind(
-            wx.EVT_MENU,
-            lambda _evt, a=attr, i=index, value=not suspect: self.set_link_suspect(a, i, value),
-            source=item,
-        )
-        list_ctrl.PopupMenu(menu)
-        menu.Destroy()
 
     # basic operations -------------------------------------------------
     def new_requirement(self) -> None:
@@ -1068,8 +1319,6 @@ class EditorPanel(wx.Panel):
             self.notes_ctrl.ChangeValue("")
             self._refresh_attachments()
             self._refresh_context_docs()
-            self.links_list.DeleteAllItems()
-            self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
             self._refresh_labels_display()
         self.original_modified_at = ""
@@ -1132,7 +1381,6 @@ class EditorPanel(wx.Panel):
                             parsed_links.append({"rid": rid, "revision": None, "suspect": False})
             self.links = self._augment_links_with_metadata(parsed_links)
             self._rebuild_links_list("links")
-            self.links_id.ChangeValue("")
             self._refresh_links_visibility("links")
             for name, choice in self.enums.items():
                 enum_cls = ENUMS[name]
@@ -1186,7 +1434,6 @@ class EditorPanel(wx.Panel):
             self.mtime = None
             self.original_id = None
             self.links = []
-            self.links_list.DeleteAllItems()
             self._refresh_links_visibility("links")
             self.extra["rid"] = ""
             self._refresh_labels_display()
@@ -1723,67 +1970,7 @@ class EditorPanel(wx.Panel):
 
     # generic link handlers -------------------------------------------
     def _on_add_link_generic(self, attr: str) -> None:
-        id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        value = id_ctrl.GetValue().strip().upper()
-        if not value:
-            return
-        try:
-            prefix, item_id = parse_rid(value)
-        except ValueError:
-            wx.MessageBox(_("Invalid requirement ID"), _("Error"), style=wx.ICON_ERROR)
-            return
-        title = ""
-        parent_revision = None
-        doc_title = ""
-        doc_prefix = ""
-        service = self._service
-        if service is not None:
-            try:
-                doc = service.get_document(prefix)
-                data, _metadata = service.load_item(prefix, item_id)
-            except Exception:  # pragma: no cover - lookup errors
-                logger.exception("Failed to load requirement %s", value)
-                self._link_metadata_cache[value] = {}
-            else:
-                title = str(data.get("title", ""))
-                parent_revision = data.get("revision")
-                doc_title = doc.title
-                doc_prefix = doc.prefix
-                self._link_metadata_cache[value] = {
-                    "title": title,
-                    "revision": parent_revision,
-                    "doc_prefix": doc_prefix,
-                    "doc_title": doc_title,
-                }
-        links_list.append(
-            {
-                "rid": value,
-                "revision": parent_revision,
-                "suspect": False,
-                "title": title,
-                "doc_prefix": doc_prefix,
-                "doc_title": doc_title,
-            }
-        )
-        idx = list_ctrl.InsertItem(list_ctrl.GetItemCount(), value)
-        list_ctrl.SetItem(idx, 1, self._format_link_note(links_list[-1]))
-        id_ctrl.ChangeValue("")
-        self._refresh_links_visibility(attr)
-
-    def _on_remove_link_generic(self, attr: str) -> None:
-        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        idx = (
-            list_ctrl.GetFirstSelected()
-            if hasattr(list_ctrl, "GetFirstSelected")
-            else getattr(list_ctrl, "GetSelection", lambda: -1)()
-        )
-        if idx != -1:
-            del links_list[idx]
-            if hasattr(list_ctrl, "DeleteItem"):
-                list_ctrl.DeleteItem(idx)
-            else:
-                list_ctrl.Delete(idx)
-        self._refresh_links_visibility(attr)
+        self._open_links_picker(attr)
 
     def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
         if self._suspend_events:
@@ -1988,8 +2175,6 @@ class EditorPanel(wx.Panel):
                     id_ctrl = None
                 else:
                     self._rebuild_links_list("links")
-                    if id_ctrl:
-                        id_ctrl.ChangeValue("")
                     self._refresh_links_visibility("links")
 
             labels_state = list(state.get("labels", []))

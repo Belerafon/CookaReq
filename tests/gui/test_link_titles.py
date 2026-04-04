@@ -12,12 +12,11 @@ def test_added_link_shows_id_and_title(wx_app):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
     panel.set_document(None)
+    panel._show_link_picker = lambda _attr, selected_rids=None: ["SYS123"]  # type: ignore[method-assign]
 
-    panel.links_id.SetValue("SYS123")
     panel._on_add_link_generic("links")
 
-    assert panel.links_list.GetItemText(0, 0) == "SYS123"
-    assert panel.links_list.GetItemText(0, 1) == "SYS123"
+    assert panel.links and panel.links[0]["rid"] == "SYS123"
     frame.Destroy()
 
 
@@ -62,6 +61,36 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
 
     panel.load(payload)
 
-    assert panel.links_list.GetItemText(0, 0) == "SYS123"
-    assert panel.links_list.GetItemText(0, 1) == "SYS123 — Parent (Systems)"
+    assert panel.links and panel.links[0]["rid"] == "SYS123"
+    assert panel.links[0]["title"] == "Parent"
+    labels = [
+        child.GetLabel()
+        for child in panel.links_panel.GetChildren()
+        if isinstance(child, wx.StaticText)
+    ]
+    assert any("SYS — Systems" in label for label in labels)
+    frame.Destroy()
+
+
+def test_duplicate_link_is_not_added_twice(wx_app):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    panel.set_document(None)
+    panel._show_link_picker = lambda _attr, selected_rids=None: ["SYS123"]  # type: ignore[method-assign]
+    panel._on_add_link_generic("links")
+    panel._on_add_link_generic("links")
+
+    assert len(panel.links) == 1
+    frame.Destroy()
+
+
+def test_pick_link_adds_selected_rid(wx_app, monkeypatch):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    panel.set_document(None)
+    monkeypatch.setattr(panel, "_show_link_picker", lambda _attr, selected_rids=None: ["SYS777"])
+    panel._on_add_link_generic("links")
+
+    assert len(panel.links) == 1
+    assert panel.links[0]["rid"] == "SYS777"
     frame.Destroy()

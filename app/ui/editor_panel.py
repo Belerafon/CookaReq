@@ -90,7 +90,6 @@ class RequirementLinkPickerDialog(wx.Dialog):
         candidates: list[dict[str, str]],
         selected_rids: set[str] | None = None,
         current_prefix: str | None = None,
-        current_scope_label: str | None = None,
     ):
         super().__init__(
             parent,
@@ -102,9 +101,8 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._visible_candidates: list[dict[str, str]] = []
         self._selected_rids = {rid.strip().upper() for rid in (selected_rids or set()) if rid.strip()}
         self._current_prefix = (current_prefix or "").strip().upper()
-        self._current_scope_label = (current_scope_label or "").strip()
         self._source_options: list[tuple[str, str]] = []
-        self._source_filter_key = "all"
+        self._source_filter_key = ""
 
         root = wx.BoxSizer(wx.VERTICAL)
         search_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -204,45 +202,44 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._apply_filter(self._search_ctrl.GetValue())
 
     def _build_source_options(self) -> None:
-        if self._current_prefix:
-            scope = self._current_scope_label or self._current_prefix
-            high_label = _("Higher-level requirements for {scope}").format(scope=scope)
-            current_label = _("Current document requirements for {scope}").format(scope=scope)
-            all_label = _("All allowed requirements for {scope}").format(scope=scope)
-        else:
-            high_label = _("Higher-level requirements")
-            current_label = _("Current document requirements")
-            all_label = _("All allowed requirements")
-        options: list[tuple[str, str]] = [
-            ("high", high_label),
-            ("current", current_label),
-            ("all", all_label),
-        ]
+        docs: dict[str, tuple[str, int]] = {}
+        for row in self._all_candidates:
+            prefix = str(row.get("prefix", "")).strip().upper()
+            if not prefix:
+                continue
+            title = str(row.get("document", "")).strip()
+            distance_raw = row.get("distance")
+            try:
+                distance = int(distance_raw)
+            except (TypeError, ValueError):
+                distance = 0
+            existing = docs.get(prefix)
+            if existing is None or distance > existing[1]:
+                docs[prefix] = (title, distance)
+        ordered_prefixes = sorted(
+            docs.keys(),
+            key=lambda item: (-docs[item][1], item),
+        )
+        options: list[tuple[str, str]] = []
+        for prefix in ordered_prefixes:
+            title, _distance = docs[prefix]
+            label = f"{prefix}: {title}" if title else prefix
+            options.append((prefix, label))
         self._source_options = options
         self._source_choice.Clear()
         for _key, label in options:
             self._source_choice.Append(label)
-        default_key = "high"
-        has_high = any(self._matches_source_filter(row, "high") for row in self._all_candidates)
-        if not has_high:
-            default_key = "all"
+        default_key = next((key for key, _label in options), "")
         self._source_filter_key = default_key
         selected = next((index for index, (key, _label) in enumerate(options) if key == default_key), 0)
-        self._source_choice.SetSelection(selected)
+        if options:
+            self._source_choice.SetSelection(selected)
 
     def _matches_source_filter(self, row: dict[str, str], key: str) -> bool:
         prefix = str(row.get("prefix", "")).strip().upper()
-        if key == "all":
+        if not key:
             return True
-        if key == "current":
-            if not self._current_prefix:
-                return True
-            return prefix == self._current_prefix
-        if key == "high":
-            if not self._current_prefix:
-                return True
-            return bool(prefix) and prefix != self._current_prefix
-        return True
+        return prefix == key
 
     def _apply_filter(self, query: str) -> None:
         remembered = set(self.selected_rids)
@@ -1086,6 +1083,22 @@ class EditorPanel(wx.Panel):
         _id_ctrl, _list_ctrl, _links_list = self._link_widgets(attr)
         current_rid = str(self.extra.get("rid", "")).strip()
         current_prefix = (self._effective_prefix() or "").strip().upper()
+
+        def _ancestor_distance(child: str, ancestor: str) -> int:
+            if not child or not ancestor:
+                return 0
+            if child == ancestor:
+                return 0
+            distance = 0
+            current = docs_map.get(child)
+            while current and current.parent:
+                distance += 1
+                parent = current.parent
+                if parent == ancestor:
+                    return distance
+                current = docs_map.get(parent)
+            return 0
+
         rows: list[dict[str, str]] = []
         for requirement in requirements:
             rid = str(getattr(requirement, "rid", "") or "").strip()
@@ -1100,6 +1113,7 @@ class EditorPanel(wx.Panel):
                     "title": str(getattr(requirement, "title", "") or "").strip(),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
+                    "distance": _ancestor_distance(current_prefix, prefix.upper()),
                 }
             )
         rows.sort(key=lambda row: (row["rid"], row["title"]))
@@ -1107,13 +1121,11 @@ class EditorPanel(wx.Panel):
 
     def _show_link_picker(self, attr: str, selected_rids: set[str] | None = None) -> list[str]:
         """Open picker dialog and return selected RIDs."""
-        current_scope_label = self._current_document_scope_label()
         dialog = RequirementLinkPickerDialog(
             self,
             self._collect_link_picker_candidates(attr),
             selected_rids=selected_rids,
             current_prefix=self._effective_prefix(),
-            current_scope_label=current_scope_label,
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -1121,22 +1133,6 @@ class EditorPanel(wx.Panel):
             return dialog.selected_rids
         finally:
             dialog.Destroy()
-
-    def _current_document_scope_label(self) -> str:
-        prefix = (self._effective_prefix() or "").strip().upper()
-        if not prefix:
-            return ""
-        service = self._service
-        if service is None:
-            return prefix
-        try:
-            document = service.get_document(prefix)
-        except Exception:
-            return prefix
-        title = (document.title or "").strip()
-        if not title:
-            return prefix
-        return f"{prefix}: {title}"
 
     def _on_links_click(self, attr: str, _event: wx.Event) -> None:
         self._open_links_picker(attr)

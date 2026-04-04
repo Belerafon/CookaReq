@@ -42,20 +42,32 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         frame,
         candidates,
         current_prefix="SYS",
-        current_scope_label="SYS: System",
     )
     try:
-        # По умолчанию должен быть выбран high-level scope.
-        assert dialog._source_filter_key == "high"
+        # По умолчанию должен быть выбран высокоуровневый список (HLR).
+        assert dialog._source_filter_key == "HLR"
         option_labels = [dialog._source_choice.GetString(index) for index in range(dialog._source_choice.GetCount())]
-        assert option_labels == [
-            "Higher-level requirements for SYS: System",
-            "Current document requirements for SYS: System",
-            "All allowed requirements for SYS: System",
-        ]
+        assert option_labels == ["HLR: High", "SYS: System"]
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
         assert dialog._checklist.GetString(0) == "HLR1 — High"
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_switches_between_document_lists(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR", "distance": 1},
+        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS", "distance": 0},
+    ]
+    dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
+    try:
+        assert [row["rid"] for row in dialog._visible_candidates] == ["HLR1"]
+        dialog._source_choice.SetSelection(1)  # SYS: System
+        dialog._on_source_change(wx.CommandEvent(wx.EVT_CHOICE.typeId))
+        assert [row["rid"] for row in dialog._visible_candidates] == ["SYS2"]
     finally:
         dialog.Destroy()
         frame.Destroy()

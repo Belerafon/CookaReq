@@ -1,7 +1,6 @@
 import pytest
 import wx
 
-import json
 from pathlib import Path
 
 from app.core.document_store import Document
@@ -66,7 +65,29 @@ def test_save_includes_suspect_flag(wx_app, tmp_path: Path):
     _prepare_requirement(panel)
     panel.set_link_suspect("links", 0, True)
 
-    saved_path = panel.save("SYS")
-    payload = json.loads(saved_path.read_text())
+    saved_req = panel.save("SYS")
+    payload, _mtime = service.load_item("SYS", saved_req.id)
     assert payload["links"][0]["suspect"] is True
+    frame.Destroy()
+
+
+def test_missing_target_is_added_as_suspect(wx_app, tmp_path: Path):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    service = RequirementsService(tmp_path)
+    service.save_document(Document(prefix="HLR", title="High-level"))
+    service.save_document(Document(prefix="SYS", title="System", parent="HLR"))
+    panel.set_service(service)
+    panel.set_document("SYS")
+    panel.new_requirement()
+    panel.fields["id"].SetValue("1")
+    panel.fields["title"].SetValue("Child")
+    panel.fields["statement"].SetValue("Statement")
+
+    panel.links_id.SetValue("HLR999")
+    panel._on_add_link_generic("links")
+
+    assert panel.links and panel.links[0]["rid"] == "HLR999"
+    assert panel.links[0]["suspect"] is True
+    assert panel.links_list.GetItemText(0, 1).startswith("⚠")
     frame.Destroy()

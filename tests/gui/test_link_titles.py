@@ -65,3 +65,31 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
     assert panel.links_list.GetItemText(0, 0) == "SYS123"
     assert panel.links_list.GetItemText(0, 1) == "SYS123 — Parent (Systems)"
     frame.Destroy()
+
+
+def test_duplicate_link_is_not_added_twice(wx_app):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    panel.set_document(None)
+
+    panel.links_id.SetValue("SYS123")
+    panel._on_add_link_generic("links")
+    panel.links_id.SetValue("SYS123")
+    panel._on_add_link_generic("links")
+
+    assert len(panel.links) == 1
+    assert panel.links_list.GetItemCount() == 1
+    frame.Destroy()
+
+
+def test_pick_link_adds_selected_rid(wx_app, monkeypatch):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    panel.set_document(None)
+    monkeypatch.setattr(panel, "_show_link_picker", lambda _attr: "SYS777")
+
+    panel._on_pick_link_generic("links")
+
+    assert len(panel.links) == 1
+    assert panel.links[0]["rid"] == "SYS777"
+    frame.Destroy()

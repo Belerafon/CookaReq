@@ -202,10 +202,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._apply_filter(self._search_ctrl.GetValue())
 
     def _build_source_options(self) -> None:
+        if self._current_prefix:
+            high_label = _("Higher-level requirements for {prefix}").format(prefix=self._current_prefix)
+            current_label = _("Current document ({prefix}) requirements").format(prefix=self._current_prefix)
+            all_label = _("All allowed requirements for {prefix}").format(prefix=self._current_prefix)
+        else:
+            high_label = _("Higher-level requirements")
+            current_label = _("Current document requirements")
+            all_label = _("All allowed requirements")
         options: list[tuple[str, str]] = [
-            ("high", _("Higher-level requirements")),
-            ("current", _("Current document requirements")),
-            ("all", _("All allowed requirements")),
+            ("high", high_label),
+            ("current", current_label),
+            ("all", all_label),
         ]
         self._source_options = options
         self._source_choice.Clear()

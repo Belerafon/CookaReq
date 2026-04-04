@@ -44,9 +44,9 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         assert dialog._source_filter_key == "high"
         option_labels = [dialog._source_choice.GetString(index) for index in range(dialog._source_choice.GetCount())]
         assert option_labels == [
-            "Higher-level requirements",
-            "Current document requirements",
-            "All allowed requirements",
+            "Higher-level requirements for SYS",
+            "Current document (SYS) requirements",
+            "All allowed requirements for SYS",
         ]
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]

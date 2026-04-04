@@ -3356,3 +3356,12 @@ msgstr "All allowed requirements"
 
 msgid "Current document requirements"
 msgstr "Current document requirements"
+
+msgid "Higher-level requirements for {prefix}"
+msgstr "Higher-level requirements for {prefix}"
+
+msgid "Current document ({prefix}) requirements"
+msgstr "Current document ({prefix}) requirements"
+
+msgid "All allowed requirements for {prefix}"
+msgstr "All allowed requirements for {prefix}"

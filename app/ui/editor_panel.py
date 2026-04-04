@@ -202,16 +202,11 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._apply_filter(self._search_ctrl.GetValue())
 
     def _build_source_options(self) -> None:
-        prefixes = sorted(
-            {
-                str(row.get("prefix", "")).strip().upper()
-                for row in self._all_candidates
-                if str(row.get("prefix", "")).strip()
-            }
-        )
-        options: list[tuple[str, str]] = [("high", _("Higher-level requirements")), ("all", _("All allowed requirements"))]
-        for prefix in prefixes:
-            options.append((prefix, prefix))
+        options: list[tuple[str, str]] = [
+            ("high", _("Higher-level requirements")),
+            ("current", _("Current document requirements")),
+            ("all", _("All allowed requirements")),
+        ]
         self._source_options = options
         self._source_choice.Clear()
         for _key, label in options:
@@ -228,11 +223,15 @@ class RequirementLinkPickerDialog(wx.Dialog):
         prefix = str(row.get("prefix", "")).strip().upper()
         if key == "all":
             return True
+        if key == "current":
+            if not self._current_prefix:
+                return True
+            return prefix == self._current_prefix
         if key == "high":
             if not self._current_prefix:
                 return True
             return bool(prefix) and prefix != self._current_prefix
-        return prefix == key
+        return True
 
     def _apply_filter(self, query: str) -> None:
         remembered = set(self.selected_rids)

@@ -3374,3 +3374,6 @@ msgstr "Высокоуровневые требования"
 
 msgid "All allowed requirements"
 msgstr "Все допустимые требования"
+
+msgid "Current document requirements"
+msgstr "Требования текущего документа"

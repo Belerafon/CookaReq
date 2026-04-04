@@ -3365,3 +3365,12 @@ msgstr "Current document ({prefix}) requirements"
 
 msgid "All allowed requirements for {prefix}"
 msgstr "All allowed requirements for {prefix}"
+
+msgid "Higher-level requirements for {scope}"
+msgstr "Higher-level requirements for {scope}"
+
+msgid "Current document requirements for {scope}"
+msgstr "Current document requirements for {scope}"
+
+msgid "All allowed requirements for {scope}"
+msgstr "All allowed requirements for {scope}"

@@ -35,22 +35,27 @@ def test_link_picker_persists_window_geometry(wx_app):
 def test_link_picker_defaults_to_high_level_scope(wx_app):
     frame = wx.Frame(None)
     candidates = [
-        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR", "scope": "HLR: High"},
-        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS", "scope": "SYS: System"},
+        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR"},
+        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS"},
     ]
-    dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
+    dialog = RequirementLinkPickerDialog(
+        frame,
+        candidates,
+        current_prefix="SYS",
+        current_scope_label="SYS: System",
+    )
     try:
         # По умолчанию должен быть выбран high-level scope.
         assert dialog._source_filter_key == "high"
         option_labels = [dialog._source_choice.GetString(index) for index in range(dialog._source_choice.GetCount())]
         assert option_labels == [
-            "Higher-level requirements for SYS",
-            "Current document (SYS) requirements",
-            "All allowed requirements for SYS",
+            "Higher-level requirements for SYS: System",
+            "Current document requirements for SYS: System",
+            "All allowed requirements for SYS: System",
         ]
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
-        assert "HLR: High" in dialog._checklist.GetString(0)
+        assert dialog._checklist.GetString(0) == "HLR1 — High"
     finally:
         dialog.Destroy()
         frame.Destroy()

@@ -3386,3 +3386,12 @@ msgstr "Требования текущего документа ({prefix})"
 
 msgid "All allowed requirements for {prefix}"
 msgstr "Все допустимые требования для {prefix}"
+
+msgid "Higher-level requirements for {scope}"
+msgstr "Высокоуровневые требования для {scope}"
+
+msgid "Current document requirements for {scope}"
+msgstr "Требования текущего документа для {scope}"
+
+msgid "All allowed requirements for {scope}"
+msgstr "Все допустимые требования для {scope}"

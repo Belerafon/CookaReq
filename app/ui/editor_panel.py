@@ -90,6 +90,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         candidates: list[dict[str, str]],
         selected_rids: set[str] | None = None,
         current_prefix: str | None = None,
+        current_scope_label: str | None = None,
     ):
         super().__init__(
             parent,
@@ -101,6 +102,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._visible_candidates: list[dict[str, str]] = []
         self._selected_rids = {rid.strip().upper() for rid in (selected_rids or set()) if rid.strip()}
         self._current_prefix = (current_prefix or "").strip().upper()
+        self._current_scope_label = (current_scope_label or "").strip()
         self._source_options: list[tuple[str, str]] = []
         self._source_filter_key = "all"
 
@@ -203,9 +205,10 @@ class RequirementLinkPickerDialog(wx.Dialog):
 
     def _build_source_options(self) -> None:
         if self._current_prefix:
-            high_label = _("Higher-level requirements for {prefix}").format(prefix=self._current_prefix)
-            current_label = _("Current document ({prefix}) requirements").format(prefix=self._current_prefix)
-            all_label = _("All allowed requirements for {prefix}").format(prefix=self._current_prefix)
+            scope = self._current_scope_label or self._current_prefix
+            high_label = _("Higher-level requirements for {scope}").format(scope=scope)
+            current_label = _("Current document requirements for {scope}").format(scope=scope)
+            all_label = _("All allowed requirements for {scope}").format(scope=scope)
         else:
             high_label = _("Higher-level requirements")
             current_label = _("Current document requirements")
@@ -265,9 +268,6 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._checklist.Enable(True)
         for index, row in enumerate(self._visible_candidates):
             label = f"{row['rid']} — {row['title']}" if row["title"] else row["rid"]
-            scope = str(row.get("scope", "")).strip()
-            if scope:
-                label = f"{label} ({scope})"
             self._checklist.Append(label)
             if row["rid"] in remembered or row["rid"] in self._selected_rids:
                 self._checklist.Check(index, True)
@@ -1100,7 +1100,6 @@ class EditorPanel(wx.Panel):
                     "title": str(getattr(requirement, "title", "") or "").strip(),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
-                    "scope": f"{prefix.upper()}: {docs.get(prefix, prefix)}".strip(": "),
                 }
             )
         rows.sort(key=lambda row: (row["rid"], row["title"]))
@@ -1108,11 +1107,13 @@ class EditorPanel(wx.Panel):
 
     def _show_link_picker(self, attr: str, selected_rids: set[str] | None = None) -> list[str]:
         """Open picker dialog and return selected RIDs."""
+        current_scope_label = self._current_document_scope_label()
         dialog = RequirementLinkPickerDialog(
             self,
             self._collect_link_picker_candidates(attr),
             selected_rids=selected_rids,
             current_prefix=self._effective_prefix(),
+            current_scope_label=current_scope_label,
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -1120,6 +1121,22 @@ class EditorPanel(wx.Panel):
             return dialog.selected_rids
         finally:
             dialog.Destroy()
+
+    def _current_document_scope_label(self) -> str:
+        prefix = (self._effective_prefix() or "").strip().upper()
+        if not prefix:
+            return ""
+        service = self._service
+        if service is None:
+            return prefix
+        try:
+            document = service.get_document(prefix)
+        except Exception:
+            return prefix
+        title = (document.title or "").strip()
+        if not title:
+            return prefix
+        return f"{prefix}: {title}"
 
     def _on_links_click(self, attr: str, _event: wx.Event) -> None:
         self._open_links_picker(attr)
@@ -1255,16 +1272,7 @@ class EditorPanel(wx.Panel):
                 rid = str(link.get("rid", "")).strip()
                 if not rid:
                     continue
-                doc_prefix = str(link.get("doc_prefix", "")).strip()
-                doc_title = str(link.get("doc_title", "")).strip()
-                scope = ""
-                if doc_prefix and doc_title:
-                    scope = f"{doc_prefix}: {doc_title}"
-                elif doc_prefix:
-                    scope = doc_prefix
-                elif doc_title:
-                    scope = doc_title
-                label = f"{rid} ({scope})" if scope else rid
+                label = rid
                 if link.get("suspect"):
                     label = f"⚠ {label}"
                 txt = wx.StaticText(panel, label=label)

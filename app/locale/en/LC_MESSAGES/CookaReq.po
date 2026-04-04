@@ -960,13 +960,17 @@ msgstr ""
 "right setup."
 
 msgid ""
-"Links to higher-level requirements or stakeholder needs. Upward traceability"
-" shows why this requirement exists and simplifies impact analysis when "
-"parents change. Use it to prove coverage of system objectives."
+"Links connect this requirement to other requirements in CookaReq by their "
+"IDs. Use Links for parent-child and dependency traceability inside the "
+"project repository so impact analysis stays machine-readable. Example: if "
+"SYS-12 derives from HLR-5, add HLR-5 in Links, while the original "
+"specification paragraph remains in Source."
 msgstr ""
-"Links to higher-level requirements or stakeholder needs. Upward traceability"
-" shows why this requirement exists and simplifies impact analysis when "
-"parents change. Use it to prove coverage of system objectives."
+"Links connect this requirement to other requirements in CookaReq by their "
+"IDs. Use Links for parent-child and dependency traceability inside the "
+"project repository so impact analysis stays machine-readable. Example: if "
+"SYS-12 derives from HLR-5, add HLR-5 in Links, while the original "
+"specification paragraph remains in Source."
 
 msgid ""
 "Revision number for the requirement baseline. By default CookaReq increments "
@@ -998,15 +1002,17 @@ msgstr ""
 " Assigning ownership clarifies accountability and speeds up decisions."
 
 msgid ""
-"Origin of the requirement such as a customer request, regulation or design "
-"document. Recording the source explains why the requirement exists and where"
-" to look for additional context. This trace is essential when validating "
-"compliance or revisiting negotiations."
+"Textual origin of the requirement: a clause in the specification, "
+"regulation, contract, meeting minutes or ticket. Use Source when you need "
+"to preserve wording, section numbers or external references that are not "
+"requirement IDs in CookaReq. For example, when a system-level requirement "
+"comes from a technical specification, record that paragraph here."
 msgstr ""
-"Origin of the requirement such as a customer request, regulation or design "
-"document. Recording the source explains why the requirement exists and where"
-" to look for additional context. This trace is essential when validating "
-"compliance or revisiting negotiations."
+"Textual origin of the requirement: a clause in the specification, "
+"regulation, contract, meeting minutes or ticket. Use Source when you need "
+"to preserve wording, section numbers or external references that are not "
+"requirement IDs in CookaReq. For example, when a system-level requirement "
+"comes from a technical specification, record that paragraph here."
 
 msgid ""
 "Classification of the requirement: functional, constraint, interface or "
@@ -3317,3 +3323,54 @@ msgstr "requirements export"
 
 msgid "project archive"
 msgstr "project archive"
+
+
+msgid "Search"
+msgstr "Search"
+
+msgid "RID, title, or document"
+msgstr "RID, title, or document"
+
+msgid "No requirements available"
+msgstr "No requirements available"
+
+msgid "Browse"
+msgstr "Browse"
+
+
+
+
+
+
+msgid "Select linked requirements"
+msgstr "Select linked requirements"
+
+msgid "List"
+msgstr "List"
+
+msgid "Higher-level requirements"
+msgstr "Higher-level requirements"
+
+msgid "All allowed requirements"
+msgstr "All allowed requirements"
+
+msgid "Current document requirements"
+msgstr "Current document requirements"
+
+msgid "Higher-level requirements for {prefix}"
+msgstr "Higher-level requirements for {prefix}"
+
+msgid "Current document ({prefix}) requirements"
+msgstr "Current document ({prefix}) requirements"
+
+msgid "All allowed requirements for {prefix}"
+msgstr "All allowed requirements for {prefix}"
+
+msgid "Higher-level requirements for {scope}"
+msgstr "Higher-level requirements for {scope}"
+
+msgid "Current document requirements for {scope}"
+msgstr "Current document requirements for {scope}"
+
+msgid "All allowed requirements for {scope}"
+msgstr "All allowed requirements for {scope}"

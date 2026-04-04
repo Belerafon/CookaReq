@@ -307,6 +307,7 @@ def test_editor_panel_primary_and_secondary_fields_order(wx_app):
 
         statement_y = panel.fields["statement"].GetScreenPosition().y
         source_y = panel.fields["source"].GetScreenPosition().y
+        links_y = panel.links_panel.GetScreenPosition().y
         status_y = panel.enums["status"].GetScreenPosition().y
         labels_y = panel.labels_panel.GetScreenPosition().y
         attachments_y = panel.attachments_list.GetScreenPosition().y
@@ -314,6 +315,7 @@ def test_editor_panel_primary_and_secondary_fields_order(wx_app):
         assumptions_y = panel.fields["assumptions"].GetScreenPosition().y
 
         assert statement_y < source_y < status_y < labels_y < attachments_y
+        assert abs(source_y - links_y) < 80
         assert attachments_y < acceptance_y < assumptions_y
     finally:
         frame.Destroy()

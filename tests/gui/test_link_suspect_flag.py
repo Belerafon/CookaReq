@@ -1,7 +1,6 @@
 import pytest
 import wx
 
-import json
 from pathlib import Path
 
 from app.core.document_store import Document
@@ -16,7 +15,7 @@ def _prepare_requirement(panel: EditorPanel) -> None:
     panel.fields["id"].SetValue("1")
     panel.fields["title"].SetValue("Title")
     panel.fields["statement"].SetValue("Statement")
-    panel.links_id.SetValue("SYS1")
+    panel._show_link_picker = lambda _attr, selected_rids=None: ["SYS1"]  # type: ignore[method-assign]
     panel._on_add_link_generic("links")
 
 
@@ -31,8 +30,12 @@ def test_mark_link_as_suspect_updates_ui_and_serialization(wx_app):
     panel.set_link_suspect("links", 0, True)
 
     assert panel.links[0]["suspect"] is True
-    assert panel.links_list.GetItemText(0, 1).startswith("⚠")
-    assert panel.links_list.GetItemTextColour(0) != wx.NullColour
+    links_text = " ".join(
+        child.GetLabel()
+        for child in panel.links_panel.GetChildren()
+        if isinstance(child, wx.StaticText)
+    )
+    assert "⚠ SYS1" in links_text
 
     req = panel.get_data()
     assert req.links[0].suspect is True
@@ -51,8 +54,12 @@ def test_clear_suspect_resets_display(wx_app):
     panel.set_link_suspect("links", 0, False)
 
     assert panel.links[0]["suspect"] is False
-    assert not panel.links_list.GetItemText(0, 1).startswith("⚠")
-    assert panel.links_list.GetItemTextColour(0) == wx.NullColour
+    links_text = " ".join(
+        child.GetLabel()
+        for child in panel.links_panel.GetChildren()
+        if isinstance(child, wx.StaticText)
+    )
+    assert "⚠ SYS1" not in links_text
     frame.Destroy()
 
 
@@ -66,7 +73,34 @@ def test_save_includes_suspect_flag(wx_app, tmp_path: Path):
     _prepare_requirement(panel)
     panel.set_link_suspect("links", 0, True)
 
-    saved_path = panel.save("SYS")
-    payload = json.loads(saved_path.read_text())
+    saved_req = panel.save("SYS")
+    payload, _mtime = service.load_item("SYS", saved_req.id)
     assert payload["links"][0]["suspect"] is True
+    frame.Destroy()
+
+
+def test_missing_target_is_added_as_suspect(wx_app, tmp_path: Path):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    service = RequirementsService(tmp_path)
+    service.save_document(Document(prefix="HLR", title="High-level"))
+    service.save_document(Document(prefix="SYS", title="System", parent="HLR"))
+    panel.set_service(service)
+    panel.set_document("SYS")
+    panel.new_requirement()
+    panel.fields["id"].SetValue("1")
+    panel.fields["title"].SetValue("Child")
+    panel.fields["statement"].SetValue("Statement")
+
+    panel._show_link_picker = lambda _attr, selected_rids=None: ["HLR999"]  # type: ignore[method-assign]
+    panel._on_add_link_generic("links")
+
+    assert panel.links and panel.links[0]["rid"] == "HLR999"
+    assert panel.links[0]["suspect"] is True
+    links_text = " ".join(
+        child.GetLabel()
+        for child in panel.links_panel.GetChildren()
+        if isinstance(child, wx.StaticText)
+    )
+    assert "⚠ HLR999" in links_text
     frame.Destroy()

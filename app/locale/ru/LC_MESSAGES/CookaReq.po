@@ -3345,8 +3345,6 @@ msgstr "экспорта требований"
 msgid "project archive"
 msgstr "архива проекта"
 
-msgid "Select linked requirement"
-msgstr "Выбор связанного требования"
 
 msgid "Search"
 msgstr "Поиск"
@@ -3360,20 +3358,10 @@ msgstr "Подходящие требования не найдены"
 msgid "Browse"
 msgstr "Выбрать"
 
-msgid "Link already added"
-msgstr "Ссылка уже добавлена"
 
-msgid "Unknown document prefix: {prefix}"
-msgstr "Неизвестный префикс документа: {prefix}"
 
-msgid "Link target is outside allowed hierarchy"
-msgstr "Целевое требование вне допустимой иерархии"
 
-msgid "Requirement not found; link will be marked suspect"
-msgstr "Требование не найдено: ссылка будет помечена как подозрительная"
 
-msgid "Link target looks valid"
-msgstr "Целевая ссылка выглядит корректной"
 
 msgid "Select linked requirements"
 msgstr "Выбор связанных требований"

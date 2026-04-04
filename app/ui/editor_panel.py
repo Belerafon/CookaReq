@@ -1002,17 +1002,6 @@ class EditorPanel(wx.Panel):
             enriched.append(entry)
         return enriched
 
-    def _format_link_note(self, link: dict[str, Any]) -> str:
-        """Return human-readable text for ``link`` entry."""
-        rid = str(link.get("rid", "")).strip()
-        title = str(link.get("title", "")).strip()
-        doc_title = str(link.get("doc_title", "")).strip()
-        text = (f"{rid} — {title}" if rid else title) if title else rid
-        if doc_title and doc_title not in text:
-            suffix = f"({doc_title})"
-            text = f"{text} {suffix}" if text else suffix
-        return text.strip()
-
     def _link_widgets(self, attr: str):
         id_attr = f"{attr}_id"
         list_attr = f"{attr}_list"
@@ -1068,43 +1057,36 @@ class EditorPanel(wx.Panel):
     def _on_links_click(self, attr: str, _event: wx.Event) -> None:
         self._open_links_picker(attr)
 
-    def _validate_link_target(
-        self, rid: str, *, attr: str
-    ) -> tuple[bool, str, wx.Colour | None, bool]:
-        """Validate link target and return (ok, message, colour, mark_suspect)."""
+    def _validate_link_target(self, rid: str, *, attr: str) -> tuple[bool, bool]:
+        """Validate link target and return (is_valid, mark_suspect)."""
         rid_value = rid.strip().upper()
         if not rid_value:
-            return True, "", None, False
+            return False, False
         try:
             prefix, item_id = parse_rid(rid_value)
         except ValueError:
-            return False, _("Invalid requirement ID"), wx.Colour(255, 200, 200), False
+            return False, False
         _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
         if any(str(entry.get("rid", "")).strip().upper() == rid_value for entry in links_list):
-            return False, _("Link already added"), wx.Colour(255, 236, 179), False
+            return False, False
         service = self._service
         own_prefix = self._effective_prefix()
         if service is None or not own_prefix:
-            return True, "", None, False
+            return True, False
         try:
             docs = service.load_documents()
         except Exception:
             logger.exception("Failed to load documents for link validation")
-            return True, "", None, False
+            return True, False
         if prefix not in docs:
-            return (
-                False,
-                _("Unknown document prefix: {prefix}").format(prefix=prefix),
-                wx.Colour(255, 200, 200),
-                False,
-            )
+            return False, False
         if not is_ancestor(own_prefix, prefix, docs):
-            return False, _("Link target is outside allowed hierarchy"), wx.Colour(255, 200, 200), False
+            return False, False
         try:
             service.load_item(prefix, item_id)
         except Exception:
-            return True, _("Requirement not found; link will be marked suspect"), wx.Colour(255, 248, 225), True
-        return True, _("Link target looks valid"), wx.Colour(232, 245, 233), False
+            return True, True
+        return True, False
 
     def _open_links_picker(self, attr: str) -> None:
         """Open multi-select picker and apply the chosen links."""
@@ -1127,7 +1109,7 @@ class EditorPanel(wx.Panel):
             if existing is not None:
                 updated.append(existing)
                 continue
-            is_valid, _message, _colour, mark_suspect = self._validate_link_target(canonical, attr=attr)
+            is_valid, mark_suspect = self._validate_link_target(canonical, attr=attr)
             if not is_valid:
                 continue
             metadata = self._lookup_link_metadata(canonical) or {}
@@ -1233,34 +1215,6 @@ class EditorPanel(wx.Panel):
         if current == new_value:
             return
         self._rebuild_links_list(attr, select=index)
-
-    def _on_links_context_menu(self, attr: str, event: wx.ContextMenuEvent) -> None:
-        """Handle context menu requests for link lists."""
-        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
-        if not links_list or event.GetEventObject() is not list_ctrl:
-            return
-        position = event.GetPosition()
-        index = list_ctrl.GetFirstSelected()
-        if position != wx.DefaultPosition:
-            local_pos = list_ctrl.ScreenToClient(position)
-            hit, _flags = list_ctrl.HitTest(local_pos)
-            if hit != wx.NOT_FOUND:
-                list_ctrl.Select(hit)
-                list_ctrl.Focus(hit)
-                index = hit
-        if index == -1 or not (0 <= index < len(links_list)):
-            return
-        suspect = bool(links_list[index].get("suspect", False))
-        menu = wx.Menu()
-        label = _("Clear suspect mark") if suspect else _("Mark as suspect")
-        item = menu.Append(wx.ID_ANY, label)
-        menu.Bind(
-            wx.EVT_MENU,
-            lambda _evt, a=attr, i=index, value=not suspect: self.set_link_suspect(a, i, value),
-            source=item,
-        )
-        list_ctrl.PopupMenu(menu)
-        menu.Destroy()
 
     # basic operations -------------------------------------------------
     def new_requirement(self) -> None:
@@ -1949,9 +1903,6 @@ class EditorPanel(wx.Panel):
     # generic link handlers -------------------------------------------
     def _on_add_link_generic(self, attr: str) -> None:
         self._open_links_picker(attr)
-
-    def _on_remove_link_generic(self, attr: str) -> None:
-        _ = attr
 
     def _on_id_change(self, _event: wx.CommandEvent | None = None) -> None:
         if self._suspend_events:

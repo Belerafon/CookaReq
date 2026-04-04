@@ -3324,8 +3324,6 @@ msgstr "requirements export"
 msgid "project archive"
 msgstr "project archive"
 
-msgid "Select linked requirement"
-msgstr "Select linked requirement"
 
 msgid "Search"
 msgstr "Search"
@@ -3339,20 +3337,10 @@ msgstr "No requirements available"
 msgid "Browse"
 msgstr "Browse"
 
-msgid "Link already added"
-msgstr "Link already added"
 
-msgid "Unknown document prefix: {prefix}"
-msgstr "Unknown document prefix: {prefix}"
 
-msgid "Link target is outside allowed hierarchy"
-msgstr "Link target is outside allowed hierarchy"
 
-msgid "Requirement not found; link will be marked suspect"
-msgstr "Requirement not found; link will be marked suspect"
 
-msgid "Link target looks valid"
-msgstr "Link target looks valid"
 
 msgid "Select linked requirements"
 msgstr "Select linked requirements"

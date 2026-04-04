@@ -269,28 +269,13 @@ class MainFrameSectionsMixin:
             return True
         if not getattr(self, "editor", None):
             return True
-        if not hasattr(self, "model"):
-            return True
-        if (
-            getattr(self, "current_dir", None) is None
-            or getattr(self, "docs_controller", None) is None
-            or not self.current_doc_prefix
-        ):
-            return True
-        if getattr(self, "_selected_requirement_id", None) is None:
-            return True
         dirty = self.editor.is_dirty()
         unsaved = False
-        if (
-            hasattr(self.model, "is_unsaved")
-            and getattr(self, "_selected_requirement_id", None) is not None
-        ):
-            prefix = self.current_doc_prefix or str(
-                self.editor.extra.get("doc_prefix", "")
-            )
-            unsaved = self.model.is_unsaved(
-                req_id=self._selected_requirement_id, prefix=prefix
-            )
+        selected_id = getattr(self, "_selected_requirement_id", None)
+        prefix = self.current_doc_prefix or str(self.editor.extra.get("doc_prefix", ""))
+        has_model = hasattr(self, "model")
+        if has_model and hasattr(self.model, "is_unsaved") and selected_id is not None:
+            unsaved = self.model.is_unsaved(req_id=selected_id, prefix=prefix)
         if not dirty and not unsaved:
             return True
 
@@ -298,6 +283,12 @@ class MainFrameSectionsMixin:
         if choice == "cancel":
             return False
         if choice == "save":
+            if (
+                getattr(self, "current_dir", None) is None
+                or getattr(self, "docs_controller", None) is None
+                or not prefix
+            ):
+                return False
             saved = self._save_editor_contents(
                 self.editor,
                 doc_prefix=self.current_doc_prefix,
@@ -306,6 +297,12 @@ class MainFrameSectionsMixin:
                 self._skip_unsaved_prompt_once = True
             return saved is not None
         if dirty:
+            if (
+                not prefix
+                or selected_id is None
+                or not hasattr(self, "_stash_unsaved_edits")
+            ):
+                return True
             stashed = self._stash_unsaved_edits(
                 self.editor,
                 doc_prefix=self.current_doc_prefix,

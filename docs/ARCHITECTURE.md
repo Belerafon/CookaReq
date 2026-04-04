@@ -283,6 +283,10 @@ pipeline, fallback cleanup, and regression coverage strategy), see
     links resolved to the document-local `assets/` directory. Text controls in
     this panel use a custom per-field undo/redo history capped at 10 steps so
     Ctrl+Z/Ctrl+Y behave consistently across autosizing and preview hooks.
+    Save/Cancel buttons are state-driven: they stay disabled for clean loaded
+    records, enable on local edits, and also remain enabled when a requirement
+    was reopened from the in-memory unsaved cache (so users can still either
+    persist or discard deferred edits explicitly).
     Statement preview
     uses a dedicated white canvas so rendered Markdown tables remain readable,
     with explicit cell borders, a tinted header row, and vertical centering for

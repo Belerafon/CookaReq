@@ -38,6 +38,11 @@ def test_editor_controls_disabled_without_selection(wx_app, gui_context, tmp_pat
         assert frame.editor.cancel_btn.IsEnabled() is False
 
         frame.editor.load(_requirement())
+        assert frame.editor.save_btn.IsEnabled() is False
+        assert frame.editor.cancel_btn.IsEnabled() is False
+
+        frame.editor.fields["title"].SetValue("Updated")
+        wx_app.Yield()
         assert frame.editor.save_btn.IsEnabled() is True
         assert frame.editor.cancel_btn.IsEnabled() is True
 

@@ -66,7 +66,6 @@ DEFAULT_EXPORT_FIELD_ORDER: tuple[str, ...] = (
     "links",
     "doc_prefix",
     "rid",
-    "derived_from",
     "derived_count",
 )
 
@@ -90,7 +89,6 @@ DEFAULT_EXPORT_SELECTED_FIELDS: tuple[str, ...] = (
     "links",
     "doc_prefix",
     "rid",
-    "derived_from",
     "derived_count",
 )
 

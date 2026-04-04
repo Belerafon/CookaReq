@@ -877,7 +877,7 @@ def test_recalc_derived_map_updates_count(wx_app):
     frame.Destroy()
 
 
-def test_derived_column_and_marker(wx_app):
+def test_derived_marker_uses_links(wx_app):
     wx = pytest.importorskip("wx")
     import app.ui.list_panel as list_panel
 
@@ -886,13 +886,13 @@ def test_derived_column_and_marker(wx_app):
     from app.ui.requirement_model import RequirementModel
 
     panel = list_panel.ListPanel(frame, model=RequirementModel())
-    panel.set_columns(["derived_from"])
+    panel.set_columns(["links"])
     parent = _req(1, "Parent", doc_prefix="REQ", rid="REQ-001")
     child = _req(2, "Child", doc_prefix="REQ", rid="REQ-002", links=[Link(rid="REQ-001")])
     panel.set_requirements([parent, child])
 
     assert panel.list.GetItemText(1, 0).startswith("↳")
-    assert panel.list.GetItemText(1, 1) == "REQ-001 — Parent"
+    assert panel.list.GetItemText(1, 1) == "REQ-001"
     frame.Destroy()
 
 

@@ -357,7 +357,7 @@ class EditorPanel(wx.Panel):
 
         # generic links section ----------------------------------------
         ln_sizer = self._create_links_section(
-            _("Derived from"),
+            locale.field_label("links"),
             "links",
             help_key="links",
         )

@@ -11,7 +11,7 @@ from .core.model import Requirement
 # Columns exposed via the View → Columns menu and persisted in UI settings.
 # ``title`` is always shown and therefore excluded from the toggleable list.
 _BASE_EXCLUDES = {"title", "labels"}
-_EXTRA_COLUMNS = ("labels", "derived_from", "derived_count")
+_EXTRA_COLUMNS = ("labels", "derived_count")
 
 
 def _build_available_columns() -> list[str]:
@@ -52,7 +52,6 @@ _DEFAULT_COLUMN_WIDTHS: dict[str, int] = {
     "doc_prefix": 140,
     "rid": 150,
     "derived_count": 120,
-    "derived_from": 260,
     "modified_at": 180,
 }
 DEFAULT_COLUMN_WIDTHS = MappingProxyType(_DEFAULT_COLUMN_WIDTHS)

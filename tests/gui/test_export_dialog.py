@@ -245,7 +245,6 @@ def test_export_dialog_default_columns_match_export_preset(wx_app):
             "links",
             "doc_prefix",
             "rid",
-            "derived_from",
             "derived_count",
         ],
         selected_fields=["status"],
@@ -275,7 +274,6 @@ def test_export_dialog_default_columns_match_export_preset(wx_app):
             "links",
             "doc_prefix",
             "rid",
-            "derived_from",
             "derived_count",
         ]
         assert dialog._checked_fields() == [
@@ -298,7 +296,6 @@ def test_export_dialog_default_columns_match_export_preset(wx_app):
             "links",
             "doc_prefix",
             "rid",
-            "derived_from",
             "derived_count",
         ]
     finally:

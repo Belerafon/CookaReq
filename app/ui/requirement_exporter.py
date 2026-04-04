@@ -23,17 +23,6 @@ def _format_links(requirement: Requirement) -> str:
     return ", ".join(formatted)
 
 
-def _format_derived_from(requirement: Requirement) -> str:
-    links = getattr(requirement, "links", []) or []
-    if not links:
-        return ""
-    link = links[0]
-    rid = getattr(link, "rid", str(link))
-    if getattr(link, "suspect", False):
-        return f"{rid} ⚠"
-    return str(rid)
-
-
 def _format_attachments(requirement: Requirement) -> str:
     attachments = getattr(requirement, "attachments", []) or []
     if not attachments:
@@ -94,9 +83,6 @@ def build_tabular_export(
                 continue
             if field == "links":
                 row.append(_format_links(requirement))
-                continue
-            if field == "derived_from":
-                row.append(_format_derived_from(requirement))
                 continue
             if field == "derived_count":
                 rid = requirement.rid or str(requirement.id)

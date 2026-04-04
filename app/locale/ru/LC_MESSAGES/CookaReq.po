@@ -3365,3 +3365,12 @@ msgstr "Выбрать"
 
 msgid "Select linked requirements"
 msgstr "Выбор связанных требований"
+
+msgid "List"
+msgstr "Список"
+
+msgid "Higher-level requirements"
+msgstr "Высокоуровневые требования"
+
+msgid "All allowed requirements"
+msgstr "Все допустимые требования"

@@ -3344,3 +3344,12 @@ msgstr "Browse"
 
 msgid "Select linked requirements"
 msgstr "Select linked requirements"
+
+msgid "List"
+msgstr "List"
+
+msgid "Higher-level requirements"
+msgstr "Higher-level requirements"
+
+msgid "All allowed requirements"
+msgstr "All allowed requirements"

@@ -30,3 +30,20 @@ def test_link_picker_persists_window_geometry(wx_app):
         frame.Destroy()
     finally:
         wx.Config.Set(original_config)
+
+
+def test_link_picker_defaults_to_high_level_scope(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR"},
+        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS"},
+    ]
+    dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
+    try:
+        # По умолчанию должен быть выбран high-level scope.
+        assert dialog._source_filter_key == "high"
+        visible = [row["rid"] for row in dialog._visible_candidates]
+        assert visible == ["HLR1"]
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

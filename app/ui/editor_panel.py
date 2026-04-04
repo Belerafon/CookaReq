@@ -89,6 +89,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         parent: wx.Window,
         candidates: list[dict[str, str]],
         selected_rids: set[str] | None = None,
+        current_prefix: str | None = None,
     ):
         super().__init__(
             parent,
@@ -99,9 +100,17 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._all_candidates = candidates
         self._visible_candidates: list[dict[str, str]] = []
         self._selected_rids = {rid.strip().upper() for rid in (selected_rids or set()) if rid.strip()}
+        self._current_prefix = (current_prefix or "").strip().upper()
+        self._source_options: list[tuple[str, str]] = []
+        self._source_filter_key = "all"
 
         root = wx.BoxSizer(wx.VERTICAL)
         search_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_label = wx.StaticText(self, label=_("List"))
+        self._source_choice = wx.Choice(self)
+        self._source_choice.Bind(wx.EVT_CHOICE, self._on_source_change)
+        search_row.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 8))
+        search_row.Add(self._source_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 12))
         search_label = wx.StaticText(self, label=_("Search"))
         self._search_ctrl = wx.TextCtrl(self)
         self._search_ctrl.SetHint(_("RID, title, or document"))
@@ -118,6 +127,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
             root.Add(buttons, 0, wx.ALL | wx.EXPAND, dip(self, 10))
         self.SetSizer(root)
 
+        self._build_source_options()
         self._apply_filter("")
         self._restore_layout()
         self.Bind(wx.EVT_CLOSE, self._on_close)
@@ -185,19 +195,61 @@ class RequirementLinkPickerDialog(wx.Dialog):
     def _on_search_change(self, _event: wx.CommandEvent) -> None:
         self._apply_filter(self._search_ctrl.GetValue())
 
+    def _on_source_change(self, _event: wx.CommandEvent) -> None:
+        index = self._source_choice.GetSelection()
+        if 0 <= index < len(self._source_options):
+            self._source_filter_key = self._source_options[index][0]
+        self._apply_filter(self._search_ctrl.GetValue())
+
+    def _build_source_options(self) -> None:
+        prefixes = sorted(
+            {
+                str(row.get("prefix", "")).strip().upper()
+                for row in self._all_candidates
+                if str(row.get("prefix", "")).strip()
+            }
+        )
+        options: list[tuple[str, str]] = [("high", _("Higher-level requirements")), ("all", _("All allowed requirements"))]
+        for prefix in prefixes:
+            options.append((prefix, prefix))
+        self._source_options = options
+        self._source_choice.Clear()
+        for _key, label in options:
+            self._source_choice.Append(label)
+        default_key = "high"
+        has_high = any(self._matches_source_filter(row, "high") for row in self._all_candidates)
+        if not has_high:
+            default_key = "all"
+        self._source_filter_key = default_key
+        selected = next((index for index, (key, _label) in enumerate(options) if key == default_key), 0)
+        self._source_choice.SetSelection(selected)
+
+    def _matches_source_filter(self, row: dict[str, str], key: str) -> bool:
+        prefix = str(row.get("prefix", "")).strip().upper()
+        if key == "all":
+            return True
+        if key == "high":
+            if not self._current_prefix:
+                return True
+            return bool(prefix) and prefix != self._current_prefix
+        return prefix == key
+
     def _apply_filter(self, query: str) -> None:
         remembered = set(self.selected_rids)
         text = query.strip().lower()
+        filtered_by_source = [
+            row for row in self._all_candidates if self._matches_source_filter(row, self._source_filter_key)
+        ]
         if text:
             self._visible_candidates = [
                 row
-                for row in self._all_candidates
+                for row in filtered_by_source
                 if text in row["rid"].lower()
                 or text in row["title"].lower()
                 or text in row["document"].lower()
             ]
         else:
-            self._visible_candidates = list(self._all_candidates)
+            self._visible_candidates = list(filtered_by_source)
         self._checklist.Clear()
         if not self._visible_candidates:
             self._checklist.Append(_("No requirements available"))
@@ -1018,23 +1070,28 @@ class EditorPanel(wx.Panel):
             return []
         try:
             requirements = service.load_requirements()
-            docs = {doc.prefix: doc.title for doc in service.load_documents().values()}
+            docs_map = service.load_documents()
+            docs = {doc.prefix: doc.title for doc in docs_map.values()}
         except Exception:  # pragma: no cover - service errors
             logger.exception("Failed to collect link picker candidates")
             return []
         _id_ctrl, _list_ctrl, _links_list = self._link_widgets(attr)
         current_rid = str(self.extra.get("rid", "")).strip()
+        current_prefix = (self._effective_prefix() or "").strip().upper()
         rows: list[dict[str, str]] = []
         for requirement in requirements:
             rid = str(getattr(requirement, "rid", "") or "").strip()
             if not rid or rid == current_rid:
                 continue
             prefix = str(getattr(requirement, "doc_prefix", "") or "").strip()
+            if current_prefix and prefix and not is_ancestor(current_prefix, prefix, docs_map):
+                continue
             rows.append(
                 {
                     "rid": rid,
                     "title": str(getattr(requirement, "title", "") or "").strip(),
                     "document": docs.get(prefix, prefix),
+                    "prefix": prefix.upper(),
                 }
             )
         rows.sort(key=lambda row: (row["rid"], row["title"]))
@@ -1046,6 +1103,7 @@ class EditorPanel(wx.Panel):
             self,
             self._collect_link_picker_candidates(attr),
             selected_rids=selected_rids,
+            current_prefix=self._effective_prefix(),
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:

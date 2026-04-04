@@ -68,7 +68,7 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
         for child in panel.links_panel.GetChildren()
         if isinstance(child, wx.StaticText)
     ]
-    assert any("SYS — Systems" in label for label in labels)
+    assert any("SYS: Systems" in label for label in labels)
     frame.Destroy()
 
 

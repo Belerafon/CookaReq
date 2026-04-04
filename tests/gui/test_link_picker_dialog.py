@@ -35,8 +35,8 @@ def test_link_picker_persists_window_geometry(wx_app):
 def test_link_picker_defaults_to_high_level_scope(wx_app):
     frame = wx.Frame(None)
     candidates = [
-        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR", "scope": "HLR — High"},
-        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS", "scope": "SYS — System"},
+        {"rid": "HLR1", "title": "High", "document": "High", "prefix": "HLR", "scope": "HLR: High"},
+        {"rid": "SYS2", "title": "System", "document": "System", "prefix": "SYS", "scope": "SYS: System"},
     ]
     dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
     try:
@@ -50,7 +50,7 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         ]
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
-        assert "HLR — High" in dialog._checklist.GetString(0)
+        assert "HLR: High" in dialog._checklist.GetString(0)
     finally:
         dialog.Destroy()
         frame.Destroy()

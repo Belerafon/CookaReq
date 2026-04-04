@@ -1100,7 +1100,7 @@ class EditorPanel(wx.Panel):
                     "title": str(getattr(requirement, "title", "") or "").strip(),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
-                    "scope": f"{prefix.upper()} — {docs.get(prefix, prefix)}".strip(" —"),
+                    "scope": f"{prefix.upper()}: {docs.get(prefix, prefix)}".strip(": "),
                 }
             )
         rows.sort(key=lambda row: (row["rid"], row["title"]))
@@ -1259,7 +1259,7 @@ class EditorPanel(wx.Panel):
                 doc_title = str(link.get("doc_title", "")).strip()
                 scope = ""
                 if doc_prefix and doc_title:
-                    scope = f"{doc_prefix} — {doc_title}"
+                    scope = f"{doc_prefix}: {doc_title}"
                 elif doc_prefix:
                     scope = doc_prefix
                 elif doc_title:

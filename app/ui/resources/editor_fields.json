@@ -70,9 +70,9 @@
       "control": "text",
       "multiline": true,
       "help": [
-        "Origin of the requirement such as a customer request, regulation or design document.",
-        "Recording the source explains why the requirement exists and where to look for additional context.",
-        "This trace is essential when validating compliance or revisiting negotiations."
+        "Textual origin of the requirement: a clause in the specification, regulation, contract, meeting minutes or ticket.",
+        "Use Source when you need to preserve wording, section numbers or external references that are not requirement IDs in CookaReq.",
+        "For example, when a system-level requirement comes from a technical specification, record that paragraph here."
       ]
     },
     {
@@ -185,9 +185,9 @@
       "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
     ],
     "links": [
-      "Links to higher-level requirements or stakeholder needs.",
-      "Upward traceability shows why this requirement exists and simplifies impact analysis when parents change.",
-      "Use it to prove coverage of system objectives."
+      "Links connect this requirement to other requirements in CookaReq by their IDs.",
+      "Use Links for parent-child and dependency traceability inside the project repository so impact analysis stays machine-readable.",
+      "Example: if SYS-12 derives from HLR-5, add HLR-5 in Links, while the original specification paragraph remains in Source."
     ]
   }
 }

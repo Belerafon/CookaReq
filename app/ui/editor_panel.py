@@ -277,7 +277,30 @@ class EditorPanel(wx.Panel):
         container.Add(self.notes_ctrl, 0, wx.EXPAND | wx.TOP, border)
         content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
 
-        add_text_field("source")
+        source_spec = text_specs["source"]
+        source_links_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_row = wx.BoxSizer(wx.VERTICAL)
+        source_label_row = wx.BoxSizer(wx.HORIZONTAL)
+        source_label = wx.StaticText(content, label=labels[source_spec.name])
+        source_help_btn = make_help_button(content, self._help_texts[source_spec.name])
+        source_label_row.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        source_label_row.Add(source_help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
+        source_row.Add(source_label_row, 0, wx.TOP, border)
+        source_ctrl = wx.TextCtrl(content, style=wx.TE_MULTILINE)
+        self._bind_autosize(source_ctrl)
+        self.fields[source_spec.name] = source_ctrl
+        self._install_text_history(source_ctrl)
+        source_row.Add(source_ctrl, 0, wx.EXPAND | wx.TOP, border)
+        source_links_row.Add(source_row, 1, wx.EXPAND | wx.RIGHT, border)
+
+        links_sizer = self._create_links_section(
+            locale.field_label("links"),
+            "links",
+            help_key="links",
+        )
+        source_links_row.Add(links_sizer, 1, wx.EXPAND)
+        content_sizer.Add(source_links_row, 0, wx.EXPAND | wx.TOP, border)
+
         add_grid_field("status")
 
         labels_sizer = self._create_labels_section(content)
@@ -348,22 +371,6 @@ class EditorPanel(wx.Panel):
 
         for name in ("modified_at", "owner", "revision"):
             add_grid_field(name)
-
-        # grouped links and metadata ------------------------------------
-        links_grid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
-        links_grid.AddGrowableCol(0, 1)
-        links_grid.AddGrowableCol(1, 1)
-        links_grid.AddGrowableRow(0, 1)
-
-        # generic links section ----------------------------------------
-        ln_sizer = self._create_links_section(
-            locale.field_label("links"),
-            "links",
-            help_key="links",
-        )
-        links_grid.Add(ln_sizer, 0, wx.EXPAND | wx.TOP, border)
-
-        content_sizer.Add(links_grid, 0, wx.EXPAND | wx.TOP, border)
 
         for name in ("type", "priority"):
             add_grid_field(name)

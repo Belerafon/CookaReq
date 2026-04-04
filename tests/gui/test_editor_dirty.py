@@ -307,7 +307,7 @@ def test_editor_panel_primary_and_secondary_fields_order(wx_app):
 
         statement_y = panel.fields["statement"].GetScreenPosition().y
         source_y = panel.fields["source"].GetScreenPosition().y
-        links_y = panel.links_id.GetScreenPosition().y
+        links_y = panel.links_panel.GetScreenPosition().y
         status_y = panel.enums["status"].GetScreenPosition().y
         labels_y = panel.labels_panel.GetScreenPosition().y
         attachments_y = panel.attachments_list.GetScreenPosition().y

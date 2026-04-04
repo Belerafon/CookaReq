@@ -3374,3 +3374,6 @@ msgstr "Требование не найдено: ссылка будет пом
 
 msgid "Link target looks valid"
 msgstr "Целевая ссылка выглядит корректной"
+
+msgid "Select linked requirements"
+msgstr "Выбор связанных требований"

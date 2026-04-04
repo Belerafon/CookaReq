@@ -3353,3 +3353,6 @@ msgstr "Requirement not found; link will be marked suspect"
 
 msgid "Link target looks valid"
 msgstr "Link target looks valid"
+
+msgid "Select linked requirements"
+msgstr "Select linked requirements"

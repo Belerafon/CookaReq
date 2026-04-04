@@ -297,6 +297,7 @@ class EditorPanel(wx.Panel):
         self._id_conflict = False
         self._saved_state: dict[str, Any] | None = None
         self._link_metadata_cache: dict[str, dict[str, Any]] = {}
+        self._has_persisted_unsaved_changes = False
         self._statement_mode: wx.Choice | None = None
         self._statement_preview: MarkdownContent | None = None
         self._insert_image_btn: wx.Button | None = None
@@ -617,6 +618,7 @@ class EditorPanel(wx.Panel):
         self._refresh_verification_methods_display()
         self._refresh_attachments()
         self._refresh_context_docs()
+        self._bind_action_state_tracking()
         self._update_id_prefix_label()
         self.mark_clean()
 
@@ -624,8 +626,32 @@ class EditorPanel(wx.Panel):
         """Toggle edit controls based on whether a requirement is selected."""
         self._requirement_selected = bool(selected)
         self._content_panel.Enable(self._requirement_selected)
-        self.save_btn.Enable(self._requirement_selected)
-        self.cancel_btn.Enable(self._requirement_selected)
+        self._update_action_buttons()
+
+    def set_persisted_unsaved_changes(self, value: bool) -> None:
+        """Track whether loaded data differs from persisted storage."""
+        self._has_persisted_unsaved_changes = bool(value)
+        self._update_action_buttons()
+
+    def _bind_action_state_tracking(self) -> None:
+        """Bind change events that should refresh Save/Cancel enabled state."""
+        for ctrl in self.fields.values():
+            ctrl.Bind(wx.EVT_TEXT, self._on_editor_content_changed)
+        for choice in self.enums.values():
+            choice.Bind(wx.EVT_CHOICE, self._on_editor_content_changed)
+        self.notes_ctrl.Bind(wx.EVT_TEXT, self._on_editor_content_changed)
+        self.approved_picker.Bind(wx.adv.EVT_DATE_CHANGED, self._on_editor_content_changed)
+
+    def _on_editor_content_changed(self, event: wx.Event) -> None:
+        if not self._suspend_events:
+            self._update_action_buttons()
+        event.Skip()
+
+    def _update_action_buttons(self) -> None:
+        can_edit = bool(self._requirement_selected)
+        has_changes = can_edit and (self.is_dirty() or self._has_persisted_unsaved_changes)
+        self.save_btn.Enable(has_changes)
+        self.cancel_btn.Enable(has_changes)
 
     def FitInside(self) -> None:  # noqa: N802 - wxWidgets API casing
         """Recalculate the scrollable area of the editor form."""
@@ -682,6 +708,7 @@ class EditorPanel(wx.Panel):
             normalized = [Verification.NOT_DEFINED.value]
         self._selected_verification_codes = normalized
         self._refresh_verification_methods_display()
+        self._update_action_buttons()
 
     def _refresh_verification_methods_display(self) -> None:
         panel = self._verification_methods_panel
@@ -1283,6 +1310,7 @@ class EditorPanel(wx.Panel):
         panel.Layout()
         self.Layout()
         self.FitInside()
+        self._update_action_buttons()
 
     def set_link_suspect(self, attr: str, index: int, value: bool) -> None:
         """Set suspect flag for a link and refresh list display."""
@@ -1339,6 +1367,7 @@ class EditorPanel(wx.Panel):
         self._reset_scroll_position()
         self._reset_text_histories()
         self.mark_clean()
+        self.set_persisted_unsaved_changes(False)
 
     def load(
         self,
@@ -1346,6 +1375,7 @@ class EditorPanel(wx.Panel):
         *,
         path: str | Path | None = None,
         mtime: float | None = None,
+        persisted_unsaved: bool = False,
     ) -> None:
         """Populate editor fields from ``data``."""
         if isinstance(data, Requirement):
@@ -1435,6 +1465,7 @@ class EditorPanel(wx.Panel):
         self._reset_scroll_position()
         self._reset_text_histories()
         self.mark_clean()
+        self.set_persisted_unsaved_changes(persisted_unsaved)
         self.set_requirement_selected(True)
 
     def clone(self, new_id: int) -> None:
@@ -1453,6 +1484,7 @@ class EditorPanel(wx.Panel):
         self._auto_resize_all()
         self._on_id_change()
         self._reset_text_histories()
+        self.set_persisted_unsaved_changes(False)
 
     # data helpers -----------------------------------------------------
     def get_data(self) -> Requirement:
@@ -1606,6 +1638,7 @@ class EditorPanel(wx.Panel):
                     comma.Bind(wx.EVT_LEFT_DOWN, self._on_labels_click)
                     sizer.Add(comma, 0, wx.RIGHT, 2)
         self.labels_panel.Layout()
+        self._update_action_buttons()
 
     def _on_labels_click(self, _event: wx.Event) -> None:
         if not self._label_defs and not self._labels_allow_freeform:
@@ -1656,6 +1689,7 @@ class EditorPanel(wx.Panel):
         self.FitInside()
         if self._statement_preview and self._is_statement_preview_mode():
             self._update_statement_preview()
+        self._update_action_buttons()
 
     def _on_add_attachment(self, _event: wx.CommandEvent) -> None:
         service = self._service
@@ -2067,6 +2101,7 @@ class EditorPanel(wx.Panel):
         self._known_ids = None
         self._on_id_change()
         self.mark_clean()
+        self.set_persisted_unsaved_changes(False)
         return saved_req
 
     def _snapshot_state(self) -> dict[str, Any]:
@@ -2100,6 +2135,7 @@ class EditorPanel(wx.Panel):
     def mark_clean(self) -> None:
         """Store current state as the latest saved baseline."""
         self._saved_state = self._snapshot_state()
+        self._update_action_buttons()
 
     def has_meaningful_content(self) -> bool:
         """Return True when editor contains user-entered content."""
@@ -2248,6 +2284,7 @@ class EditorPanel(wx.Panel):
             list_ctrl.SendSizeEvent()
         if hasattr(self, "_content_panel") and self._content_panel:
             self._content_panel.FitInside()
+        self._update_action_buttons()
 
     def _on_add_context_doc(self, _event: wx.Event) -> None:
         prefix = self._effective_prefix()

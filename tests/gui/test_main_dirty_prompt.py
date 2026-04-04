@@ -162,6 +162,80 @@ def test_confirm_discard_changes_reload_from_model(monkeypatch, wx_app, tmp_path
         frame.Destroy()
 
 
+def test_editor_discard_restores_persisted_requirement(wx_app, tmp_path):
+    pytest.importorskip("wx")
+
+    import app.ui.main_frame as main_frame_mod
+    from app.core.model import (
+        Priority,
+        Requirement,
+        RequirementType,
+        Status,
+        Verification,
+    )
+
+    frame = _create_frame(main_frame_mod, tmp_path, name="discard_persisted.ini")
+    try:
+        stored = Requirement(
+            id=1,
+            title="Stored",
+            statement="Stable",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Spec",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+            rid="DOC-1",
+        )
+        unsaved = Requirement(
+            id=1,
+            title="Cached",
+            statement="Edited",
+            type=RequirementType.REQUIREMENT,
+            status=Status.DRAFT,
+            owner="Owner",
+            priority=Priority.MEDIUM,
+            source="Spec",
+            verification=Verification.ANALYSIS,
+            doc_prefix="DOC",
+            rid="DOC-1",
+        )
+
+        class DummyService:
+            def load_item(self, prefix: str, req_id: int):
+                assert (prefix, req_id) == ("DOC", 1)
+                return (stored.to_mapping(), 1.0)
+
+            def get_document(self, prefix: str):
+                from app.core.document_store import Document
+
+                return Document(prefix=prefix, title=prefix)
+
+        class DummyController:
+            def __init__(self) -> None:
+                self.service = DummyService()
+
+        frame.docs_controller = DummyController()
+        frame.current_doc_prefix = "DOC"
+        frame._selected_requirement_id = 1
+        frame.model.set_requirements([unsaved])
+        frame.model.mark_unsaved(unsaved)
+        frame.editor.load(unsaved, persisted_unsaved=True)
+
+        assert frame.editor.save_btn.IsEnabled() is True
+        assert frame.model.is_unsaved(req_id=1, prefix="DOC") is True
+
+        assert frame._handle_editor_discard() is True
+
+        assert frame.editor.fields["title"].GetValue() == "Stored"
+        assert frame.editor.save_btn.IsEnabled() is False
+        assert frame.model.is_unsaved(req_id=1, prefix="DOC") is False
+    finally:
+        frame.Destroy()
+
+
 def test_document_selection_rejected_when_dirty(monkeypatch, wx_app, tmp_path):
     pytest.importorskip("wx")
 

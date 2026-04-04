@@ -185,6 +185,29 @@ def test_editor_panel_buttons_place_cancel_after_save(wx_app):
 
 
 @pytest.mark.gui_smoke
+def test_editor_panel_buttons_enabled_for_persisted_unsaved_snapshot(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.model import Requirement
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        panel.load(
+            Requirement.from_mapping({"id": 4, "title": "Cached", "statement": "s"}),
+            persisted_unsaved=True,
+        )
+
+        assert panel.is_dirty() is False
+        assert panel.save_btn.IsEnabled() is True
+        assert panel.cancel_btn.IsEnabled() is True
+    finally:
+        frame.Destroy()
+
+
+@pytest.mark.gui_smoke
 def test_editor_panel_load_resets_scroll_to_top(wx_app):
     pytest.importorskip("wx")
     import wx

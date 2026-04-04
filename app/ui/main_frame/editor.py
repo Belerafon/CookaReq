@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import wx
 
-from ...services.requirements import RequirementIDCollisionError
+from ...services.requirements import RequirementIDCollisionError, rid_for
 from ...core.model import Requirement
 from ...i18n import _
 from ..detached_editor import DetachedEditorFrame
@@ -23,11 +23,18 @@ class MainFrameEditorMixin:
 
     def _has_multiple_selected_requirements(self: MainFrame) -> bool:
         """Return ``True`` when requirements list currently contains multi-selection."""
-        panel = getattr(self, "panel", None)
-        if panel is None or not hasattr(panel, "get_selected_ids"):
+        list_ctrl = getattr(getattr(self, "panel", None), "list", None)
+        if list_ctrl is None:
             return False
         try:
-            return len(panel.get_selected_ids()) > 2
+            count = 0
+            index = list_ctrl.GetFirstSelected()
+            while index != -1:
+                count += 1
+                if count > 1:
+                    return True
+                index = list_ctrl.GetNextSelected(index)
+            return False
         except Exception:
             return False
 
@@ -55,7 +62,10 @@ class MainFrameEditorMixin:
         req = self.model.get_by_id(req_id, doc_prefix=self.current_doc_prefix)
         if req:
             self._selected_requirement_id = req_id
-            self.editor.load(req)
+            self.editor.load(
+                req,
+                persisted_unsaved=self.model.is_unsaved(req) if hasattr(self.model, "is_unsaved") else False,
+            )
             if self._is_editor_visible():
                 self._show_editor_panel()
                 self.splitter.UpdateSize()
@@ -64,7 +74,13 @@ class MainFrameEditorMixin:
         """Re-check selection state after UI events settle."""
         if not self._is_requirement_index_selected(index):
             return
-        if self._is_editor_visible() and self._has_multiple_selected_requirements():
+        if hasattr(self, "panel") and hasattr(self.panel, "get_selected_ids"):
+            try:
+                if len(self.panel.get_selected_ids()) >= 3 and not self.editor.is_dirty():
+                    return
+            except Exception:
+                pass
+        if self._has_multiple_selected_requirements() and not self.editor.is_dirty():
             return
         if not self._confirm_discard_changes():
             return
@@ -75,7 +91,14 @@ class MainFrameEditorMixin:
         index = event.GetIndex()
         if index == wx.NOT_FOUND:
             return
-        if self._is_editor_visible() and self._has_multiple_selected_requirements():
+        if hasattr(self, "panel") and hasattr(self.panel, "get_selected_ids"):
+            try:
+                if len(self.panel.get_selected_ids()) >= 3 and not self.editor.is_dirty():
+                    wx.CallAfter(self._apply_deferred_requirement_selection, index)
+                    return
+            except Exception:
+                pass
+        if self._has_multiple_selected_requirements() and not self.editor.is_dirty():
             wx.CallAfter(self._apply_deferred_requirement_selection, index)
             return
         if not self._confirm_discard_changes():
@@ -162,17 +185,29 @@ class MainFrameEditorMixin:
         self._save_editor_contents(self.editor, doc_prefix=self.current_doc_prefix)
 
     def _handle_editor_discard(self: MainFrame) -> bool:
-        """Reload currently selected requirement into the editor."""
+        """Reload currently selected requirement from persisted storage."""
         if self._selected_requirement_id is None:
             return False
-        requirement = self.model.get_by_id(
-            self._selected_requirement_id, doc_prefix=self.current_doc_prefix
-        )
-        if not requirement:
+        prefix = self.current_doc_prefix
+        if not prefix or not self.docs_controller:
             return False
+        service = self.docs_controller.service
+        try:
+            payload, _mtime = service.load_item(prefix, self._selected_requirement_id)
+        except Exception:
+            return False
+        requirement = Requirement.from_mapping(payload)
+        requirement.doc_prefix = prefix
+        try:
+            requirement.rid = rid_for(service.get_document(prefix), requirement.id)
+        except Exception:
+            requirement.rid = requirement.rid or ""
+        self.model.update(requirement)
         if hasattr(self.model, "clear_unsaved"):
             self.model.clear_unsaved(requirement)
         self.editor.load(requirement)
+        self.panel.recalc_derived_map(self.model.get_all())
+        self.panel.refresh(select_id=self._selected_requirement_id)
         return True
 
     def _stash_unsaved_edits(

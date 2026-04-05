@@ -446,9 +446,6 @@ msgstr "Derivation Graph"
 msgid "Derive"
 msgstr "Derive"
 
-msgid "Derived from"
-msgstr "Derived from"
-
 msgid "Derived only"
 msgstr "Derived only"
 
@@ -1295,6 +1292,9 @@ msgstr "invalid link target: {rid}"
 msgid "invalid requirement identifier: {rid}"
 msgstr "invalid requirement identifier: {rid}"
 
+msgid "invalid revision for linked item: {rid}\n"
+msgstr "invalid revision for linked item: {rid}\n"
+
 msgid "item not found: {rid}"
 msgstr "item not found: {rid}"
 
@@ -1850,6 +1850,9 @@ msgstr "Current attachment count: {count}"
 
 msgid "Current outgoing links: {count}"
 msgstr "Current outgoing links: {count}"
+
+msgid "{rid}: {details}"
+msgstr "{rid}: {details}"
 
 msgid ""
 "Custom instructions appended to the system prompt:\n"

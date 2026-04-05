@@ -455,9 +455,6 @@ msgstr "Граф выводов"
 msgid "Derive"
 msgstr "Создать производное"
 
-msgid "Derived from"
-msgstr "Получено из"
-
 msgid "Derived only"
 msgstr "Только производные"
 
@@ -1310,6 +1307,9 @@ msgstr "неверная цель связи: {rid}"
 msgid "invalid requirement identifier: {rid}"
 msgstr "некорректный идентификатор требования: {rid}"
 
+msgid "invalid revision for linked item: {rid}\n"
+msgstr "некорректная ревизия связанного элемента: {rid}\n"
+
 msgid "item not found: {rid}"
 msgstr "элемент не найден: {rid}"
 
@@ -1865,6 +1865,9 @@ msgstr "Текущих вложений: {count}"
 
 msgid "Current outgoing links: {count}"
 msgstr "Текущих исходящих связей: {count}"
+
+msgid "{rid}: {details}"
+msgstr "{rid}: {details}"
 
 msgid ""
 "Custom instructions appended to the system prompt:\n"

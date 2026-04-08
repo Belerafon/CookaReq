@@ -28,7 +28,7 @@ FIELD_LABEL_MSGIDS = {
     "context_docs": "Context docs",
     "approved_at": "Approved at",
     "notes": "Notes",
-    "links": "Links",
+    "links": "Parent requirements",
     "doc_prefix": "Document prefix",
     "rid": "Requirement RID",
 }

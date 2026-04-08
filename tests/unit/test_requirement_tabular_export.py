@@ -97,7 +97,7 @@ def test_build_tabular_export_formats_special_fields():
     assert headers == [
         "Short title",
         "Labels",
-        "Links",
+        "Parent requirements",
         "Derived count",
         "Requirement ID (number)",
     ]

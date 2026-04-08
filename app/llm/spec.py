@@ -82,7 +82,7 @@ SYSTEM_PROMPT = (
         When editing a requirement use the specialised tools described below: `update_requirement_field` changes exactly one field at a time. Allowed field names: {editable_fields}. Provide the new content via the `value` argument as a plain string (use ISO 8601 for timestamps; send an empty string when you need to clear optional text). The server increments the revision automatically.
         `set_requirement_labels` replaces the full label list; pass an array of strings (use [] to clear all labels).
         `set_requirement_attachments` replaces attachments; supply an array of objects such as {{"id": "uuid", "path": "assets/spec.pdf", "note": "optional comment"}} or [] to remove them.
-        `set_requirement_links` replaces outgoing trace links; provide an array of link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically.
+        `set_requirement_links` replaces parent-requirement links stored in `links`; provide an array of link objects (with at least `rid`) or plain RID strings; unknown RIDs will be marked suspect automatically.
         `create_requirement` adds a new requirement; provide a `prefix` (for example, `SYS`) and a `data` object containing at least title, statement, type, status, owner, priority, source and verification. Optional fields may also be included.
         `delete_requirement` removes an existing requirement by RID; use it only when the user explicitly requests deletion.
         `link_requirements` creates hierarchy links; pass `source_rid`, `derived_rid` and `link_type` (currently `parent`).
@@ -349,7 +349,7 @@ TOOLS: list[dict[str, Any]] = [
                             },
                             "links": {
                                 "type": "array",
-                                "description": "Optional outgoing trace links established at creation time.",
+                                "description": "Optional parent requirement links (`links`) established at creation time.",
                                 "items": {
                                     "oneOf": [
                                         {
@@ -496,13 +496,13 @@ TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "set_requirement_links",
-            "description": "Replace outgoing trace links of a requirement",
+            "description": "Replace parent requirement links (`links`) of a requirement",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "rid": {
                         "type": "string",
-                        "description": "Requirement identifier whose outgoing links will be replaced.",
+                        "description": "Requirement identifier whose parent requirement links (`links`) will be replaced.",
                     },
                     "links": {
                         "type": "array",
@@ -534,7 +534,7 @@ TOOLS: list[dict[str, Any]] = [
                                 },
                             ]
                         },
-                        "description": "Links to persist; use an empty array when no outgoing relations should remain.",
+                        "description": "Parent requirement links (`links`) to persist; use an empty array when no parent relations should remain.",
                     },
                 },
                 "required": ["rid", "links"],

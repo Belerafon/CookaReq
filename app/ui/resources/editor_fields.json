@@ -185,9 +185,9 @@
       "Use context docs for background, domain constraints and reference notes that should be available before reading requirement statements."
     ],
     "links": [
-      "Links connect this requirement to other requirements in CookaReq by their IDs.",
-      "Use Links for parent-child and dependency traceability inside the project repository so impact analysis stays machine-readable.",
-      "Example: if SYS-12 derives from HLR-5, add HLR-5 in Links, while the original specification paragraph remains in Source."
+      "Parent requirements connect this requirement to upstream requirements in CookaReq by RID.",
+      "Use Parent requirements to capture parent-child traceability inside the project repository so impact analysis stays machine-readable.",
+      "Example: if HLR-5 derives from SYS-12, add SYS-12 to Parent requirements. Keep source specification references in SYS-12 Source, while HLR-5 stores only the parent requirement link."
     ]
   }
 }

@@ -257,12 +257,12 @@ msgid ""
 "Changing RID manually is not recommended because it can break traceability "
 "links.\n"
 "\n"
-"Open requirement number editing?"
+"Enter requirement number:"
 msgstr ""
 "Не рекомендуется менять RID вручную: это может нарушить связи "
 "трассируемости.\n"
 "\n"
-"Открыть редактирование номера требования?"
+"Введите номер требования:"
 
 # Main frame
 msgid "&Open Folder\tCtrl+O"
@@ -3416,3 +3416,11 @@ msgstr "Требования текущего документа для {scope}"
 
 msgid "All allowed requirements for {scope}"
 msgstr "Все допустимые требования для {scope}"
+
+
+msgid "Edit RID: {prefix}"
+msgstr "Изменение RID: {prefix}"
+
+
+msgid "(no prefix)"
+msgstr "(без префикса)"

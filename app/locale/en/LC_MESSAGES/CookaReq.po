@@ -147,12 +147,12 @@ msgid ""
 "Changing RID manually is not recommended because it can break traceability "
 "links.\n"
 "\n"
-"Open requirement number editing?"
+"Enter requirement number:"
 msgstr ""
 "Changing RID manually is not recommended because it can break traceability "
 "links.\n"
 "\n"
-"Open requirement number editing?"
+"Enter requirement number:"
 
 msgid "Requirement number is required"
 msgstr "Requirement number is required"
@@ -3396,3 +3396,11 @@ msgstr "Current document requirements for {scope}"
 
 msgid "All allowed requirements for {scope}"
 msgstr "All allowed requirements for {scope}"
+
+
+msgid "Edit RID: {prefix}"
+msgstr "Edit RID: {prefix}"
+
+
+msgid "(no prefix)"
+msgstr "(no prefix)"

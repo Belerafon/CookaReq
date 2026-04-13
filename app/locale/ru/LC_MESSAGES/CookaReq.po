@@ -172,7 +172,7 @@ msgid "Document prefix"
 msgstr "Префикс документа"
 
 msgid "Requirement RID"
-msgstr "RID требования"
+msgstr "Идентификатор требования (RID)"
 
 msgid "Modified at"
 msgstr "Дата изменения"

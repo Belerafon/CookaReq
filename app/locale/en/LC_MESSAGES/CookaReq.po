@@ -137,14 +137,31 @@ msgstr "High"
 msgid "Hint"
 msgstr "Hint"
 
-msgid "ID is required"
-msgstr "ID is required"
+msgid "Edit RID"
+msgstr "Edit RID"
 
-msgid "ID must be an integer"
-msgstr "ID must be an integer"
+msgid "Edit number"
+msgstr "Edit number"
 
-msgid "ID must be positive"
-msgstr "ID must be positive"
+msgid ""
+"Changing RID manually is not recommended because it can break traceability "
+"links.\n"
+"\n"
+"Enter requirement number:"
+msgstr ""
+"Changing RID manually is not recommended because it can break traceability "
+"links.\n"
+"\n"
+"Enter requirement number:"
+
+msgid "Requirement number is required"
+msgstr "Requirement number is required"
+
+msgid "Requirement number must be an integer"
+msgstr "Requirement number must be an integer"
+
+msgid "Requirement number must be positive"
+msgstr "Requirement number must be positive"
 
 msgid "Revision must be a positive integer"
 msgstr "Revision must be a positive integer"
@@ -235,8 +252,8 @@ msgstr "Remember sort order"
 msgid "Requirement"
 msgstr "Requirement"
 
-msgid "Requirement ID (number)"
-msgstr "Requirement ID (number)"
+msgid "Requirement number"
+msgstr "Requirement number"
 
 msgid "Requirement text"
 msgstr "Requirement text"
@@ -343,8 +360,8 @@ msgstr "Test"
 msgid "Title"
 msgstr "Title"
 
-msgid "Unique integer identifier"
-msgstr "Unique integer identifier"
+msgid "Numeric part of the requirement RID"
+msgstr "Numeric part of the requirement RID"
 
 msgid "Verification method"
 msgstr "Verification method"
@@ -3379,3 +3396,11 @@ msgstr "Current document requirements for {scope}"
 
 msgid "All allowed requirements for {scope}"
 msgstr "All allowed requirements for {scope}"
+
+
+msgid "Edit RID: {prefix}"
+msgstr "Edit RID: {prefix}"
+
+
+msgid "(no prefix)"
+msgstr "(no prefix)"

@@ -7,7 +7,7 @@ from .enums import LABEL_MSGIDS
 
 # Human-readable labels for requirement fields (msgids only)
 FIELD_LABEL_MSGIDS = {
-    "id": "Requirement ID (number)",
+    "id": "Requirement number",
     "title": "Short title",
     "statement": "Requirement text",
     "acceptance": "Acceptance criteria",

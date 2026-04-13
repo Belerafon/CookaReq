@@ -18,8 +18,8 @@ def test_editor_resource_contains_expected_fields():
 
 def test_editor_resource_help_lookup():
     config = load_editor_config()
-    assert "Requirement ID" in config.help_text("id")
-    assert "higher-level requirements" in config.help_text("links")
+    assert "Requirement number" in config.help_text("id")
+    assert "Parent requirements" in config.help_text("links")
     with pytest.raises(KeyError):
         config.help_text("unknown")
 

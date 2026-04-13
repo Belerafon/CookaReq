@@ -99,7 +99,7 @@ def test_build_tabular_export_formats_special_fields():
         "Labels",
         "Parent requirements",
         "Derived count",
-        "Requirement ID (number)",
+        "Requirement number",
     ]
     assert rows == [[
         "Title\tWith Tab",

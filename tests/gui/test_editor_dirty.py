@@ -264,7 +264,6 @@ def test_editor_panel_compact_fields_are_inline(wx_app):
         wx.Yield()
 
         inline_controls = {
-            "id": panel.fields["id"],
             "modified_at": panel.fields["modified_at"],
             "owner": panel.fields["owner"],
             "revision": panel.fields["revision"],
@@ -280,7 +279,7 @@ def test_editor_panel_compact_fields_are_inline(wx_app):
 
 
 @pytest.mark.gui_smoke
-def test_editor_panel_shows_readonly_doc_prefix_before_id(wx_app):
+def test_editor_panel_shows_rid_and_edits_number_in_dialog(wx_app, monkeypatch):
     pytest.importorskip("wx")
     import wx
 
@@ -292,23 +291,42 @@ def test_editor_panel_shows_readonly_doc_prefix_before_id(wx_app):
         frame.Show()
         wx.Yield()
 
-        prefix_label = panel._id_prefix_label
-        assert prefix_label is not None
-        assert not prefix_label.IsShown()
+        rid_link = panel._id_display_link
+        assert rid_link is not None
+
+        assert rid_link.GetLabel() == "—"
 
         panel.set_document("REQ")
         wx.Yield()
-        assert prefix_label.IsShown()
-        assert prefix_label.GetLabel() == "REQ-"
+        assert rid_link.GetLabel() == "REQ-…"
 
         panel.set_document(None)
         wx.Yield()
-        assert not prefix_label.IsShown()
+        assert rid_link.GetLabel() == "—"
 
         panel.load({"id": 5, "doc_prefix": "SYS", "title": "Sample"})
         wx.Yield()
-        assert prefix_label.IsShown()
-        assert prefix_label.GetLabel() == "SYS-"
+        assert rid_link.GetLabel() == "SYS-5"
+
+        class _EditNumberDialog:
+            def __init__(self, *_args, **_kwargs):
+                self._value = "42"
+
+            def ShowModal(self) -> int:
+                return wx.ID_OK
+
+            def GetValue(self) -> str:
+                return self._value
+
+            def Destroy(self) -> None:
+                return None
+
+        monkeypatch.setattr(wx, "TextEntryDialog", _EditNumberDialog)
+        panel._on_rid_link_clicked(None)  # type: ignore[arg-type]
+        wx.Yield()
+
+        assert panel.fields["id"].GetValue() == "42"
+        assert rid_link.GetLabel() == "SYS-42"
     finally:
         frame.Destroy()
 

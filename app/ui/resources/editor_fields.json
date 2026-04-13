@@ -4,10 +4,10 @@
       "name": "id",
       "control": "text",
       "multiline": false,
-      "hint": "Unique integer identifier",
+      "hint": "Numeric part of the requirement RID",
       "help": [
-        "The 'Requirement ID' is a unique integer used as the stable anchor for a requirement.",
-        "Teams refer to it in traceability matrices, change requests and test reports to ensure everyone talks about the same item.",
+        "The 'Requirement number' is the numeric part of the requirement RID (for example, 1 in SYS1).",
+        "The full RID is built from document prefix + requirement number, and teams refer to it in traceability matrices, change requests and test reports.",
         "Once the identifier appears in external documents it should not be changed to avoid broken references."
       ]
     },

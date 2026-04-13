@@ -315,6 +315,9 @@ class EditorPanel(wx.Panel):
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
         self._defer_autosize_layout = False
         self._id_prefix_label: wx.StaticText | None = None
+        self._id_display_link: wx.adv.HyperlinkCtrl | None = None
+        self._id_editor_panel: wx.Window | None = None
+        self._id_edit_unlocked = False
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -396,11 +399,21 @@ class EditorPanel(wx.Panel):
 
             if spec.name in compact_text_fields:
                 if spec.name == "id":
+                    rid_link = wx.adv.HyperlinkCtrl(content, label="—", url="#")
+                    rid_link.Bind(wx.adv.EVT_HYPERLINK, self._on_rid_link_clicked)
+                    row.Add(rid_link, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                    self._id_display_link = rid_link
+
                     prefix_label = wx.StaticText(content, label="")
                     prefix_label.Hide()
+                    ctrl.Hide()
                     row.Add(prefix_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                    row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 6)
                     self._id_prefix_label = prefix_label
-                row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+                    self._id_editor_panel = ctrl
+                    self._id_edit_unlocked = False
+                else:
+                    row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 content_sizer.Add(row, 0, wx.EXPAND | wx.TOP, border)
             else:
                 content_sizer.Add(row, 0, wx.TOP, border)
@@ -620,6 +633,7 @@ class EditorPanel(wx.Panel):
         self._refresh_context_docs()
         self._bind_action_state_tracking()
         self._update_id_prefix_label()
+        self._update_rid_display_label()
         self.mark_clean()
 
     def set_requirement_selected(self, selected: bool) -> None:
@@ -769,8 +783,10 @@ class EditorPanel(wx.Panel):
         self._document = None
         self._known_ids = None
         self._id_conflict = False
+        self._id_edit_unlocked = False
         self._link_metadata_cache = {}
         self._update_id_prefix_label()
+        self._update_rid_display_label()
         self._on_id_change()
 
     def set_document(self, prefix: str | None) -> None:
@@ -780,8 +796,10 @@ class EditorPanel(wx.Panel):
         self._document = None
         self._known_ids = None
         self._id_conflict = False
+        self._id_edit_unlocked = False
         self._link_metadata_cache = {}
         self._update_id_prefix_label()
+        self._update_rid_display_label()
         self._on_id_change()
 
     def _update_id_prefix_label(self) -> None:
@@ -790,7 +808,7 @@ class EditorPanel(wx.Panel):
         if label is None:
             return
         prefix = self._effective_prefix()
-        if prefix:
+        if prefix and self._id_edit_unlocked:
             label.SetLabel(f"{prefix}-")
             label.Show()
         else:
@@ -799,6 +817,60 @@ class EditorPanel(wx.Panel):
         parent_sizer = label.GetContainingSizer()
         if parent_sizer is not None:
             parent_sizer.Layout()
+        editor_panel = self._id_editor_panel
+        if editor_panel is not None:
+            editor_panel.Show(self._id_edit_unlocked)
+            editor_panel.Layout()
+
+    def _format_rid_display(self) -> str:
+        prefix = self._effective_prefix()
+        value = self.fields["id"].GetValue().strip()
+        if prefix and value:
+            return f"{prefix}-{value}"
+        if prefix:
+            return f"{prefix}-…"
+        if value:
+            return value
+        return "—"
+
+    def _update_rid_display_label(self) -> None:
+        link = self._id_display_link
+        if link is None:
+            return
+        link.SetLabel(self._format_rid_display())
+        link.SetURL("")
+        link.Layout()
+
+    def _unlock_id_editor(self) -> None:
+        if self._id_edit_unlocked:
+            return
+        self._id_edit_unlocked = True
+        self._update_id_prefix_label()
+        self._update_rid_display_label()
+        ctrl = self.fields.get("id")
+        if ctrl is not None:
+            ctrl.SetFocus()
+            ctrl.SetInsertionPointEnd()
+        self.Layout()
+        self.FitInside()
+
+    def _on_rid_link_clicked(self, _event: wx.adv.HyperlinkEvent) -> None:
+        message = _(
+            "Changing RID manually is not recommended because it can break traceability links.\n\n"
+            "Open requirement number editing?"
+        )
+        dialog = wx.MessageDialog(
+            self,
+            message,
+            _("Edit RID"),
+            style=wx.YES_NO | wx.ICON_WARNING,
+        )
+        dialog.SetYesNoLabels(_("Edit number"), _("Cancel"))
+        result = dialog.ShowModal()
+        dialog.Destroy()
+        if result != wx.ID_YES:
+            return
+        self._unlock_id_editor()
 
     def _effective_prefix(self) -> str | None:
         prefix = self._doc_prefix or str(self.extra.get("doc_prefix", "")).strip()
@@ -1363,6 +1435,9 @@ class EditorPanel(wx.Panel):
             self._refresh_labels_display()
         self.original_modified_at = ""
         self._auto_resize_all()
+        self._id_edit_unlocked = False
+        self._update_id_prefix_label()
+        self._update_rid_display_label()
         self._on_id_change()
         self._reset_scroll_position()
         self._reset_text_histories()
@@ -1460,7 +1535,9 @@ class EditorPanel(wx.Panel):
             self._refresh_labels_display()
         self.original_modified_at = self.fields["modified_at"].GetValue()
         self._auto_resize_all()
+        self._id_edit_unlocked = False
         self._update_id_prefix_label()
+        self._update_rid_display_label()
         self._on_id_change()
         self._reset_scroll_position()
         self._reset_text_histories()
@@ -1482,6 +1559,9 @@ class EditorPanel(wx.Panel):
             self._refresh_labels_display()
         self.original_modified_at = ""
         self._auto_resize_all()
+        self._id_edit_unlocked = False
+        self._update_id_prefix_label()
+        self._update_rid_display_label()
         self._on_id_change()
         self._reset_text_histories()
         self.set_persisted_unsaved_changes(False)
@@ -1492,13 +1572,13 @@ class EditorPanel(wx.Panel):
         self._sync_attachments_with_statement()
         id_value = self.fields["id"].GetValue().strip()
         if not id_value:
-            raise ValueError(_("ID is required"))
+            raise ValueError(_("Requirement number is required"))
         try:
             req_id = int(id_value)
         except ValueError as exc:  # pragma: no cover - error path
-            raise ValueError(_("ID must be an integer")) from exc
+            raise ValueError(_("Requirement number must be an integer")) from exc
         if req_id <= 0:
-            raise ValueError(_("ID must be positive"))
+            raise ValueError(_("Requirement number must be positive"))
 
         data = {
             "id": req_id,
@@ -2023,30 +2103,52 @@ class EditorPanel(wx.Panel):
             return
         ctrl = self.fields["id"]
         ctrl.SetBackgroundColour(wx.NullColour)
+        display_link = self._id_display_link
+        if display_link is not None:
+            display_link.SetForegroundColour(wx.NullColour)
         self._id_conflict = False
+        self._update_rid_display_label()
         if self._service is None or self._effective_prefix() is None:
             ctrl.Refresh()
+            if display_link is not None:
+                display_link.Refresh()
             return
         value = ctrl.GetValue().strip()
         if not value:
             ctrl.Refresh()
+            if display_link is not None:
+                display_link.Refresh()
             return
         try:
             req_id = int(value)
         except (TypeError, ValueError):
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            if display_link is not None:
+                display_link.SetForegroundColour(wx.Colour(170, 0, 0))
             ctrl.Refresh()
+            if display_link is not None:
+                display_link.Refresh()
             return
         if req_id <= 0:
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
+            if display_link is not None:
+                display_link.SetForegroundColour(wx.Colour(170, 0, 0))
             ctrl.Refresh()
+            if display_link is not None:
+                display_link.Refresh()
             return
         if self._has_id_conflict(req_id):
             ctrl.SetBackgroundColour(wx.Colour(255, 200, 200))
             self._id_conflict = True
+            if display_link is not None:
+                display_link.SetForegroundColour(wx.Colour(170, 0, 0))
         else:
             ctrl.SetBackgroundColour(wx.NullColour)
+            if display_link is not None:
+                display_link.SetForegroundColour(wx.NullColour)
         ctrl.Refresh()
+        if display_link is not None:
+            display_link.Refresh()
 
     def _on_save_button(self, _evt: wx.Event) -> None:
         if self._on_save_callback:

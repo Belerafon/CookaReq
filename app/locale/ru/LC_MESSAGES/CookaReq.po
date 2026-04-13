@@ -150,8 +150,8 @@ msgid "New value for {field}"
 msgstr "Новое значение для {field}"
 
 # Editor panel labels
-msgid "Requirement ID (number)"
-msgstr "Идентификатор требования (число)"
+msgid "Requirement number"
+msgstr "Номер требования"
 
 msgid "Short title"
 msgstr "Краткое название требования"
@@ -226,26 +226,43 @@ msgstr "Приоритет исполнения"
 msgid "Verification method"
 msgstr "Метод проверки"
 
-msgid "Unique integer identifier"
-msgstr "Уникальный целочисленный идентификатор"
+msgid "Numeric part of the requirement RID"
+msgstr "Числовая часть RID требования"
 
 msgid "Save"
 msgstr "Сохранить"
 
-msgid "ID is required"
-msgstr "требуется указать идентификатор"
+msgid "Requirement number is required"
+msgstr "требуется указать номер требования"
 
-msgid "ID must be an integer"
-msgstr "идентификатор должен быть целым числом"
+msgid "Requirement number must be an integer"
+msgstr "номер требования должен быть целым числом"
 
-msgid "ID must be positive"
-msgstr "идентификатор должен быть положительным"
+msgid "Requirement number must be positive"
+msgstr "номер требования должен быть положительным"
 
 msgid "Revision must be a positive integer"
 msgstr "ревизия должна быть положительным целым числом"
 
 msgid "Hint"
 msgstr "Подсказка"
+
+msgid "Edit RID"
+msgstr "Изменение RID"
+
+msgid "Edit number"
+msgstr "Изменить номер"
+
+msgid ""
+"Changing RID manually is not recommended because it can break traceability "
+"links.\n"
+"\n"
+"Open requirement number editing?"
+msgstr ""
+"Не рекомендуется менять RID вручную: это может нарушить связи "
+"трассируемости.\n"
+"\n"
+"Открыть редактирование номера требования?"
 
 # Main frame
 msgid "&Open Folder\tCtrl+O"

@@ -280,7 +280,7 @@ def test_editor_panel_compact_fields_are_inline(wx_app):
 
 
 @pytest.mark.gui_smoke
-def test_editor_panel_shows_readonly_doc_prefix_before_id(wx_app):
+def test_editor_panel_shows_rid_and_reveals_number_editor_on_click(wx_app, monkeypatch):
     pytest.importorskip("wx")
     import wx
 
@@ -292,21 +292,51 @@ def test_editor_panel_shows_readonly_doc_prefix_before_id(wx_app):
         frame.Show()
         wx.Yield()
 
+        rid_link = panel._id_display_link
+        editor_panel = panel._id_editor_panel
         prefix_label = panel._id_prefix_label
+        assert rid_link is not None
+        assert editor_panel is not None
         assert prefix_label is not None
-        assert not prefix_label.IsShown()
+
+        assert rid_link.GetLabel() == "—"
+        assert not editor_panel.IsShown()
 
         panel.set_document("REQ")
         wx.Yield()
-        assert prefix_label.IsShown()
-        assert prefix_label.GetLabel() == "REQ-"
+        assert rid_link.GetLabel() == "REQ-…"
+        assert not editor_panel.IsShown()
+        assert not prefix_label.IsShown()
 
         panel.set_document(None)
         wx.Yield()
-        assert not prefix_label.IsShown()
+        assert rid_link.GetLabel() == "—"
+        assert not editor_panel.IsShown()
 
         panel.load({"id": 5, "doc_prefix": "SYS", "title": "Sample"})
         wx.Yield()
+        assert rid_link.GetLabel() == "SYS-5"
+        assert not editor_panel.IsShown()
+        assert not prefix_label.IsShown()
+
+        class _ConfirmDialog:
+            def __init__(self, *_args, **_kwargs):
+                self._yes = wx.ID_YES
+
+            def SetYesNoLabels(self, _yes: str, _no: str) -> None:
+                return None
+
+            def ShowModal(self) -> int:
+                return self._yes
+
+            def Destroy(self) -> None:
+                return None
+
+        monkeypatch.setattr(wx, "MessageDialog", _ConfirmDialog)
+        panel._on_rid_link_clicked(None)  # type: ignore[arg-type]
+        wx.Yield()
+
+        assert editor_panel.IsShown()
         assert prefix_label.IsShown()
         assert prefix_label.GetLabel() == "SYS-"
     finally:

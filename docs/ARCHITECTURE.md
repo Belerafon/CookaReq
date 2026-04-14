@@ -158,7 +158,10 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   such as `.cookareq` and every document subtree) into a user-selected archive.
   The suggested archive file name is generated from the opened project
   directory name, the top-level document revision (`doc_revision`) and current
-  date to keep snapshots traceable.
+  date to keep snapshots traceable. If the opened directory already looks like
+  a previous archive export (`*_revNNN_YYYYMMDD`), the suffix is stripped before
+  composing a new name so repeated exports do not accumulate duplicated
+  revision/date tails.
 
 ## Application services and configuration context
 

@@ -41,6 +41,20 @@ def test_build_project_archive_name_uses_root_revision_and_date() -> None:
     assert name == "MyProject_rev7_20260331.zip"
 
 
+def test_build_project_archive_name_strips_previous_archive_suffixes() -> None:
+    docs = {
+        "SYS": Document(prefix="SYS", title="System", attributes={"doc_revision": 237}),
+    }
+    name = build_project_archive_name(
+        project_dir=Path("/tmp/Требования CookaReq Проект_rev237_20260407"),
+        docs=docs,
+        current_prefix="SYS",
+        today=date(2026, 4, 14),
+    )
+
+    assert name == "Требования CookaReq Проект_rev237_20260414.zip"
+
+
 def test_create_project_archive_includes_documents_and_hidden_internal_folder(
     tmp_path: Path,
 ) -> None:

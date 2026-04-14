@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
+import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from .document_store import Document, get_document_revision
@@ -14,6 +15,8 @@ __all__ = [
     "create_project_archive",
     "resolve_root_document_prefix",
 ]
+
+_ARCHIVE_SUFFIX_RE = re.compile(r"(?:_rev\d+_\d{8})+$")
 
 
 def resolve_root_document_prefix(
@@ -53,7 +56,8 @@ def build_project_archive_name(
         root_doc = docs.get(root_prefix)
         if root_doc is not None:
             revision = get_document_revision(root_doc)
-    safe_name = project_dir.name.strip() or "requirements"
+    raw_name = project_dir.name.strip() or "requirements"
+    safe_name = _ARCHIVE_SUFFIX_RE.sub("", raw_name).strip() or "requirements"
     return f"{safe_name}_rev{revision}_{archive_date:%Y%m%d}.zip"
 
 

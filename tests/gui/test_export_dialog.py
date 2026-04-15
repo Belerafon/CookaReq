@@ -18,6 +18,8 @@ def test_export_dialog_text_options_visibility(wx_app):
         available_fields=["id", "statement"],
         selected_fields=["statement"],
         document_label="DOC",
+        available_documents=[("DOC", "DOC — Document"), ("SYS", "SYS — System")],
+        current_document_prefix="DOC",
     )
     try:
         wx_app.Yield()
@@ -28,6 +30,8 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog.include_shared_artifacts_checkbox.GetValue() is True
         assert dialog._selected_export_scope() == "all"
+        assert dialog._selected_document_scope() == "all"
+        assert not dialog.scope_choice.IsEnabled()
 
         dialog.format_choice.SetSelection(1)
         dialog._update_text_options_visibility()
@@ -40,6 +44,7 @@ def test_export_dialog_text_options_visibility(wx_app):
         assert dialog.colorize_label_backgrounds_checkbox.IsEnabled()
         assert not dialog.context_docs_preface_checkbox.IsShown()
         assert dialog._selected_export_scope() == "all"
+        assert not dialog.scope_choice.IsEnabled()
 
         dialog.format_choice.SetSelection(2)
         dialog._update_text_options_visibility()
@@ -89,13 +94,19 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
             card_sort_mode="source",
             card_label_group_mode="per_label",
             export_scope="visible",
+            document_scope="manual",
+            selected_document_prefixes=["SYS"],
             include_shared_artifacts=False,
         ),
+        available_documents=[("DOC", "DOC — Document"), ("SYS", "SYS — System")],
+        current_document_prefix="DOC",
     )
     try:
         wx_app.Yield()
         assert dialog._selected_card_sort_mode() == "source"
-        assert dialog._selected_export_scope() == "visible"
+        assert dialog._selected_export_scope() == "all"
+        assert dialog._selected_document_scope() == "manual"
+        assert dialog._selected_document_prefixes() == ["SYS"]
         assert dialog.include_shared_artifacts_checkbox.GetValue() is False
         assert dialog._selected_card_label_group_mode() == "per_label"
         assert not dialog.card_label_group_choice.IsEnabled()
@@ -117,6 +128,8 @@ def test_export_dialog_card_sort_defaults_and_plan(wx_app):
         state = dialog.get_state()
         assert state.card_sort_mode == "labels"
         assert state.card_label_group_mode == "label_set"
+        assert state.document_scope == "manual"
+        assert state.selected_document_prefixes == ["SYS"]
 
         dialog.card_sort_choice.SetSelection(4)
         dialog._on_card_sort_changed(_wx.CommandEvent())
@@ -144,10 +157,14 @@ def test_export_dialog_default_scope_from_context(wx_app):
         available_fields=["id", "statement"],
         selected_fields=["statement"],
         default_export_scope="selected",
+        default_document_scope="current",
+        available_documents=[("DOC", "DOC — Document"), ("SYS", "SYS — System")],
+        current_document_prefix="DOC",
     )
     try:
         wx_app.Yield()
         assert dialog._selected_export_scope() == "selected"
+        assert dialog.scope_choice.IsEnabled()
 
         dialog.scope_choice.SetSelection(0)
         dialog._on_scope_changed(_wx.CommandEvent())
@@ -167,6 +184,38 @@ def test_export_dialog_default_scope_from_context(wx_app):
         assert state.export_scope == "all"
         assert state.colorize_label_backgrounds is True
         assert state.docx_include_requirement_heading is True
+    finally:
+        dialog.Destroy()
+        wx_app.Yield()
+
+
+@pytest.mark.gui_smoke
+def test_export_dialog_manual_document_selection_requires_document(wx_app):
+    _wx = pytest.importorskip("wx")
+    from app.ui.export_dialog import RequirementExportDialog
+
+    dialog = RequirementExportDialog(
+        None,
+        available_fields=["id", "statement"],
+        selected_fields=["statement"],
+        available_documents=[("DOC", "DOC — Document"), ("SYS", "SYS — System")],
+        current_document_prefix="DOC",
+        default_document_scope="manual",
+    )
+    try:
+        wx_app.Yield()
+        dialog.file_picker.SetPath("/tmp/export.txt")
+        dialog.document_list.Check(0, False)
+        dialog.document_list.Check(1, False)
+        dialog._on_document_selection_changed(_wx.CommandEvent())
+        assert dialog.get_plan() is None
+
+        dialog.document_list.Check(1, True)
+        dialog._on_document_selection_changed(_wx.CommandEvent())
+        plan = dialog.get_plan()
+        assert plan is not None
+        assert plan.document_scope == "manual"
+        assert plan.selected_document_prefixes == ["SYS"]
     finally:
         dialog.Destroy()
         wx_app.Yield()

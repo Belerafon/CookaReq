@@ -3424,3 +3424,33 @@ msgstr "Изменение RID: {prefix}"
 
 msgid "(no prefix)"
 msgstr "(без префикса)"
+
+msgid "Document scope"
+msgstr "Охват документов"
+
+msgid "Current document"
+msgstr "Текущий документ"
+
+msgid "Current document subtree"
+msgstr "Поддерево текущего документа"
+
+msgid "All project documents"
+msgstr "Все документы проекта"
+
+msgid "Selected documents"
+msgstr "Выбранные документы"
+
+msgid "Documents for manual selection"
+msgstr "Документы для ручного выбора"
+
+msgid "Choose at least one document to export."
+msgstr "Выберите хотя бы один документ для экспорта."
+
+msgid "No documents selected for export."
+msgstr "Не выбраны документы для экспорта."
+
+msgid "Requirements export — multiple documents"
+msgstr "Экспорт требований — несколько документов"
+
+msgid "Document {prefix} revision: {value}"
+msgstr "Ревизия документа {prefix}: {value}"

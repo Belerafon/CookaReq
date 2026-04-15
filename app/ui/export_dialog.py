@@ -37,6 +37,8 @@ class RequirementExportPlan:
     card_sort_mode: str
     card_label_group_mode: str
     export_scope: Literal["all", "visible", "selected"]
+    document_scope: Literal["current", "subtree", "all", "manual"]
+    selected_document_prefixes: list[str]
     colorize_label_backgrounds: bool
     docx_include_requirement_heading: bool
     generate_context_docs_preface: bool
@@ -106,6 +108,9 @@ class RequirementExportDialog(wx.Dialog):
         default_path: Path | None = None,
         saved_state: ExportDialogState | None = None,
         default_export_scope: Literal["all", "visible", "selected"] = "all",
+        available_documents: list[tuple[str, str]] | None = None,
+        default_document_scope: Literal["current", "subtree", "all", "manual"] = "all",
+        current_document_prefix: str | None = None,
     ) -> None:
         title = _("Export Requirements")
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
@@ -154,6 +159,23 @@ class RequirementExportDialog(wx.Dialog):
         self._export_scope = self._coerce_export_scope(
             saved_state.export_scope if saved_state else self._default_export_scope
         )
+        self._documents = self._normalize_documents(available_documents or [])
+        self._current_document_prefix = (
+            current_document_prefix
+            if current_document_prefix in {prefix for prefix, _ in self._documents}
+            else None
+        )
+        self._default_document_scope: Literal["current", "subtree", "all", "manual"] = (
+            default_document_scope
+            if default_document_scope in {"current", "subtree", "all", "manual"}
+            else "all"
+        )
+        self._document_scope = self._coerce_document_scope(
+            saved_state.document_scope if saved_state else self._default_document_scope
+        )
+        self._saved_document_prefixes = self._normalize_selected_document_prefixes(
+            saved_state.selected_document_prefixes if saved_state else None
+        )
         self._txt_placeholder_label = _("(not set)")
         self._drag_start_index: int | None = None
 
@@ -191,6 +213,35 @@ class RequirementExportDialog(wx.Dialog):
                 continue
             seen.add(field)
             ordered.append(field)
+        return ordered
+
+    def _normalize_documents(self, documents: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        normalized: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for prefix, label in documents:
+            prefix_value = str(prefix).strip()
+            if not prefix_value or prefix_value in seen:
+                continue
+            seen.add(prefix_value)
+            title_value = str(label).strip() if label is not None else ""
+            normalized.append((prefix_value, title_value or prefix_value))
+        return normalized
+
+    def _normalize_selected_document_prefixes(
+        self,
+        values: list[str] | None,
+    ) -> list[str]:
+        if not values:
+            return []
+        available = {prefix for prefix, _ in self._documents}
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            prefix = str(value).strip()
+            if not prefix or prefix in seen or prefix not in available:
+                continue
+            seen.add(prefix)
+            ordered.append(prefix)
         return ordered
 
     def _build_default_selected(
@@ -287,6 +338,29 @@ class RequirementExportDialog(wx.Dialog):
         )
         self._apply_export_scope_choice()
 
+        self.document_scope_choice = wx.RadioBox(
+            self,
+            label=_("Document scope"),
+            choices=[
+                _("Current document"),
+                _("Current document subtree"),
+                _("All project documents"),
+                _("Selected documents"),
+            ],
+            majorDimension=1,
+            style=wx.RA_SPECIFY_ROWS,
+        )
+        self._apply_document_scope_choice()
+        self.document_list_label = wx.StaticText(
+            self,
+            label=_("Documents for manual selection"),
+        )
+        self.document_list = wx.CheckListBox(
+            self,
+            choices=[label for _, label in self._documents],
+        )
+        self._apply_selected_documents()
+
         self.columns_box = wx.StaticBox(self, label=_("Columns"))
         self.column_list = wx.CheckListBox(self.columns_box)
 
@@ -378,6 +452,8 @@ class RequirementExportDialog(wx.Dialog):
         self.file_picker.Bind(wx.EVT_FILEPICKER_CHANGED, self._on_path_changed)
         self.format_choice.Bind(wx.EVT_RADIOBOX, self._on_format_changed)
         self.scope_choice.Bind(wx.EVT_RADIOBOX, self._on_scope_changed)
+        self.document_scope_choice.Bind(wx.EVT_RADIOBOX, self._on_document_scope_changed)
+        self.document_list.Bind(wx.EVT_CHECKLISTBOX, self._on_document_selection_changed)
         self.column_list.Bind(wx.EVT_CHECKLISTBOX, self._on_columns_changed)
         self.card_sort_choice.Bind(wx.EVT_CHOICE, self._on_card_sort_changed)
         self.column_list.Bind(wx.EVT_LEFT_DOWN, self._on_column_left_down)
@@ -408,6 +484,9 @@ class RequirementExportDialog(wx.Dialog):
         path_sizer.Add(self.path_display, 1, wx.EXPAND)
         main_sizer.Add(path_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         main_sizer.Add(self.format_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        main_sizer.Add(self.document_scope_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        main_sizer.Add(self.document_list_label, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        main_sizer.Add(self.document_list, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         main_sizer.Add(self.scope_choice, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
 
         txt_options_sizer = wx.StaticBoxSizer(self.txt_options_box, wx.VERTICAL)
@@ -473,6 +552,8 @@ class RequirementExportDialog(wx.Dialog):
         self._txt_options_sizer = txt_options_sizer
         self._columns_sizer = columns_sizer
         self._docx_options_sizer = docx_options_sizer
+        self._update_document_selection_state()
+        self._update_requirement_scope_state()
 
     # ------------------------------------------------------------------
     def _refresh_checklist(self, *, keep_selection: int | None = None) -> None:
@@ -507,9 +588,12 @@ class RequirementExportDialog(wx.Dialog):
             return
         path = self.file_picker.GetPath()
         has_path = bool(path)
+        has_documents = True
+        if self._selected_document_scope() == "manual":
+            has_documents = bool(self._selected_document_prefixes())
         require_columns = not self._can_export_without_columns()
         has_columns = bool(self._checked_fields()) if require_columns else True
-        self.ok_button.Enable(has_path and has_columns)
+        self.ok_button.Enable(has_path and has_columns and has_documents)
 
     def _can_export_without_columns(self) -> bool:
         return (
@@ -539,6 +623,67 @@ class RequirementExportDialog(wx.Dialog):
         self._main_sizer.Show(self._docx_options_sizer, is_docx, recursive=True)
         self._main_sizer.Layout()
 
+    def _coerce_document_scope(
+        self,
+        value: str | None,
+    ) -> Literal["current", "subtree", "all", "manual"]:
+        if value in {"current", "subtree", "all", "manual"}:
+            return value
+        return self._default_document_scope
+
+    def _apply_document_scope_choice(self) -> None:
+        selection_map = {
+            "current": 0,
+            "subtree": 1,
+            "all": 2,
+            "manual": 3,
+        }
+        self.document_scope_choice.SetSelection(selection_map.get(self._document_scope, 2))
+
+    def _selected_document_scope(self) -> Literal["current", "subtree", "all", "manual"]:
+        selection = self.document_scope_choice.GetSelection()
+        if selection == 0:
+            return "current"
+        if selection == 1:
+            return "subtree"
+        if selection == 3:
+            return "manual"
+        return "all"
+
+    def _apply_selected_documents(self) -> None:
+        selected = set(self._saved_document_prefixes)
+        if not selected and self._current_document_prefix:
+            selected.add(self._current_document_prefix)
+        for index, (prefix, _label) in enumerate(self._documents):
+            self.document_list.Check(index, prefix in selected)
+
+    def _selected_document_prefixes(self) -> list[str]:
+        checked_indexes = set(self.document_list.GetCheckedItems())
+        return [
+            prefix
+            for index, (prefix, _label) in enumerate(self._documents)
+            if index in checked_indexes
+        ]
+
+    def _update_document_selection_state(self) -> None:
+        manual = self._selected_document_scope() == "manual"
+        has_docs = bool(self._documents)
+        self.document_list_label.Show(manual and has_docs)
+        self.document_list.Show(manual and has_docs)
+        self.document_list.Enable(manual and has_docs)
+        if manual and has_docs and not self._selected_document_prefixes():
+            self.document_list.Check(0, True)
+        self._main_sizer.Layout()
+
+    def _update_requirement_scope_state(self) -> None:
+        if not self._documents:
+            self.scope_choice.Enable(True)
+            return
+        single_document_scope = self._selected_document_scope() == "current"
+        self.scope_choice.Enable(single_document_scope)
+        if not single_document_scope:
+            self.scope_choice.SetSelection(0)
+
     def _coerce_export_scope(self, value: str | None) -> Literal["all", "visible", "selected"]:
         if value in {"all", "visible", "selected"}:
             return value
@@ -553,6 +698,8 @@ class RequirementExportDialog(wx.Dialog):
         self.scope_choice.SetSelection(selection_map.get(self._export_scope, 0))
 
     def _selected_export_scope(self) -> Literal["all", "visible", "selected"]:
+        if self._documents and self._selected_document_scope() != "current":
+            return "all"
         selection = self.scope_choice.GetSelection()
         if selection == 1:
             return "visible"
@@ -685,6 +832,14 @@ class RequirementExportDialog(wx.Dialog):
     def _on_scope_changed(self, _event: wx.CommandEvent) -> None:
         self._update_ok_state()
 
+    def _on_document_scope_changed(self, _event: wx.CommandEvent) -> None:
+        self._update_document_selection_state()
+        self._update_requirement_scope_state()
+        self._update_ok_state()
+
+    def _on_document_selection_changed(self, _event: wx.CommandEvent) -> None:
+        self._update_ok_state()
+
     def _on_card_sort_changed(self, _event: wx.CommandEvent) -> None:
         self._update_label_grouping_state()
         self._update_context_docs_preface_state()
@@ -746,6 +901,9 @@ class RequirementExportDialog(wx.Dialog):
         if not self.file_picker.GetPath():
             wx.MessageBox(_("Select export file first."), _("Export blocked"))
             return
+        if self._selected_document_scope() == "manual" and not self._selected_document_prefixes():
+            wx.MessageBox(_("Choose at least one document to export."), _("Export blocked"))
+            return
         if not self._checked_fields() and not self._can_export_without_columns():
             wx.MessageBox(_("Choose at least one column to export."), _("Export blocked"))
             return
@@ -755,6 +913,8 @@ class RequirementExportDialog(wx.Dialog):
     def get_plan(self) -> RequirementExportPlan | None:
         path = self.file_picker.GetPath()
         if not path:
+            return None
+        if self._selected_document_scope() == "manual" and not self._selected_document_prefixes():
             return None
         columns = self._checked_fields()
         if not columns and not self._can_export_without_columns():
@@ -777,6 +937,8 @@ class RequirementExportDialog(wx.Dialog):
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
+            document_scope=self._selected_document_scope(),
+            selected_document_prefixes=self._selected_document_prefixes(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
             generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),
@@ -804,6 +966,8 @@ class RequirementExportDialog(wx.Dialog):
             card_sort_mode=self._selected_card_sort_mode(),
             card_label_group_mode=self._selected_card_label_group_mode(),
             export_scope=self._selected_export_scope(),
+            document_scope=self._selected_document_scope(),
+            selected_document_prefixes=self._selected_document_prefixes(),
             colorize_label_backgrounds=self.colorize_label_backgrounds_checkbox.GetValue(),
             docx_include_requirement_heading=self.docx_include_requirement_heading_checkbox.GetValue(),
             generate_context_docs_preface=self.context_docs_preface_checkbox.GetValue(),

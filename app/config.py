@@ -75,6 +75,8 @@ class ExportDialogState:
     card_sort_mode: str | None
     card_label_group_mode: str | None = None
     export_scope: str | None = None
+    document_scope: str | None = None
+    selected_document_prefixes: list[str] | None = None
     colorize_label_backgrounds: bool = False
     docx_include_requirement_heading: bool = True
     generate_context_docs_preface: bool = False
@@ -506,6 +508,16 @@ class ConfigManager:
         export_scope = payload.get("export_scope")
         if not isinstance(export_scope, str):
             export_scope = None
+        document_scope = payload.get("document_scope")
+        if not isinstance(document_scope, str):
+            document_scope = None
+        selected_document_prefixes_raw = payload.get("selected_document_prefixes")
+        if not isinstance(selected_document_prefixes_raw, list):
+            selected_document_prefixes: list[str] = []
+        else:
+            selected_document_prefixes = [
+                str(item) for item in selected_document_prefixes_raw if item
+            ]
         colorize_label_backgrounds = payload.get("colorize_label_backgrounds")
         if not isinstance(colorize_label_backgrounds, bool):
             colorize_label_backgrounds = False
@@ -528,6 +540,8 @@ class ConfigManager:
             card_sort_mode=card_sort_mode,
             card_label_group_mode=card_label_group_mode,
             export_scope=export_scope,
+            document_scope=document_scope,
+            selected_document_prefixes=selected_document_prefixes,
             colorize_label_backgrounds=colorize_label_backgrounds,
             docx_include_requirement_heading=docx_include_requirement_heading,
             generate_context_docs_preface=generate_context_docs_preface,
@@ -549,6 +563,8 @@ class ConfigManager:
             "card_sort_mode": state.card_sort_mode,
             "card_label_group_mode": state.card_label_group_mode,
             "export_scope": state.export_scope,
+            "document_scope": state.document_scope,
+            "selected_document_prefixes": list(state.selected_document_prefixes or []),
             "colorize_label_backgrounds": state.colorize_label_backgrounds,
             "docx_include_requirement_heading": state.docx_include_requirement_heading,
             "generate_context_docs_preface": state.generate_context_docs_preface,

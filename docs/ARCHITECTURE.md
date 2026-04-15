@@ -384,13 +384,17 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   state. `LabelsDialog` coordinates label edits by capturing rename propagation
   choices and deletion clean-up flags before the controller forwards the plan to
   `RequirementsService.update_document_labels()`. The export dialog
-  (`app/ui/export_dialog.py`) lets users choose export scope (all requirements,
-  only currently visible after filters, or only selected rows), columns and
-  format before rendering output, including a text-only option for omitting or
-  labelling empty fields, plus DOCX toggles that control whether each
-  requirement card gets its own heading line (enabled by default). When users
-  clear all export columns but keep heading rendering enabled for DOCX, export
-  switches to a compact one-line list (`RID - title`) without card tables.
+  (`app/ui/export_dialog.py`) lets users configure both document coverage
+  (current document, current subtree, all project documents, or manual selection)
+  and requirement scope (all/visible/selected; visible/selected remain available
+  for current-document exports), then choose columns and output format before
+  rendering. Card exports keep document hierarchy order when multiple documents
+  are selected, so parent/child modules are not interleaved in a single card
+  stream. The same dialog also exposes text options for omitting/labelling empty
+  fields and DOCX toggles that control whether each requirement card gets its own
+  heading line (enabled by default). When users clear all export columns but keep
+  heading rendering enabled for DOCX, export switches to a compact one-line list
+  (`RID - title`) without card tables.
   `EditorPanel` keeps the requirement form in an explicit two-stage sequence: a
   primary block (ID/title/statement/context/rationale/notes/source/status/labels,
   attachments and a context-docs picker that stores relative Markdown paths under

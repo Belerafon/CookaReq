@@ -37,7 +37,7 @@ class DocumentTree(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         static_text = getattr(wx, "StaticText", None)
         if static_text is not None:
-            self._title_label = static_text(self, label=_("Data Modules"))
+            self._title_label = static_text(self, label=_("Documents"))
             title_flags = getattr(wx, "LEFT", 0) | getattr(wx, "RIGHT", 0) | getattr(wx, "TOP", 0)
             sizer.Add(self._title_label, 0, title_flags, 6)
         else:
@@ -46,7 +46,7 @@ class DocumentTree(wx.Panel):
         self.SetSizer(sizer)
         self._node_for_prefix: dict[str, wx.TreeItemId] = {}
         self._prefix_for_id: dict[wx.TreeItemId, str] = {}
-        self.root = self.tree.AddRoot(_("Data Modules"))
+        self.root = self.tree.AddRoot(_("Documents"))
         self.tree.Bind(wx.EVT_TREE_SEL_CHANGED, self._handle_select)
         self.tree.Bind(wx.EVT_TREE_ITEM_MENU, self._show_context_menu)
         if hasattr(wx, "EVT_CONTEXT_MENU"):

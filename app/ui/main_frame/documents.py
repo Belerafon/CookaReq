@@ -772,7 +772,7 @@ class MainFrameDocumentsMixin:
 
 
     def on_open_data_module_artifacts(self: MainFrame, _event: wx.Event) -> None:
-        """Open shared artifacts manager for currently selected data module."""
+        """Open shared artifacts manager for currently selected document."""
 
         if not self.current_doc_prefix:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))

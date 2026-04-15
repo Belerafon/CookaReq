@@ -1126,7 +1126,7 @@ msgid "Custom labels (comma-separated)"
 msgstr "Custom labels (comma-separated)"
 
 msgid "Delete document {prefix} and its subtree?"
-msgstr "Delete data module {prefix} and its subtree?"
+msgstr "Delete document {prefix} and its subtree?"
 
 msgid "Delete item {rid}?"
 msgstr "Delete item {rid}?"
@@ -1138,16 +1138,14 @@ msgid "Discard unsaved changes?"
 msgstr "Discard unsaved changes?"
 
 msgid "Document not found"
-msgstr "Data module not found"
+msgstr "Document not found"
 
 msgid "Document prefix is required."
-msgstr "Data module prefix is required."
+msgstr "Document prefix is required."
 
 
-msgid "Data Modules"
-msgstr "Data Modules"
 msgid "Documents"
-msgstr "Data Modules"
+msgstr "Documents"
 
 msgid "Edit label"
 msgstr "Edit label"
@@ -1203,7 +1201,7 @@ msgstr ""
 "Minimum allowed value is 1000 tokens; CookaReq defaults to 5000 when unset."
 
 msgid "New document"
-msgstr "New data module"
+msgstr "New document"
 
 msgid ""
 "Number of times to retry a failed HTTP request. Example: 3\n"
@@ -1233,7 +1231,7 @@ msgstr ""
 "Keeps the list ordering consistent between sessions."
 
 msgid "Edit document"
-msgstr "Edit data module"
+msgstr "Edit document"
 
 msgid "Requirement {rid}"
 msgstr "Requirement {rid}"
@@ -1279,25 +1277,25 @@ msgid "comma-separated parent requirement IDs"
 msgstr "comma-separated parent requirement IDs"
 
 msgid "create document"
-msgstr "create data module"
+msgstr "create document"
 
 msgid "create new item"
 msgstr "create new item"
 
 msgid "delete document"
-msgstr "delete data module"
+msgstr "delete document"
 
 msgid "delete item"
 msgstr "delete item"
 
 msgid "document not found: {prefix}"
-msgstr "data module not found: {prefix}"
+msgstr "document not found: {prefix}"
 
 msgid "document prefix"
-msgstr "data module prefix"
+msgstr "document prefix"
 
 msgid "document title"
-msgstr "data module title"
+msgstr "document title"
 
 msgid "edit existing item"
 msgstr "edit existing item"
@@ -1326,6 +1324,9 @@ msgstr "item title"
 msgid "labels must be a list"
 msgstr "labels must be a list"
 
+msgid "Links"
+msgstr "Links"
+
 msgid "link requirements"
 msgstr "link requirements"
 
@@ -1336,10 +1337,10 @@ msgid "links must be a list"
 msgstr "links must be a list"
 
 msgid "list documents"
-msgstr "list data modules"
+msgstr "list documents"
 
 msgid "manage documents"
-msgstr "manage data modules"
+msgstr "manage documents"
 
 msgid "manage items"
 msgstr "manage items"
@@ -1354,7 +1355,7 @@ msgid "export requirements"
 msgstr "export requirements"
 
 msgid "document prefixes (comma separated)"
-msgstr "data module prefixes (comma separated)"
+msgstr "document prefixes (comma separated)"
 
 msgid "title for exported document"
 msgstr "title for exported document"
@@ -1366,7 +1367,7 @@ msgid "output format"
 msgstr "output format"
 
 msgid "parent document prefix"
-msgstr "parent data module prefix"
+msgstr "parent document prefix"
 
 msgid "parent requirement identifiers"
 msgstr "parent requirement identifiers"
@@ -1390,10 +1391,10 @@ msgid "show what would be deleted"
 msgstr "show what would be deleted"
 
 msgid "target document prefix"
-msgstr "target data module prefix"
+msgstr "target document prefix"
 
 msgid "unknown document prefix: {prefix}"
-msgstr "unknown data module prefix: {prefix}"
+msgstr "unknown document prefix: {prefix}"
 
 msgid "unknown priority: {value}"
 msgstr "unknown priority: {value}"
@@ -1630,10 +1631,10 @@ msgid "Restart response generation"
 msgstr "Restart response generation"
 
 
-msgid "Show Data Modules Hierarchy"
-msgstr "Show Data Modules Hierarchy"
+msgid "Show Documents Hierarchy"
+msgstr "Show Documents Hierarchy"
 msgid "Show Hierarchy"
-msgstr "Show Data Modules Hierarchy"
+msgstr "Show Documents Hierarchy"
 
 msgid "LLM ↔ MCP tool exchanges:"
 msgstr "LLM ↔ MCP tool exchanges:"
@@ -3176,8 +3177,8 @@ msgstr "Shared artifact"
 msgid "Shared artifacts: {prefix}"
 msgstr "Shared artifacts: {prefix}"
 
-msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
-msgstr "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
+msgid "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports."
+msgstr "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports."
 
 msgid "Select shared artifact"
 msgstr "Select shared artifact"
@@ -3273,12 +3274,12 @@ msgid "File is missing on disk."
 msgstr "File is missing on disk."
 
 
-msgid "Data Module Artifacts"
-msgstr "Data Module Artifacts"
+msgid "Document Artifacts"
+msgstr "Document Artifacts"
 
 
-msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
-msgstr "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+msgid "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+msgstr "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
 
 
 msgid "Text files (*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini)|*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini|All files (*.*)|*.*"

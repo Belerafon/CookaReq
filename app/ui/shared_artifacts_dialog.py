@@ -149,7 +149,7 @@ class SharedArtifactsDialog(wx.Dialog):
         main.Add(close_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 10)
 
         hint = _(
-            "Shared artifacts are available to all requirements in this data module."
+            "Shared artifacts are available to all requirements in this document."
             " Attach key source files here so they can be reused in reviews and exports."
             " For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
         )

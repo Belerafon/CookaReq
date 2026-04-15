@@ -121,6 +121,28 @@ class MainFrameDocumentsMixin:
             lines.append(_("Document revision: {value}").format(value=revision_label))
         return lines
 
+    def _export_header_lines_for_documents(
+        self: MainFrame,
+        documents: Sequence[object],
+        *,
+        requirement_count: int,
+    ) -> list[str]:
+        """Build metadata lines for exports covering multiple documents."""
+        lines: list[str] = [_("Requirements count: {count}").format(count=requirement_count)]
+        for document in documents:
+            prefix = str(getattr(document, "prefix", "")).strip()
+            if not prefix:
+                continue
+            revision_label = self._format_document_revision(document)
+            if revision_label:
+                lines.append(
+                    _("Document {prefix} revision: {value}").format(
+                        prefix=prefix,
+                        value=revision_label,
+                    )
+                )
+        return lines
+
     def _collect_context_preface(
         self: MainFrame,
         requirements: Sequence[object],
@@ -901,6 +923,79 @@ class MainFrameDocumentsMixin:
             return "visible"
         return "all"
 
+    def _default_document_export_scope(self: MainFrame) -> str:
+        """Return default document scope for export."""
+        return "current"
+
+    def _ordered_document_prefixes(
+        self: MainFrame,
+        docs: Mapping[str, object],
+        *,
+        selected_prefixes: Sequence[str],
+    ) -> list[str]:
+        """Return selected prefixes ordered by document hierarchy (parent first)."""
+        selected_set = set(selected_prefixes)
+        children: dict[str | None, list[str]] = {}
+        for prefix in selected_set:
+            document = docs.get(prefix)
+            parent = getattr(document, "parent", None) if document is not None else None
+            if parent not in selected_set:
+                parent = None
+            children.setdefault(parent, []).append(prefix)
+        for entries in children.values():
+            entries.sort()
+
+        ordered: list[str] = []
+
+        def _visit(parent_prefix: str | None) -> None:
+            for child in children.get(parent_prefix, []):
+                ordered.append(child)
+                _visit(child)
+
+        _visit(None)
+        return ordered
+
+    def _descendant_document_prefixes(
+        self: MainFrame,
+        docs: Mapping[str, object],
+        *,
+        root_prefix: str,
+    ) -> list[str]:
+        """Return ``root_prefix`` and descendants ordered by hierarchy."""
+        selected: list[str] = []
+        for prefix, document in docs.items():
+            if prefix == root_prefix:
+                selected.append(prefix)
+                continue
+            current = document
+            while current is not None:
+                parent_prefix = getattr(current, "parent", None)
+                if not parent_prefix:
+                    break
+                if parent_prefix == root_prefix:
+                    selected.append(prefix)
+                    break
+                current = docs.get(parent_prefix)
+        return self._ordered_document_prefixes(docs, selected_prefixes=selected)
+
+    def _resolve_export_document_prefixes(
+        self: MainFrame,
+        *,
+        docs: Mapping[str, object],
+        current_prefix: str,
+        document_scope: str,
+        manual_prefixes: Sequence[str],
+    ) -> list[str]:
+        """Resolve export prefixes using selected dialog scope."""
+        if document_scope == "current":
+            return [current_prefix] if current_prefix in docs else []
+        if document_scope == "subtree":
+            return self._descendant_document_prefixes(docs, root_prefix=current_prefix)
+        if document_scope == "manual":
+            selected = [prefix for prefix in manual_prefixes if prefix in docs]
+            return self._ordered_document_prefixes(docs, selected_prefixes=selected)
+        return self._ordered_document_prefixes(docs, selected_prefixes=list(docs))
+
     def _recommended_export_directory(self: MainFrame) -> Path | None:
         """Return non-workspace directory recommended for exports."""
         if not self.current_dir:
@@ -955,15 +1050,11 @@ class MainFrameDocumentsMixin:
             wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
             return
 
+        docs = self.docs_controller.documents
         all_requirements = self.model.get_all()
         visible_requirements = self.model.get_visible()
         selected_ids = self.panel.get_selected_ids()
-        selected_requirements: list = []
         selected_lookup: set[int] = set(selected_ids)
-        if selected_lookup:
-            selected_requirements = [
-                req for req in all_requirements if int(getattr(req, "id", -1)) in selected_lookup
-            ]
 
         if not all_requirements:
             wx.MessageBox(_("No requirements to export."), _("Export"))
@@ -988,6 +1079,12 @@ class MainFrameDocumentsMixin:
                 default_path=default_path,
                 saved_state=saved_state,
                 default_export_scope=self._default_export_scope(),
+                available_documents=[
+                    (prefix, self._format_document_choice(document))
+                    for prefix, document in sorted(docs.items())
+                ],
+                default_document_scope=self._default_document_export_scope(),
+                current_document_prefix=self.current_doc_prefix,
             )
             try:
                 if dlg.ShowModal() != wx.ID_OK:
@@ -1009,12 +1106,41 @@ class MainFrameDocumentsMixin:
             saved_state = dialog_state
         self.config.set_export_dialog_state(self.current_dir, dialog_state)
 
-        scope_sources = {
-            "all": all_requirements,
-            "visible": visible_requirements,
-            "selected": selected_requirements,
+        selected_doc_prefixes = self._resolve_export_document_prefixes(
+            docs=docs,
+            current_prefix=doc.prefix,
+            document_scope=plan.document_scope,
+            manual_prefixes=plan.selected_document_prefixes,
+        )
+        if not selected_doc_prefixes:
+            wx.MessageBox(_("No documents selected for export."), _("Export"))
+            return
+
+        loaded_requirements = self.docs_controller.service.load_requirements(
+            prefixes=selected_doc_prefixes
+        )
+        visible_lookup = {
+            (str(getattr(req, "doc_prefix", "")), int(getattr(req, "id", -1)))
+            for req in visible_requirements
         }
-        requirements = list(scope_sources.get(plan.export_scope, all_requirements))
+        selected_lookup_pairs = {(doc.prefix, item_id) for item_id in selected_lookup}
+
+        scope_sources = {
+            "all": loaded_requirements,
+            "visible": [
+                req
+                for req in loaded_requirements
+                if (str(getattr(req, "doc_prefix", "")), int(getattr(req, "id", -1)))
+                in visible_lookup
+            ],
+            "selected": [
+                req
+                for req in loaded_requirements
+                if (str(getattr(req, "doc_prefix", "")), int(getattr(req, "id", -1)))
+                in selected_lookup_pairs
+            ],
+        }
+        requirements = list(scope_sources.get(plan.export_scope, loaded_requirements))
         if not requirements:
             wx.MessageBox(_("No requirements to export."), _("Export"))
             return
@@ -1025,27 +1151,67 @@ class MainFrameDocumentsMixin:
         )
         context_preface: list[tuple[str, str]] = []
         context_missing: list[str] = []
-        doc_root = self.current_dir / doc.prefix
-        if plan.include_shared_artifacts:
-            shared_preface, shared_missing = self._collect_shared_artifacts_preface(
-                doc,
-                doc_root=doc_root,
-            )
-            context_preface.extend(shared_preface)
-            context_missing.extend(shared_missing)
-        if should_generate_context_preface:
-            docs_preface, docs_missing = self._collect_context_preface(
-                requirements,
-                doc_root=doc_root,
-            )
-            context_preface.extend(docs_preface)
-            context_missing.extend(docs_missing)
+        for selected_prefix in selected_doc_prefixes:
+            selected_doc = docs.get(selected_prefix)
+            if selected_doc is None:
+                continue
+            doc_root = self.current_dir / selected_prefix
+            if plan.include_shared_artifacts:
+                shared_preface, shared_missing = self._collect_shared_artifacts_preface(
+                    selected_doc,
+                    doc_root=doc_root,
+                )
+                context_preface.extend(
+                    [
+                        (f"{selected_prefix}: {title}", text)
+                        for title, text in shared_preface
+                    ]
+                )
+                context_missing.extend(
+                    [f"{selected_prefix}: {line}" for line in shared_missing]
+                )
+            if should_generate_context_preface:
+                document_requirements = [
+                    req
+                    for req in requirements
+                    if str(getattr(req, "doc_prefix", "")) == selected_prefix
+                ]
+                docs_preface, docs_missing = self._collect_context_preface(
+                    document_requirements,
+                    doc_root=doc_root,
+                )
+                context_preface.extend(
+                    [(f"{selected_prefix}/{title}", text) for title, text in docs_preface]
+                )
+                context_missing.extend(docs_missing)
 
         labels_grouped = plan.card_sort_mode == "labels"
         label_group_mode = plan.card_label_group_mode
-        card_export_requirements = sort_requirements_for_cards(
-            requirements,
-            sort_mode=plan.card_sort_mode,
+        if len(selected_doc_prefixes) <= 1:
+            card_export_requirements = sort_requirements_for_cards(
+                requirements,
+                sort_mode=plan.card_sort_mode,
+            )
+        else:
+            card_export_requirements = []
+            for selected_prefix in selected_doc_prefixes:
+                document_requirements = [
+                    req
+                    for req in requirements
+                    if str(getattr(req, "doc_prefix", "")) == selected_prefix
+                ]
+                card_export_requirements.extend(
+                    sort_requirements_for_cards(
+                        document_requirements,
+                        sort_mode=plan.card_sort_mode,
+                    )
+                )
+
+        link_lookup = self.docs_controller.service.load_requirements()
+        title = (
+            _("Requirements export — {label}").format(label=document_label)
+            if len(selected_doc_prefixes) == 1
+            else _("Requirements export — multiple documents")
         )
 
         if plan.format == ExportFormat.DOCX:
@@ -1053,10 +1219,9 @@ class MainFrameDocumentsMixin:
                 card_export_requirements,
                 self.docs_controller.documents,
                 base_path=self.current_dir,
-                prefixes=(doc.prefix,),
-                link_lookup=self.model.get_all(),
+                prefixes=tuple(selected_doc_prefixes),
+                link_lookup=link_lookup,
             )
-            title = _("Requirements export — {label}").format(label=document_label)
             placeholder_label = _("(not set)")
             empty_placeholder = (
                 placeholder_label if plan.empty_fields_placeholder else None
@@ -1079,10 +1244,9 @@ class MainFrameDocumentsMixin:
                     card_export_requirements,
                     self.docs_controller.documents,
                     base_path=self.current_dir,
-                    prefixes=(doc.prefix,),
-                    link_lookup=self.model.get_all(),
+                    prefixes=tuple(selected_doc_prefixes),
+                    link_lookup=link_lookup,
                 )
-                title = _("Requirements export — {label}").format(label=document_label)
                 placeholder_label = _("(not set)")
                 empty_placeholder = (
                     placeholder_label if plan.empty_fields_placeholder else None
@@ -1116,10 +1280,37 @@ class MainFrameDocumentsMixin:
                     header_style=header_style,
                     value_style=value_style,
                 )
-                header_lines = self._export_header_lines(
-                    doc,
-                    requirement_count=len(export_rows_source),
-                )
+                if plan.format in {ExportFormat.CSV, ExportFormat.TSV} and len(selected_doc_prefixes) > 1:
+                    required_fields = ("doc_prefix", "rid")
+                    missing_fields = [
+                        field for field in required_fields if field not in headers
+                    ]
+                    if missing_fields:
+                        extra_headers, extra_rows = build_tabular_export(
+                            export_rows_source,
+                            list(missing_fields),
+                            derived_map=derived_map,
+                            header_style=header_style,
+                            value_style=value_style,
+                        )
+                        headers = [*extra_headers, *headers]
+                        rows = [
+                            [*extra_row, *row]
+                            for extra_row, row in zip(extra_rows, rows)
+                        ]
+                selected_documents = [
+                    docs[prefix] for prefix in selected_doc_prefixes if prefix in docs
+                ]
+                if len(selected_documents) == 1:
+                    header_lines = self._export_header_lines(
+                        selected_documents[0],
+                        requirement_count=len(export_rows_source),
+                    )
+                else:
+                    header_lines = self._export_header_lines_for_documents(
+                        selected_documents,
+                        requirement_count=len(export_rows_source),
+                    )
                 if context_preface and plan.format in {ExportFormat.CSV, ExportFormat.TSV}:
                     header_lines.extend(self._render_preface_header_lines(context_preface))
                 if plan.format == ExportFormat.CSV:

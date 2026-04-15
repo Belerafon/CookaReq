@@ -493,6 +493,11 @@ def render_requirements_markdown(
 ) -> str:
     """Render export data as Markdown."""
     selected_fields = _normalize_export_fields(fields)
+    rendered_rids = {
+        view.requirement.rid
+        for doc in export.documents
+        for view in doc.requirements
+    }
     heading = title or _('Requirements export')
     parts: list[str] = [f"# {heading}", ""]
     parts.append(
@@ -580,13 +585,15 @@ def render_requirements_markdown(
                     parts.append(f"**{_('Related requirements')}**")
                     for link in view.links:
                         label = link.rid
-                        if link.exists:
+                        if link.exists and link.rid in rendered_rids:
                             label = f"[{link.rid}](#{link.rid})"
                         suffix: list[str] = []
                         if link.title:
                             suffix.append(link.title)
                         if not link.exists:
                             suffix.append(_('missing'))
+                        elif link.rid not in rendered_rids:
+                            suffix.append(_('outside exported scope'))
                         if link.suspect:
                             suffix.append(_('suspect'))
                         if suffix:

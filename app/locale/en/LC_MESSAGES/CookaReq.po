@@ -3404,3 +3404,33 @@ msgstr "Edit RID: {prefix}"
 
 msgid "(no prefix)"
 msgstr "(no prefix)"
+
+msgid "Document scope"
+msgstr "Document scope"
+
+msgid "Current document"
+msgstr "Current document"
+
+msgid "Current document subtree"
+msgstr "Current document subtree"
+
+msgid "All project documents"
+msgstr "All project documents"
+
+msgid "Selected documents"
+msgstr "Selected documents"
+
+msgid "Documents for manual selection"
+msgstr "Documents for manual selection"
+
+msgid "Choose at least one document to export."
+msgstr "Choose at least one document to export."
+
+msgid "No documents selected for export."
+msgstr "No documents selected for export."
+
+msgid "Requirements export — multiple documents"
+msgstr "Requirements export — multiple documents"
+
+msgid "Document {prefix} revision: {value}"
+msgstr "Document {prefix} revision: {value}"

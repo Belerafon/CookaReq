@@ -119,6 +119,12 @@ def test_default_export_scope_falls_back_to_all() -> None:
     assert frame._default_export_scope() == "all"
 
 
+def test_default_document_export_scope_is_current() -> None:
+    frame = _ScopeFrame(selected_ids=[], has_filters=False)
+
+    assert frame._default_document_export_scope() == "current"
+
+
 class _SummaryFrame(MainFrameDocumentsMixin):
     def __init__(self) -> None:
         self.current_doc_prefix = "SYS"
@@ -137,6 +143,43 @@ def test_current_document_summary_includes_revision() -> None:
     frame = _SummaryFrame()
 
     assert frame._current_document_summary() == "SYS: System (rev 5)"
+
+
+def test_resolve_export_document_prefixes_orders_subtree() -> None:
+    frame = _SummaryFrame()
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "TVU": Document(prefix="TVU", title="Top", parent="SYS"),
+        "HLR": Document(prefix="HLR", title="High"),
+        "TNU": Document(prefix="TNU", title="Low", parent="TVU"),
+    }
+
+    prefixes = frame._resolve_export_document_prefixes(
+        docs=docs,
+        current_prefix="SYS",
+        document_scope="subtree",
+        manual_prefixes=[],
+    )
+
+    assert prefixes == ["SYS", "TVU", "TNU"]
+
+
+def test_resolve_export_document_prefixes_orders_manual_selection() -> None:
+    frame = _SummaryFrame()
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "TVU": Document(prefix="TVU", title="Top", parent="SYS"),
+        "HLR": Document(prefix="HLR", title="High"),
+    }
+
+    prefixes = frame._resolve_export_document_prefixes(
+        docs=docs,
+        current_prefix="SYS",
+        document_scope="manual",
+        manual_prefixes=["TVU", "SYS"],
+    )
+
+    assert prefixes == ["SYS", "TVU"]
 
 
 class _ExportFrame(MainFrameDocumentsMixin):

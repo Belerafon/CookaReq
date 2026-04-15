@@ -6,8 +6,12 @@ import pytest
 
 from app.core.document_store import Document, save_document, save_item
 from app.i18n import install
-from app.core.model import Priority, Requirement, RequirementType, Status, Verification
-from app.core.requirement_export import build_requirement_export, render_requirements_markdown
+from app.core.model import Link, Priority, Requirement, RequirementType, Status, Verification
+from app.core.requirement_export import (
+    build_requirement_export,
+    build_requirement_export_from_requirements,
+    render_requirements_markdown,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -263,3 +267,52 @@ def test_render_requirements_markdown_renders_all_verification_methods(tmp_path:
     markdown = render_requirements_markdown(export)
 
     assert "- **Verification method:** ``Analysis, Test, Inspection``" in markdown
+
+
+def test_render_requirements_markdown_marks_links_outside_export_scope(tmp_path: Path) -> None:
+    sys_doc = Document(prefix="SYS", title="System")
+    tvu_doc = Document(prefix="TVU", title="Top", parent="SYS")
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "TVU", tvu_doc)
+
+    sys_req = Requirement(
+        id=1,
+        title="SYS root",
+        statement="Root statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.APPROVED,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        attachments=[],
+        doc_prefix="SYS",
+        rid="SYS1",
+    )
+    tvu_req = Requirement(
+        id=1,
+        title="TVU child",
+        statement="Child statement",
+        type=RequirementType.REQUIREMENT,
+        status=Status.DRAFT,
+        owner="",
+        priority=Priority.MEDIUM,
+        source="",
+        verification=Verification.ANALYSIS,
+        links=[Link(rid="SYS1")],
+        attachments=[],
+        doc_prefix="TVU",
+        rid="TVU1",
+    )
+
+    export = build_requirement_export_from_requirements(
+        [tvu_req],
+        {"SYS": sys_doc, "TVU": tvu_doc},
+        base_path=tmp_path,
+        prefixes=("TVU",),
+        link_lookup=[sys_req, tvu_req],
+    )
+    rendered = render_requirements_markdown(export)
+
+    assert "[SYS1](#SYS1)" not in rendered
+    assert "outside exported scope" in rendered

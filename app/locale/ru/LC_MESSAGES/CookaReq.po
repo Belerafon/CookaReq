@@ -1140,7 +1140,7 @@ msgid "Custom labels (comma-separated)"
 msgstr "Произвольные метки (через запятую)"
 
 msgid "Delete document {prefix} and its subtree?"
-msgstr "Удалить модуль данных {prefix} и все дочерние элементы?"
+msgstr "Удалить документ {prefix} и все дочерние элементы?"
 
 msgid "Delete item {rid}?"
 msgstr "Удалить требование {rid}?"
@@ -1152,16 +1152,14 @@ msgid "Discard unsaved changes?"
 msgstr "Отменить несохранённые изменения?"
 
 msgid "Document not found"
-msgstr "Модуль данных не найден"
+msgstr "Документ не найден"
 
 msgid "Document prefix is required."
-msgstr "Требуется указать префикс модуля данных."
+msgstr "Требуется указать префикс документа."
 
 
-msgid "Data Modules"
-msgstr "Модули данных"
 msgid "Documents"
-msgstr "Модули данных"
+msgstr "Документы"
 
 msgid "Edit label"
 msgstr "Изменить метку"
@@ -1217,7 +1215,7 @@ msgstr ""
 "Минимально допустимое значение — 1000 токенов; по умолчанию CookaReq использует 5000, если поле пустое."
 
 msgid "New document"
-msgstr "Новый модуль данных"
+msgstr "Новый документ"
 
 msgid ""
 "Number of times to retry a failed HTTP request. Example: 3\n"
@@ -1247,7 +1245,7 @@ msgstr ""
 "Позволяет сохранять порядок списка между сеансами."
 
 msgid "Edit document"
-msgstr "Изменить модуль данных"
+msgstr "Изменить документ"
 
 msgid "Requirement {rid}"
 msgstr "Требование {rid}"
@@ -1293,25 +1291,25 @@ msgid "comma-separated parent requirement IDs"
 msgstr "идентификаторы родительских требований через запятую"
 
 msgid "create document"
-msgstr "создать модуль данных"
+msgstr "создать документ"
 
 msgid "create new item"
 msgstr "создать новый элемент"
 
 msgid "delete document"
-msgstr "удалить модуль данных"
+msgstr "удалить документ"
 
 msgid "delete item"
 msgstr "удалить элемент"
 
 msgid "document not found: {prefix}"
-msgstr "модуль данных не найден: {prefix}"
+msgstr "документ не найден: {prefix}"
 
 msgid "document prefix"
-msgstr "префикс модуля данных"
+msgstr "префикс документа"
 
 msgid "document title"
-msgstr "название модуля данных"
+msgstr "название документа"
 
 msgid "edit existing item"
 msgstr "изменить существующий элемент"
@@ -1340,6 +1338,9 @@ msgstr "название элемента"
 msgid "labels must be a list"
 msgstr "метки должны быть списком"
 
+msgid "Links"
+msgstr "Связи"
+
 msgid "link requirements"
 msgstr "связать требования"
 
@@ -1350,10 +1351,10 @@ msgid "links must be a list"
 msgstr "связи должны быть списком"
 
 msgid "list documents"
-msgstr "список модулей данных"
+msgstr "список документов"
 
 msgid "manage documents"
-msgstr "управлять модулями данных"
+msgstr "управлять документами"
 
 msgid "manage items"
 msgstr "управлять элементами"
@@ -1368,7 +1369,7 @@ msgid "export requirements"
 msgstr "экспортировать требования"
 
 msgid "document prefixes (comma separated)"
-msgstr "префиксы модулей данных через запятую"
+msgstr "префиксы документов через запятую"
 
 msgid "title for exported document"
 msgstr "заголовок экспортируемого документа"
@@ -1380,7 +1381,7 @@ msgid "output format"
 msgstr "формат вывода"
 
 msgid "parent document prefix"
-msgstr "префикс родительского модуля данных"
+msgstr "префикс родительского документа"
 
 msgid "parent requirement identifiers"
 msgstr "идентификаторы родительских требований"
@@ -1404,10 +1405,10 @@ msgid "show what would be deleted"
 msgstr "показать, что будет удалено"
 
 msgid "target document prefix"
-msgstr "префикс целевого модуля данных"
+msgstr "префикс целевого документа"
 
 msgid "unknown document prefix: {prefix}"
-msgstr "неизвестный префикс модуля данных: {prefix}"
+msgstr "неизвестный префикс документа: {prefix}"
 
 msgid "unknown priority: {value}"
 msgstr "неизвестный приоритет: {value}"
@@ -1644,10 +1645,10 @@ msgid "Restart response generation"
 msgstr "Запустить генерацию ответа заново"
 
 
-msgid "Show Data Modules Hierarchy"
-msgstr "Показать иерархию модулей данных"
+msgid "Show Documents Hierarchy"
+msgstr "Показать иерархию документов"
 msgid "Show Hierarchy"
-msgstr "Показать иерархию модулей данных"
+msgstr "Показать иерархию документов"
 
 msgid "LLM ↔ MCP tool exchanges:"
 msgstr "Обмен инструментов между LLM и MCP:"
@@ -3196,8 +3197,8 @@ msgstr "Общий артефакт"
 msgid "Shared artifacts: {prefix}"
 msgstr "Общие артефакты: {prefix}"
 
-msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports."
-msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте."
+msgid "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports."
+msgstr "Общие артефакты доступны всем требованиям в этом документе. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте."
 
 msgid "Select shared artifact"
 msgstr "Выберите общий артефакт"
@@ -3293,12 +3294,12 @@ msgid "File is missing on disk."
 msgstr "Файл отсутствует на диске."
 
 
-msgid "Data Module Artifacts"
-msgstr "Артефакты модуля данных"
+msgid "Document Artifacts"
+msgstr "Артефакты документа"
 
 
-msgid "Shared artifacts are available to all requirements in this data module. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
-msgstr "Общие артефакты доступны всем требованиям в этом модуле данных. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте. Для включения в пролог экспорта используйте UTF-8 текстовые файлы (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+msgid "Shared artifacts are available to all requirements in this document. Attach key source files here so they can be reused in reviews and exports. For export preface inclusion use UTF-8 text files (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
+msgstr "Общие артефакты доступны всем требованиям в этом документе. Добавляйте сюда ключевые исходные файлы, чтобы переиспользовать их в ревью и экспорте. Для включения в пролог экспорта используйте UTF-8 текстовые файлы (.txt, .md, .csv, .json, .yaml, .yml, .log, .ini)."
 
 
 msgid "Text files (*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini)|*.txt;*.md;*.csv;*.json;*.yaml;*.yml;*.log;*.ini|All files (*.*)|*.*"

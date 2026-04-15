@@ -96,7 +96,7 @@ class Navigation:
         )
         settings_item = file_menu.Append(wx.ID_PREFERENCES, _("Settings"))
         labels_item = file_menu.Append(wx.ID_ANY, _("Manage Labels"))
-        data_module_artifacts_item = file_menu.Append(wx.ID_ANY, _("Data Module Artifacts"))
+        data_module_artifacts_item = file_menu.Append(wx.ID_ANY, _("Document Artifacts"))
         exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"))
         self.frame.Bind(wx.EVT_MENU, self.on_open_folder, open_item)
         self.frame.Bind(wx.EVT_MENU, self.on_new_requirement, new_item)
@@ -123,7 +123,7 @@ class Navigation:
         view_menu.AppendSubMenu(columns_menu, _("Columns"))
         self.hierarchy_menu_item = view_menu.AppendCheckItem(
             wx.ID_ANY,
-            _("Show Data Modules Hierarchy"),
+            _("Show Documents Hierarchy"),
         )
         self.frame.Bind(
             wx.EVT_MENU,

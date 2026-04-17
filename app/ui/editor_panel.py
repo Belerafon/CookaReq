@@ -278,6 +278,8 @@ class EditorPanel(wx.Panel):
         parent: wx.Window,
         on_save: Callable[[], None] | None = None,
         on_discard: Callable[[], bool] | None = None,
+        *,
+        detached_mode: bool = False,
     ):
         """Initialize requirement editor widgets."""
         super().__init__(parent)
@@ -315,6 +317,7 @@ class EditorPanel(wx.Panel):
         self._text_histories: dict[wx.TextCtrl, _TextHistoryState] = {}
         self._defer_autosize_layout = False
         self._id_display_link: wx.adv.HyperlinkCtrl | None = None
+        self._detached_mode = bool(detached_mode)
 
         self._attachment_link_re = re.compile(r"attachment:([A-Za-z0-9_-]+)")
 
@@ -608,7 +611,12 @@ class EditorPanel(wx.Panel):
         root_sizer.Add(self._content_panel, 1, wx.EXPAND)
         root_sizer.Add(separator, 0, wx.EXPAND)
         root_sizer.Add(footer, 0, wx.EXPAND)
-        self.SetSizer(root_sizer)
+        if self._detached_mode:
+            outer_sizer = wx.BoxSizer(wx.VERTICAL)
+            outer_sizer.Add(root_sizer, 1, wx.EXPAND | wx.ALL, dip(self, 8))
+            self.SetSizer(outer_sizer)
+        else:
+            self.SetSizer(root_sizer)
 
         self.attachments: list[dict[str, str]] = []
         self.context_docs: list[str] = []

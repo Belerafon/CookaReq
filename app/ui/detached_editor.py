@@ -71,6 +71,7 @@ class DetachedEditorFrame(wx.Frame):
             container,
             on_save=self._handle_save,
             on_discard=self._handle_cancel,
+            detached_mode=True,
         )
         self.editor.set_service(service)
         editor_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -212,4 +213,3 @@ class DetachedEditorFrame(wx.Frame):
         if base:
             return _("Requirement {rid}: {title}").format(rid=rid, title=base)
         return _("Requirement {rid}").format(rid=rid)
-

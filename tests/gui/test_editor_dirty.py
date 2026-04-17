@@ -406,6 +406,24 @@ def test_detached_editor_cancel_closes_window_without_saving(wx_app, tmp_path):
         parent.Destroy()
 
 
+@pytest.mark.gui_smoke
+def test_editor_panel_detached_mode_adds_outer_inset(wx_app):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame, detached_mode=True)
+        sizer = panel.GetSizer()
+        assert sizer is not None
+        outer_item = sizer.GetItem(0)
+        assert outer_item is not None
+        assert outer_item.GetBorder() > 0
+    finally:
+        frame.Destroy()
+
 
 @pytest.mark.gui_smoke
 def test_editor_panel_verification_methods_compact_selector_updates_selection(wx_app):

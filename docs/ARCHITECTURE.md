@@ -402,7 +402,9 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   ownership/revision links, classification enums and approval date). Requirement
   switching now applies batched autosize/layout updates under a frozen content
   panel, so keyboard navigation through the list no longer triggers a visible
-  per-field relayout cascade.
+  per-field relayout cascade. When the same editor is hosted in the detached
+  floating window (`DetachedEditorFrame`), the panel applies a small outer
+  inset so standalone editing does not render flush against the frame edges.
 
 ## Cross-cutting infrastructure
 

@@ -1519,15 +1519,23 @@ class MainFrameDocumentsMixin:
                 wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             else:
                 labels_all, freeform = self.docs_controller.collect_labels(prefix)
-                self.panel.update_labels_list(labels_all, freeform)
-                self.editor.update_labels_list(labels_all, freeform)
-                self._apply_label_updates_to_requirements(
-                    prefix,
-                    rename_choices=key_changes,
-                    removal_choices=removed_labels,
-                    labels=labels_all,
-                    allow_freeform=freeform,
-                )
+                current_prefix = getattr(self, "current_doc_prefix", None)
+                if prefix == current_prefix:
+                    self.panel.update_labels_list(labels_all, freeform)
+                    self.editor.update_labels_list(labels_all, freeform)
+                    self._apply_label_updates_to_requirements(
+                        prefix,
+                        rename_choices=key_changes,
+                        removal_choices=removed_labels,
+                        labels=labels_all,
+                        allow_freeform=freeform,
+                    )
+                elif current_prefix:
+                    current_labels, current_freeform = self.docs_controller.collect_labels(
+                        current_prefix
+                    )
+                    self.panel.update_labels_list(current_labels, current_freeform)
+                    self.editor.update_labels_list(current_labels, current_freeform)
         dlg.Destroy()
 
     def _apply_label_updates_to_requirements(

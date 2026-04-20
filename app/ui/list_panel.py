@@ -1504,13 +1504,29 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
 
         available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        inherited_available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        if self._docs_controller and self._current_doc_prefix:
+            inherited_defs, _ = self._docs_controller.collect_labels(
+                self._current_doc_prefix,
+                include_inherited=True,
+            )
+            inherited_available = [
+                LabelDef(lbl.key, lbl.title, lbl.color) for lbl in inherited_defs
+            ]
         known_keys = {lbl.key for lbl in available}
+        inherited_known = {lbl.key for lbl in inherited_available}
         for labels in existing_labels:
             for name in labels:
                 if name in known_keys:
+                    if name not in inherited_known:
+                        inherited_known.add(name)
+                        inherited_available.append(LabelDef(name, name, stable_color(name)))
                     continue
                 known_keys.add(name)
                 available.append(LabelDef(name, name, stable_color(name)))
+                if name not in inherited_known:
+                    inherited_known.add(name)
+                    inherited_available.append(LabelDef(name, name, stable_color(name)))
 
         initial: list[str] = []
         if existing_labels:
@@ -1524,6 +1540,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             labels=available,
             selected=initial,
             allow_freeform=self._labels_allow_freeform,
+            inherited_labels=inherited_available,
         )
         try:
             if dlg.ShowModal() != wx.ID_OK:

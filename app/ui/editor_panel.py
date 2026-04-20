@@ -1709,11 +1709,34 @@ class EditorPanel(wx.Panel):
         if not self._label_defs and not self._labels_allow_freeform:
             return
         selected = self.extra.get("labels", [])
+        inherited_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._label_defs]
+        top_level = wx.GetTopLevelParent(self)
+        controller = getattr(top_level, "docs_controller", None) if top_level else None
+        prefix = str(self._doc_prefix or self.extra.get("doc_prefix", "")).strip()
+        if controller and prefix:
+            try:
+                defs, _ = controller.collect_labels(prefix, include_inherited=True)
+            except Exception:
+                defs = []
+            if defs:
+                inherited_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in defs]
+
+        inherited_known = {lbl.key for lbl in inherited_defs}
+        for name in selected:
+            if not isinstance(name, str) or not name.strip():
+                continue
+            key = name.strip()
+            if key in inherited_known:
+                continue
+            inherited_known.add(key)
+            inherited_defs.append(LabelDef(key, key, stable_color(key)))
+
         dlg = LabelSelectionDialog(
             self,
             self._label_defs,
             selected,
             allow_freeform=self._labels_allow_freeform,
+            inherited_labels=inherited_defs,
         )
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_label_selection(dlg.get_selected())

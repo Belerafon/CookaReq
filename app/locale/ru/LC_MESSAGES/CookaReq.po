@@ -3462,6 +3462,9 @@ msgstr "Документ"
 msgid "Discard unsaved label changes?"
 msgstr "Отменить несохранённые изменения меток?"
 
+msgid "Use higher-level labels"
+msgstr "Использовать высокоуровневые метки"
+
 msgid ""
 "Labels are used to group and filter requirements.\n"
 "The requirements list and filters use label keys.\n"

@@ -3442,6 +3442,9 @@ msgstr "Document"
 msgid "Discard unsaved label changes?"
 msgstr "Discard unsaved label changes?"
 
+msgid "Use higher-level labels"
+msgstr "Use higher-level labels"
+
 msgid ""
 "Labels are used to group and filter requirements.\n"
 "The requirements list and filters use label keys.\n"

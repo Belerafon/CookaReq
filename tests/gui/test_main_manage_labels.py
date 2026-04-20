@@ -150,3 +150,64 @@ def test_manage_labels_removal_updates_loaded_requirements(monkeypatch, wx_app, 
         if frame and not frame.IsBeingDeleted():
             frame.Destroy()
             wx_app.Yield()
+
+
+def test_manage_labels_uses_document_selected_in_dialog(monkeypatch, wx_app, tmp_path):
+    req_doc = Document(
+        prefix="REQ",
+        title="Requirements",
+        labels=DocumentLabels(defs=[LabelDef("req", "Req", None)]),
+    )
+    sys_doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("sys", "System", None)]),
+    )
+    save_document(tmp_path / "REQ", req_doc)
+    save_document(tmp_path / "SYS", sys_doc)
+
+    frame = _create_frame(tmp_path)
+    try:
+        frame._load_directory(tmp_path)
+        frame.current_doc_prefix = "REQ"
+        wx_app.Yield()
+        captured: dict[str, object] = {}
+
+        class _DialogStub:
+            def __init__(self, _parent, labels, **kwargs):
+                captured["labels"] = labels
+                captured["choices"] = kwargs.get("document_choices")
+                captured["current_document"] = kwargs.get("current_document")
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def Destroy(self):
+                pass
+
+            def get_selected_document(self):
+                return "SYS"
+
+            def get_labels(self):
+                return [LabelDef("sys", "SYS Updated", None)]
+
+            def get_key_changes(self):
+                return {}
+
+            def get_removed_labels(self):
+                return {}
+
+        monkeypatch.setattr("app.ui.main_frame.documents.LabelsDialog", _DialogStub)
+
+        frame.on_manage_labels(wx.CommandEvent())
+        wx_app.Yield()
+
+        docs = frame.docs_controller.load_documents()
+        assert docs["SYS"].labels.defs[0].title == "SYS Updated"
+        assert docs["REQ"].labels.defs[0].title == "Req"
+        assert captured["current_document"] == "REQ"
+        assert ("SYS", "SYS: System") in captured["choices"]
+    finally:
+        if frame and not frame.IsBeingDeleted():
+            frame.Destroy()
+            wx_app.Yield()

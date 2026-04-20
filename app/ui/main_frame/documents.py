@@ -1448,28 +1448,63 @@ class MainFrameDocumentsMixin:
         if not (self.docs_controller and self.current_dir):
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
-        prefix = self.current_doc_prefix
-        if not prefix:
+        initial_prefix = self.current_doc_prefix
+        if not initial_prefix:
             wx.MessageBox(_("Select a document first"), _("No Data"))
             return
-        doc = self.docs_controller.documents.get(prefix)
+        doc = self.docs_controller.documents.get(initial_prefix)
         if doc is None:
             documents = self.docs_controller.load_documents()
-            doc = documents.get(prefix)
+            doc = documents.get(initial_prefix)
         if doc is None:
             wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
             return
-        promoted = self.docs_controller.sync_labels_from_requirements(prefix)
-        if promoted:
-            doc = self.docs_controller.documents.get(prefix)
-            if doc is None:
-                doc = self.docs_controller.load_documents().get(prefix)
+        self.docs_controller.sync_labels_from_requirements(initial_prefix)
+        doc = self.docs_controller.documents.get(initial_prefix)
+        if doc is None:
+            doc = self.docs_controller.load_documents().get(initial_prefix)
+        if doc is None:
+            wx.MessageBox(_("Document not found"), _("Error"), wx.ICON_ERROR)
+            return
+
+        docs_map = self._ensure_document_map()
+        document_choices: list[tuple[str, str]] = []
+        for prefix in sorted(docs_map):
+            document = docs_map[prefix]
+            document_choices.append((prefix, self._format_document_choice(document)))
 
         labels = [LabelDef(ld.key, ld.title, ld.color) for ld in doc.labels.defs]
-        usage_counts = self.docs_controller.label_usage_counts(prefix)
-        dlg = LabelsDialog(self, labels, usage_counts=usage_counts)
+        usage_counts = self.docs_controller.label_usage_counts(initial_prefix)
+
+        def _load_labels_for_document(prefix: str) -> tuple[list[LabelDef], dict[str, int]]:
+            self.docs_controller.sync_labels_from_requirements(prefix)
+            selected_doc = self.docs_controller.documents.get(prefix)
+            if selected_doc is None:
+                selected_doc = self.docs_controller.load_documents().get(prefix)
+            if selected_doc is None:
+                raise ValueError(_("Document not found"))
+            loaded_labels = [
+                LabelDef(label.key, label.title, label.color)
+                for label in selected_doc.labels.defs
+            ]
+            loaded_usage = self.docs_controller.label_usage_counts(prefix)
+            return loaded_labels, loaded_usage
+
+        dlg = LabelsDialog(
+            self,
+            labels,
+            usage_counts=usage_counts,
+            document_choices=document_choices,
+            current_document=initial_prefix,
+            on_document_change=_load_labels_for_document,
+        )
         if dlg.ShowModal() == wx.ID_OK:
             try:
+                selected_document_getter = getattr(dlg, "get_selected_document", None)
+                if callable(selected_document_getter):
+                    prefix = selected_document_getter() or initial_prefix
+                else:
+                    prefix = initial_prefix
                 updated_labels = dlg.get_labels()
                 key_changes = dlg.get_key_changes()
                 removed_labels = dlg.get_removed_labels()

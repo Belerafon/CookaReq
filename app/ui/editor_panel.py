@@ -1710,6 +1710,8 @@ class EditorPanel(wx.Panel):
             return
         selected = self.extra.get("labels", [])
         inherited_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._label_defs]
+        local_sources: dict[str, str] = {}
+        inherited_sources: dict[str, str] = {}
         prefix = str(self._doc_prefix or self.extra.get("doc_prefix", "")).strip()
         service = self._service
         if service and prefix:
@@ -1719,6 +1721,24 @@ class EditorPanel(wx.Panel):
                 defs = []
             if defs:
                 inherited_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in defs]
+            try:
+                details = service.describe_label_definitions(prefix)
+            except Exception:
+                details = {}
+            for entry in details.get("labels", []) if isinstance(details, dict) else []:
+                if not isinstance(entry, dict):
+                    continue
+                key = str(entry.get("key", "")).strip()
+                source = str(entry.get("defined_in", "")).strip()
+                if not key:
+                    continue
+                if source:
+                    inherited_sources[key] = source
+                if bool(entry.get("editable", False)) and source:
+                    local_sources[key] = source
+        if prefix:
+            for label in self._label_defs:
+                local_sources.setdefault(label.key, prefix)
 
         inherited_known = {lbl.key for lbl in inherited_defs}
         for name in selected:
@@ -1729,6 +1749,8 @@ class EditorPanel(wx.Panel):
                 continue
             inherited_known.add(key)
             inherited_defs.append(LabelDef(key, key, stable_color(key)))
+            inherited_sources.setdefault(key, "")
+            local_sources.setdefault(key, prefix)
 
         dlg = LabelSelectionDialog(
             self,
@@ -1736,6 +1758,8 @@ class EditorPanel(wx.Panel):
             selected,
             allow_freeform=self._labels_allow_freeform,
             inherited_labels=inherited_defs,
+            label_sources=local_sources,
+            inherited_label_sources=inherited_sources,
         )
         if dlg.ShowModal() == wx.ID_OK:
             self.apply_label_selection(dlg.get_selected())

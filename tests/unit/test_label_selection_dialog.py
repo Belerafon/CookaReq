@@ -112,3 +112,31 @@ def test_editor_panel_passes_full_inherited_labels_to_selection_dialog(
     assert captured["keys"] == ["local", "parent"]
     panel.Destroy()
     parent.Destroy()
+
+
+def test_label_selection_dialog_shows_document_source_column(wx_app: wx.App) -> None:
+    parent = wx.Frame(None)
+    try:
+        dlg = LabelSelectionDialog(
+            parent,
+            [LabelDef(key="local", title="Local", color=None)],
+            [],
+            inherited_labels=[
+                LabelDef(key="local", title="Local", color=None),
+                LabelDef(key="parent", title="Parent", color=None),
+            ],
+            label_sources={"local": "REQ"},
+            inherited_label_sources={"local": "REQ", "parent": "SYS"},
+        )
+        assert dlg.list.GetColumnCount() == 3
+        assert dlg.list.GetItemText(0, 2) == "REQ"
+        if dlg.inherited_toggle is not None:
+            dlg.inherited_toggle.SetValue(True)
+            event = wx.CommandEvent(wx.EVT_CHECKBOX.typeId, dlg.inherited_toggle.GetId())
+            event.SetInt(1)
+            dlg._on_toggle_inherited(event)
+        assert dlg.list.GetItemCount() == 2
+        assert dlg.list.GetItemText(1, 2) == "SYS"
+        dlg.Destroy()
+    finally:
+        parent.Destroy()

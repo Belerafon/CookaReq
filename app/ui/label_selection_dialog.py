@@ -31,6 +31,8 @@ class LabelSelectionDialog(wx.Dialog):
         *,
         allow_freeform: bool = False,
         inherited_labels: list[LabelDef] | None = None,
+        label_sources: dict[str, str] | None = None,
+        inherited_label_sources: dict[str, str] | None = None,
     ):
         """Initialize dialog listing ``labels`` with ``selected`` prechecked.
 
@@ -42,6 +44,9 @@ class LabelSelectionDialog(wx.Dialog):
         self._local_labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
         inherited = inherited_labels if inherited_labels is not None else labels
         self._inherited_labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in inherited]
+        self._local_sources = dict(label_sources or {})
+        inherited_sources = inherited_label_sources if inherited_label_sources is not None else label_sources
+        self._inherited_sources = dict(inherited_sources or {})
         self._labels: list[LabelDef] = []
         self._allow_freeform = allow_freeform
         self._selected_keys: set[str] = {key for key in selected if isinstance(key, str)}
@@ -53,6 +58,7 @@ class LabelSelectionDialog(wx.Dialog):
         self.list = _CheckListCtrl(self)
         self.list.InsertColumn(0, _("Key"))
         self.list.InsertColumn(1, _("Title"))
+        self.list.InsertColumn(2, _("Document"))
 
         self._img_list = wx.ImageList(16, 16)
         self._color_icons: dict[str, int] = {}
@@ -123,9 +129,11 @@ class LabelSelectionDialog(wx.Dialog):
     def _populate_labels(self) -> None:
         self._labels = self._active_labels()
         self.list.DeleteAllItems()
+        source_map = self._inherited_sources if self._include_inherited else self._local_sources
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
+            self.list.SetItem(idx, 2, source_map.get(lbl.key, ""))
             img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
             if lbl.key in self._selected_keys:
@@ -154,9 +162,12 @@ class LabelSelectionDialog(wx.Dialog):
     def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            first = int(width * 0.4)
+            first = int(width * 0.3)
+            second = int(width * 0.35)
+            third = max(width - first - second - 4, 0)
             self.list.SetColumnWidth(0, first)
-            self.list.SetColumnWidth(1, width - first - 4)
+            self.list.SetColumnWidth(1, second)
+            self.list.SetColumnWidth(2, third)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._resize_columns()

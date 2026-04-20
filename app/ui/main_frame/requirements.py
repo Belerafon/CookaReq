@@ -321,7 +321,8 @@ class MainFrameRequirementsMixin:
         self._clear_editor_panel()
         self.splitter.UpdateSize()
         labels, freeform = self.docs_controller.collect_labels(
-            self.current_doc_prefix
+            self.current_doc_prefix,
+            include_inherited=False,
         )
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels, freeform)

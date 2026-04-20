@@ -218,11 +218,22 @@ def is_ancestor(
 
 
 def collect_label_defs(
-    prefix: str, docs: Mapping[str, Document]
+    prefix: str,
+    docs: Mapping[str, Document],
+    *,
+    include_inherited: bool = True,
 ) -> tuple[list[LabelDef], bool]:
     """Return label definitions and freeform flag for ``prefix``."""
     labels: list[LabelDef] = []
     allow_freeform = False
+    if not include_inherited:
+        current = docs.get(prefix)
+        if current is None:
+            return labels, allow_freeform
+        allow_freeform = bool(current.labels.allow_freeform)
+        for ld in current.labels.defs:
+            labels.append(LabelDef(ld.key, ld.title, label_color(ld)))
+        return labels, allow_freeform
     chain: list[Document] = []
     current = docs.get(prefix)
     while current:
@@ -237,9 +248,18 @@ def collect_label_defs(
     return labels, allow_freeform
 
 
-def collect_labels(prefix: str, docs: Mapping[str, Document]) -> tuple[set[str], bool]:
+def collect_labels(
+    prefix: str,
+    docs: Mapping[str, Document],
+    *,
+    include_inherited: bool = True,
+) -> tuple[set[str], bool]:
     """Return allowed label keys and freeform flag for ``prefix``."""
-    defs, freeform = collect_label_defs(prefix, docs)
+    defs, freeform = collect_label_defs(
+        prefix,
+        docs,
+        include_inherited=include_inherited,
+    )
     return {d.key for d in defs}, freeform
 
 

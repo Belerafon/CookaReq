@@ -1,5 +1,7 @@
 """Dialog for managing label colors."""
 
+from collections.abc import Callable, Sequence
+
 import wx
 
 from ..config import ConfigManager
@@ -38,10 +40,15 @@ class LabelsDialog(wx.Dialog):
         parent: wx.Window | None,
         labels: list[LabelDef],
         usage_counts: dict[str, int] | None = None,
+        *,
+        document_choices: Sequence[tuple[str, str]] | None = None,
+        current_document: str | None = None,
+        on_document_change: Callable[[str], tuple[list[LabelDef], dict[str, int]]] | None = None,
     ):
         """Initialize labels dialog with editable label list."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        super().__init__(parent, title=_("Labels"), style=style)
+        self._base_title = _("Labels")
+        super().__init__(parent, title=self._base_title, style=style)
         # copy labels to avoid modifying caller until OK
         self._labels: list[LabelDef] = [
             LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels
@@ -52,10 +59,34 @@ class LabelsDialog(wx.Dialog):
         self._key_changes: dict[str, tuple[str, bool]] = {}
         self._removed_labels: dict[str, bool] = {}
         self._usage_counts = dict(usage_counts or {})
+        self._document_choices = list(document_choices or [])
+        self._current_document = current_document
+        self._on_document_change = on_document_change
+        self._is_switching_document = False
+        self._baseline_labels: list[tuple[str, str, str | None]] = []
         cfg = getattr(parent, "config", None)
         if cfg is None:
             cfg = ConfigManager()
         self._config = cfg
+        self._help_text = _(
+            "Labels are used to group and filter requirements.\n"
+            "The requirements list and filters use label keys.\n\n"
+            "Fields:\n"
+            "• Key — required unique label identifier in the current document.\n"
+            "• Title — optional human-friendly label name used in dialogs and exports.\n"
+            "• Color — visual marker color.\n\n"
+            "Changes are applied after pressing OK in this window.\n"
+            "Key rules: non-empty, unique in the document (case-insensitive)."
+        )
+
+        self.document_label: wx.StaticText | None = None
+        self.document_choice: wx.Choice | None = None
+        if self._document_choices:
+            self.document_label = wx.StaticText(self, label=_("Document"))
+            labels = [label for _, label in self._document_choices]
+            self.document_choice = wx.Choice(self, choices=labels)
+            self.document_choice.Bind(wx.EVT_CHOICE, self._on_document_selected)
+            self._set_document_selection(self._current_document)
 
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list.InsertColumn(0, _("Key"))
@@ -68,6 +99,7 @@ class LabelsDialog(wx.Dialog):
         self.list.AssignImageList(self._img_list, wx.IMAGE_LIST_SMALL)
 
         self._populate()
+        self._baseline_labels = [(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
 
         self.color_picker = wx.ColourPickerCtrl(self)
         self.color_picker.Disable()
@@ -88,10 +120,19 @@ class LabelsDialog(wx.Dialog):
         self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_all)
 
         self.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_select)
+        self.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_activate_item)
         self.list.Bind(wx.EVT_SIZE, self._on_list_size)
         self.color_picker.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_color_changed)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
+        help_ctrl = wx.StaticText(self, label=self._help_text)
+        help_ctrl.Wrap(self.FromDIP(640))
+        sizer.Add(help_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        if self.document_choice is not None and self.document_label is not None:
+            doc_row = wx.BoxSizer(wx.HORIZONTAL)
+            doc_row.Add(self.document_label, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+            doc_row.Add(self.document_choice, 1, wx.ALL | wx.EXPAND, 5)
+            sizer.Add(doc_row, 0, wx.EXPAND)
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         sizer.Add(self.color_picker, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -109,6 +150,25 @@ class LabelsDialog(wx.Dialog):
         self.SetMinSize(self.GetSize())
         self._load_layout()
         wx.CallAfter(self._resize_columns)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+        cancel_btn = self.FindWindowById(wx.ID_CANCEL)
+        if isinstance(cancel_btn, wx.Button):
+            cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
+        self._update_dirty_state()
+
+    def _set_document_selection(self, prefix: str | None) -> None:
+        """Select document entry corresponding to ``prefix`` in the choice."""
+
+        if self.document_choice is None or not self._document_choices:
+            return
+        target = prefix or self._document_choices[0][0]
+        for idx, (doc_prefix, _label) in enumerate(self._document_choices):
+            if doc_prefix == target:
+                self.document_choice.SetSelection(idx)
+                self._current_document = doc_prefix
+                return
+        self.document_choice.SetSelection(0)
+        self._current_document = self._document_choices[0][0]
 
     def _get_icon_index(self, colour: str) -> int:
         """Return image index for ``colour``, creating bitmap if needed."""
@@ -150,6 +210,81 @@ class LabelsDialog(wx.Dialog):
         self._labels[idx].color = colour
         img_idx = self._get_icon_index(colour)
         self.list.SetItemColumnImage(idx, 0, img_idx)
+        self._update_dirty_state()
+
+    def _on_activate_item(self, _event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
+        """Open label editor on list item activation (double click / Enter)."""
+
+        self._on_edit_selected(wx.CommandEvent(wx.EVT_BUTTON.typeId, self.edit_btn.GetId()))
+
+    def _has_unsaved_changes(self) -> bool:
+        """Return ``True`` when dialog state differs from the loaded baseline."""
+
+        if self._key_changes or self._removed_labels:
+            return True
+        current = [(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        return current != self._baseline_labels
+
+    def _update_dirty_state(self) -> None:
+        """Refresh dialog title based on unsaved edits."""
+
+        title = self._base_title
+        if self._has_unsaved_changes():
+            title = f"{title} *"
+        self.SetTitle(title)
+
+    def _confirm_discard_unsaved_changes(self) -> bool:
+        """Ask whether pending edits can be discarded."""
+
+        if not self._has_unsaved_changes():
+            return True
+        return confirm(_("Discard unsaved label changes?"))
+
+    def _replace_state(self, labels: list[LabelDef], usage_counts: dict[str, int]) -> None:
+        """Replace dialog state with labels loaded for another document."""
+
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        self._original_key_lookup = {lbl.key: lbl.key for lbl in self._labels}
+        self._key_changes.clear()
+        self._removed_labels.clear()
+        self._usage_counts = dict(usage_counts)
+        self._baseline_labels = [(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        self._populate()
+        self.color_picker.Disable()
+        self._update_dirty_state()
+
+    def _on_document_selected(self, event: wx.CommandEvent) -> None:  # pragma: no cover - GUI event
+        if self._is_switching_document:
+            return
+        selection = event.GetSelection()
+        if selection < 0 or selection >= len(self._document_choices):
+            return
+        next_prefix = self._document_choices[selection][0]
+        if next_prefix == self._current_document:
+            return
+        if not self._confirm_discard_unsaved_changes():
+            self._is_switching_document = True
+            try:
+                self._set_document_selection(self._current_document)
+            finally:
+                self._is_switching_document = False
+            return
+        if self._on_document_change is None:
+            self._set_document_selection(self._current_document)
+            return
+        try:
+            labels, usage_counts = self._on_document_change(next_prefix)
+        except ValueError as exc:
+            wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
+            self._set_document_selection(self._current_document)
+            return
+        self._replace_state(labels, usage_counts)
+        self._current_document = next_prefix
+
+    def get_selected_document(self) -> str | None:
+        """Return currently selected document prefix if choice is shown."""
+
+        return self._current_document
 
     def _get_selected_indices(self) -> list[int]:
         indices: list[int] = []
@@ -182,6 +317,7 @@ class LabelsDialog(wx.Dialog):
                 added = True
         if added:
             self._populate()
+            self._update_dirty_state()
 
     def _on_show_presets_menu(
         self,
@@ -237,6 +373,7 @@ class LabelsDialog(wx.Dialog):
             self._labels.append(definition)
             self._original_key_lookup.setdefault(new_key, new_key)
             self._populate()
+            self._update_dirty_state()
         finally:
             dlg.Destroy()
 
@@ -262,6 +399,7 @@ class LabelsDialog(wx.Dialog):
             del self._labels[i]
         self._populate()
         self.color_picker.Disable()
+        self._update_dirty_state()
 
     def _on_clear_all(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         if not self._labels:
@@ -279,6 +417,7 @@ class LabelsDialog(wx.Dialog):
         self._original_key_lookup.clear()
         self._populate()
         self.color_picker.Disable()
+        self._update_dirty_state()
 
     def get_labels(self) -> list[LabelDef]:
         """Return updated labels."""
@@ -357,6 +496,7 @@ class LabelsDialog(wx.Dialog):
                 if original_key in self._key_changes:
                     self._key_changes.pop(original_key, None)
             self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
+            self._update_dirty_state()
         finally:
             dlg.Destroy()
 
@@ -398,10 +538,10 @@ class LabelsDialog(wx.Dialog):
         self._config.set_value(key, int(value))
 
     def _load_layout(self) -> None:
-        w = self._read_int("labels_w", 300)
-        h = self._read_int("labels_h", 200)
-        w = max(200, min(w, 1000))
-        h = max(150, min(h, 800))
+        w = self._read_int("labels_w", self.FromDIP(760))
+        h = self._read_int("labels_h", self.FromDIP(560))
+        w = max(self.FromDIP(580), min(w, self.FromDIP(1400)))
+        h = max(self.FromDIP(420), min(h, self.FromDIP(1000)))
         self.SetSize((w, h))
         x = self._read_int("labels_x", -1)
         y = self._read_int("labels_y", -1)
@@ -432,6 +572,16 @@ class LabelsDialog(wx.Dialog):
         self._write_int("labels_x", x)
         self._write_int("labels_y", y)
         self._config.flush()
+
+    def _on_cancel(self, _event: wx.CommandEvent) -> None:  # pragma: no cover - GUI event
+        if self._confirm_discard_unsaved_changes():
+            self.EndModal(wx.ID_CANCEL)
+
+    def _on_close(self, event: wx.CloseEvent) -> None:  # pragma: no cover - GUI event
+        if event.CanVeto() and not self._confirm_discard_unsaved_changes():
+            event.Veto()
+            return
+        event.Skip()
 
     def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
         """Save window geometry before closing dialog."""

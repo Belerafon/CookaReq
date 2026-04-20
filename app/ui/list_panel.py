@@ -1504,13 +1504,55 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             return
 
         available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        inherited_available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        local_sources: dict[str, str] = {}
+        inherited_sources: dict[str, str] = {}
+        if self._docs_controller and self._current_doc_prefix:
+            inherited_defs, _ = self._docs_controller.collect_labels(
+                self._current_doc_prefix,
+                include_inherited=True,
+            )
+            inherited_available = [
+                LabelDef(lbl.key, lbl.title, lbl.color) for lbl in inherited_defs
+            ]
+            service = getattr(self._docs_controller, "service", None)
+            if service is not None:
+                try:
+                    details = service.describe_label_definitions(self._current_doc_prefix)
+                except Exception:
+                    details = {}
+                for entry in details.get("labels", []) if isinstance(details, dict) else []:
+                    if not isinstance(entry, dict):
+                        continue
+                    key = str(entry.get("key", "")).strip()
+                    source = str(entry.get("defined_in", "")).strip()
+                    if not key:
+                        continue
+                    if source:
+                        inherited_sources[key] = source
+                    editable = bool(entry.get("editable", False))
+                    if editable and source:
+                        local_sources[key] = source
         known_keys = {lbl.key for lbl in available}
+        inherited_known = {lbl.key for lbl in inherited_available}
+        if self._current_doc_prefix:
+            for label in available:
+                local_sources.setdefault(label.key, self._current_doc_prefix)
         for labels in existing_labels:
             for name in labels:
                 if name in known_keys:
+                    if name not in inherited_known:
+                        inherited_known.add(name)
+                        inherited_available.append(LabelDef(name, name, stable_color(name)))
+                        inherited_sources.setdefault(name, "")
                     continue
                 known_keys.add(name)
                 available.append(LabelDef(name, name, stable_color(name)))
+                local_sources.setdefault(name, "")
+                if name not in inherited_known:
+                    inherited_known.add(name)
+                    inherited_available.append(LabelDef(name, name, stable_color(name)))
+                    inherited_sources.setdefault(name, "")
 
         initial: list[str] = []
         if existing_labels:
@@ -1524,6 +1566,9 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
             labels=available,
             selected=initial,
             allow_freeform=self._labels_allow_freeform,
+            inherited_labels=inherited_available,
+            label_sources=local_sources,
+            inherited_label_sources=inherited_sources,
         )
         try:
             if dlg.ShowModal() != wx.ID_OK:

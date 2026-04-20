@@ -3,6 +3,7 @@
 import wx
 from contextlib import suppress
 
+from ..config import ConfigManager
 from ..services.requirements import LabelDef, label_color
 from ..i18n import _
 
@@ -29,6 +30,9 @@ class LabelSelectionDialog(wx.Dialog):
         selected: list[str],
         *,
         allow_freeform: bool = False,
+        inherited_labels: list[LabelDef] | None = None,
+        label_sources: dict[str, str] | None = None,
+        inherited_label_sources: dict[str, str] | None = None,
     ):
         """Initialize dialog listing ``labels`` with ``selected`` prechecked.
 
@@ -37,28 +41,42 @@ class LabelSelectionDialog(wx.Dialog):
         """
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         super().__init__(parent, title=_("Labels"), style=style)
-        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        self._local_labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        inherited = inherited_labels if inherited_labels is not None else labels
+        self._inherited_labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in inherited]
+        self._local_sources = dict(label_sources or {})
+        inherited_sources = inherited_label_sources if inherited_label_sources is not None else label_sources
+        self._inherited_sources = dict(inherited_sources or {})
+        self._labels: list[LabelDef] = []
         self._allow_freeform = allow_freeform
+        self._selected_keys: set[str] = {key for key in selected if isinstance(key, str)}
+        self._config = self._resolve_config(parent)
+        self._include_inherited_key = "labels_include_inherited"
+        self._has_inherited_toggle = inherited_labels is not None
+        self._include_inherited = self._read_include_inherited_default()
 
         self.list = _CheckListCtrl(self)
         self.list.InsertColumn(0, _("Key"))
         self.list.InsertColumn(1, _("Title"))
+        self.list.InsertColumn(2, _("Document"))
 
         self._img_list = wx.ImageList(16, 16)
         self._color_icons: dict[str, int] = {}
         self.list.AssignImageList(self._img_list, wx.IMAGE_LIST_SMALL)
 
-        for lbl in self._labels:
-            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
-            self.list.SetItem(idx, 1, lbl.title)
-            img_idx = self._get_icon_index(label_color(lbl))
-            self.list.SetItemColumnImage(idx, 0, img_idx)
-            if lbl.key in selected:
-                self.list.CheckItem(idx)
-
         self.list.Bind(wx.EVT_SIZE, self._on_list_size)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
+        if self._has_inherited_toggle:
+            self.inherited_toggle = wx.CheckBox(
+                self,
+                label=_("Use higher-level labels"),
+            )
+            self.inherited_toggle.SetValue(self._include_inherited)
+            self.inherited_toggle.Bind(wx.EVT_CHECKBOX, self._on_toggle_inherited)
+            sizer.Add(self.inherited_toggle, 0, wx.ALL, 5)
+        else:
+            self.inherited_toggle = None
         sizer.Add(self.list, 1, wx.EXPAND | wx.ALL, 5)
         if self._allow_freeform:
             lbl = wx.StaticText(self, label=_("Custom labels (comma-separated)"))
@@ -73,7 +91,60 @@ class LabelSelectionDialog(wx.Dialog):
         self.SetSizer(sizer)
         sizer.Fit(self)
         self.SetMinSize(self.GetSize())
+        self._populate_labels()
         wx.CallAfter(self._resize_columns)
+
+    def _resolve_config(self, parent: wx.Window | None) -> ConfigManager:
+        cfg = getattr(parent, "config", None)
+        if cfg is None and parent is not None:
+            top = wx.GetTopLevelParent(parent)
+            cfg = getattr(top, "config", None) if top is not None else None
+        if cfg is None:
+            cfg = ConfigManager()
+        return cfg
+
+    def _read_include_inherited_default(self) -> bool:
+        try:
+            value = self._config.get_value(self._include_inherited_key, False)
+        except Exception:
+            return False
+        return bool(value)
+
+    def _write_include_inherited_default(self, value: bool) -> None:
+        try:
+            self._config.set_value(self._include_inherited_key, bool(value))
+            self._config.flush()
+        except Exception:
+            return
+
+    def _sync_checked_selection(self) -> None:
+        for idx in self.list.GetCheckedItems():
+            if 0 <= idx < len(self._labels):
+                self._selected_keys.add(self._labels[idx].key)
+
+    def _active_labels(self) -> list[LabelDef]:
+        source = self._inherited_labels if self._include_inherited else self._local_labels
+        return [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in source]
+
+    def _populate_labels(self) -> None:
+        self._labels = self._active_labels()
+        self.list.DeleteAllItems()
+        source_map = self._inherited_sources if self._include_inherited else self._local_sources
+        for lbl in self._labels:
+            idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
+            self.list.SetItem(idx, 1, lbl.title)
+            self.list.SetItem(idx, 2, source_map.get(lbl.key, ""))
+            img_idx = self._get_icon_index(label_color(lbl))
+            self.list.SetItemColumnImage(idx, 0, img_idx)
+            if lbl.key in self._selected_keys:
+                self.list.CheckItem(idx)
+        self._resize_columns()
+
+    def _on_toggle_inherited(self, event: wx.CommandEvent) -> None:  # pragma: no cover - GUI event
+        self._sync_checked_selection()
+        self._include_inherited = bool(event.IsChecked())
+        self._write_include_inherited_default(self._include_inherited)
+        self._populate_labels()
 
     def _get_icon_index(self, colour: str) -> int:
         """Return image index for ``colour``, creating bitmap if needed."""
@@ -91,16 +162,24 @@ class LabelSelectionDialog(wx.Dialog):
     def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            first = int(width * 0.4)
+            first = int(width * 0.3)
+            second = int(width * 0.35)
+            third = max(width - first - second - 4, 0)
             self.list.SetColumnWidth(0, first)
-            self.list.SetColumnWidth(1, width - first - 4)
+            self.list.SetColumnWidth(1, second)
+            self.list.SetColumnWidth(2, third)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._resize_columns()
 
     def get_selected(self) -> list[str]:
         """Return names of checked and custom labels."""
-        names = [self._labels[i].key for i in self.list.GetCheckedItems()]
+        self._sync_checked_selection()
+        names = [
+            lbl.key
+            for lbl in self._active_labels()
+            if lbl.key in self._selected_keys
+        ]
         if self.freeform_ctrl:
             extra = [
                 t.strip() for t in self.freeform_ctrl.GetValue().split(",") if t.strip()

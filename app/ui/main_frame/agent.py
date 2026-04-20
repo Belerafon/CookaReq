@@ -187,7 +187,10 @@ class MainFrameAgentMixin:
 
         if active_refresh_needed and current_prefix:
             try:
-                labels, freeform = controller.collect_labels(current_prefix)
+                labels, freeform = controller.collect_labels(
+                    current_prefix,
+                    include_inherited=False,
+                )
             except Exception:
                 logger.exception(
                     "Failed to collect labels for %s after agent update", current_prefix

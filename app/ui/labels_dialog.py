@@ -120,6 +120,7 @@ class LabelsDialog(wx.Dialog):
         self.clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_all)
 
         self.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_select)
+        self.list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_activate_item)
         self.list.Bind(wx.EVT_SIZE, self._on_list_size)
         self.color_picker.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_color_changed)
 
@@ -210,6 +211,11 @@ class LabelsDialog(wx.Dialog):
         img_idx = self._get_icon_index(colour)
         self.list.SetItemColumnImage(idx, 0, img_idx)
         self._update_dirty_state()
+
+    def _on_activate_item(self, _event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
+        """Open label editor on list item activation (double click / Enter)."""
+
+        self._on_edit_selected(wx.CommandEvent(wx.EVT_BUTTON.typeId, self.edit_btn.GetId()))
 
     def _has_unsaved_changes(self) -> bool:
         """Return ``True`` when dialog state differs from the loaded baseline."""

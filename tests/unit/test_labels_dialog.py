@@ -145,3 +145,16 @@ def test_labels_dialog_marks_unsaved_state_in_title(wx_app: wx.App) -> None:
         dlg.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_labels_dialog_double_click_activates_edit(wx_app: wx.App) -> None:
+    parent = wx.Frame(None)
+    try:
+        dlg = LabelsDialog(parent, [LabelDef(key="req", title="Req", color=None)])
+        calls: list[str] = []
+        dlg._on_edit_selected = lambda _event: calls.append("edit")  # type: ignore[method-assign]
+        dlg._on_activate_item(wx.ListEvent())
+        assert calls == ["edit"]
+        dlg.Destroy()
+    finally:
+        parent.Destroy()

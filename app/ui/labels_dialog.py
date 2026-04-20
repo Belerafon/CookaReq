@@ -47,7 +47,8 @@ class LabelsDialog(wx.Dialog):
     ):
         """Initialize labels dialog with editable label list."""
         style = wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        super().__init__(parent, title=_("Labels"), style=style)
+        self._base_title = _("Labels")
+        super().__init__(parent, title=self._base_title, style=style)
         # copy labels to avoid modifying caller until OK
         self._labels: list[LabelDef] = [
             LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels
@@ -74,6 +75,7 @@ class LabelsDialog(wx.Dialog):
             "• Key — required unique label identifier in the current document.\n"
             "• Title — optional human-friendly label name used in dialogs and exports.\n"
             "• Color — visual marker color.\n\n"
+            "Changes are applied after pressing OK in this window.\n"
             "Key rules: non-empty, unique in the document (case-insensitive)."
         )
 
@@ -151,6 +153,7 @@ class LabelsDialog(wx.Dialog):
         cancel_btn = self.FindWindowById(wx.ID_CANCEL)
         if isinstance(cancel_btn, wx.Button):
             cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
+        self._update_dirty_state()
 
     def _set_document_selection(self, prefix: str | None) -> None:
         """Select document entry corresponding to ``prefix`` in the choice."""
@@ -206,6 +209,7 @@ class LabelsDialog(wx.Dialog):
         self._labels[idx].color = colour
         img_idx = self._get_icon_index(colour)
         self.list.SetItemColumnImage(idx, 0, img_idx)
+        self._update_dirty_state()
 
     def _has_unsaved_changes(self) -> bool:
         """Return ``True`` when dialog state differs from the loaded baseline."""
@@ -214,6 +218,14 @@ class LabelsDialog(wx.Dialog):
             return True
         current = [(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
         return current != self._baseline_labels
+
+    def _update_dirty_state(self) -> None:
+        """Refresh dialog title based on unsaved edits."""
+
+        title = self._base_title
+        if self._has_unsaved_changes():
+            title = f"{title} *"
+        self.SetTitle(title)
 
     def _confirm_discard_unsaved_changes(self) -> bool:
         """Ask whether pending edits can be discarded."""
@@ -233,6 +245,7 @@ class LabelsDialog(wx.Dialog):
         self._baseline_labels = [(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
         self._populate()
         self.color_picker.Disable()
+        self._update_dirty_state()
 
     def _on_document_selected(self, event: wx.CommandEvent) -> None:  # pragma: no cover - GUI event
         if self._is_switching_document:
@@ -298,6 +311,7 @@ class LabelsDialog(wx.Dialog):
                 added = True
         if added:
             self._populate()
+            self._update_dirty_state()
 
     def _on_show_presets_menu(
         self,
@@ -353,6 +367,7 @@ class LabelsDialog(wx.Dialog):
             self._labels.append(definition)
             self._original_key_lookup.setdefault(new_key, new_key)
             self._populate()
+            self._update_dirty_state()
         finally:
             dlg.Destroy()
 
@@ -378,6 +393,7 @@ class LabelsDialog(wx.Dialog):
             del self._labels[i]
         self._populate()
         self.color_picker.Disable()
+        self._update_dirty_state()
 
     def _on_clear_all(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         if not self._labels:
@@ -395,6 +411,7 @@ class LabelsDialog(wx.Dialog):
         self._original_key_lookup.clear()
         self._populate()
         self.color_picker.Disable()
+        self._update_dirty_state()
 
     def get_labels(self) -> list[LabelDef]:
         """Return updated labels."""
@@ -473,6 +490,7 @@ class LabelsDialog(wx.Dialog):
                 if original_key in self._key_changes:
                     self._key_changes.pop(original_key, None)
             self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
+            self._update_dirty_state()
         finally:
             dlg.Destroy()
 

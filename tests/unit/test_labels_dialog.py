@@ -130,3 +130,18 @@ def test_labels_dialog_discard_confirmation_uses_confirm_signature(
         dlg.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_labels_dialog_marks_unsaved_state_in_title(wx_app: wx.App) -> None:
+    parent = wx.Frame(None)
+    try:
+        dlg = LabelsDialog(parent, [LabelDef(key="req", title="Req", color=None)])
+        assert "*" not in dlg.GetTitle()
+        dlg._labels[0].title = "Changed"
+        dlg._update_dirty_state()
+        assert "*" in dlg.GetTitle()
+        dlg._replace_state([LabelDef(key="req", title="Req", color=None)], {"req": 1})
+        assert "*" not in dlg.GetTitle()
+        dlg.Destroy()
+    finally:
+        parent.Destroy()

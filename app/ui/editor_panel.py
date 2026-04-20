@@ -1710,12 +1710,11 @@ class EditorPanel(wx.Panel):
             return
         selected = self.extra.get("labels", [])
         inherited_defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._label_defs]
-        top_level = wx.GetTopLevelParent(self)
-        controller = getattr(top_level, "docs_controller", None) if top_level else None
         prefix = str(self._doc_prefix or self.extra.get("doc_prefix", "")).strip()
-        if controller and prefix:
+        service = self._service
+        if service and prefix:
             try:
-                defs, _ = controller.collect_labels(prefix, include_inherited=True)
+                defs, _ = service.collect_label_defs(prefix, include_inherited=True)
             except Exception:
                 defs = []
             if defs:

@@ -3,6 +3,7 @@ import wx
 from pathlib import Path
 
 from app.config import ConfigManager
+from app.ui.editor_panel import EditorPanel
 from app.ui.label_selection_dialog import LabelSelectionDialog
 from app.core.document_store import LabelDef
 
@@ -65,3 +66,49 @@ def test_label_selection_dialog_inherited_toggle_is_persisted(
         dlg2.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_editor_panel_passes_full_inherited_labels_to_selection_dialog(
+    wx_app: wx.App, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parent = wx.Frame(None)
+    panel = EditorPanel(parent)
+
+    class _ServiceStub:
+        def collect_label_defs(
+            self, prefix: str, *, include_inherited: bool = True
+        ) -> tuple[list[LabelDef], bool]:
+            assert prefix == "REQ"
+            assert include_inherited is True
+            return (
+                [
+                    LabelDef("local", "Local", None),
+                    LabelDef("parent", "Parent", None),
+                ],
+                False,
+            )
+
+    captured: dict[str, list[str]] = {}
+
+    class _DialogStub:
+        def __init__(self, *_args, **kwargs):
+            inherited = kwargs.get("inherited_labels") or []
+            captured["keys"] = [lbl.key for lbl in inherited]
+
+        def ShowModal(self):
+            return wx.ID_CANCEL
+
+        def Destroy(self):
+            pass
+
+    panel.set_service(_ServiceStub())  # type: ignore[arg-type]
+    panel._doc_prefix = "REQ"
+    panel.extra["doc_prefix"] = "REQ"
+    panel.extra["labels"] = ["local"]
+    panel._label_defs = [LabelDef("local", "Local", None)]
+    monkeypatch.setattr("app.ui.editor_panel.LabelSelectionDialog", _DialogStub)
+    panel._on_labels_click(wx.CommandEvent())
+
+    assert captured["keys"] == ["local", "parent"]
+    panel.Destroy()
+    parent.Destroy()

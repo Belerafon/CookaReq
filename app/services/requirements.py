@@ -590,10 +590,19 @@ class RequirementsService:
         )
 
     # ------------------------------------------------------------------
-    def collect_label_defs(self, prefix: str) -> tuple[list[LabelDef], bool]:
+    def collect_label_defs(
+        self,
+        prefix: str,
+        *,
+        include_inherited: bool = True,
+    ) -> tuple[list[LabelDef], bool]:
         """Return label definitions and freeform flag for ``prefix``."""
         docs = self._ensure_documents()
-        return doc_store.collect_label_defs(prefix, docs)
+        return doc_store.collect_label_defs(
+            prefix,
+            docs,
+            include_inherited=include_inherited,
+        )
 
     def label_usage_counts(self, prefix: str) -> dict[str, int]:
         """Return label usage counts for ``prefix`` and its descendants."""

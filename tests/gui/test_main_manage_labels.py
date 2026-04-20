@@ -268,3 +268,32 @@ def test_manage_labels_keeps_active_document_label_list_when_editing_other_docum
         if frame and not frame.IsBeingDeleted():
             frame.Destroy()
             wx_app.Yield()
+
+
+def test_active_document_label_list_excludes_inherited_parent_labels(wx_app, tmp_path):
+    sys_doc = Document(
+        prefix="SYS",
+        title="System",
+        labels=DocumentLabels(defs=[LabelDef("sys", "System", None)]),
+    )
+    req_doc = Document(
+        prefix="REQ",
+        title="Requirements",
+        parent="SYS",
+        labels=DocumentLabels(defs=[LabelDef("req", "Req", None)]),
+    )
+    save_document(tmp_path / "SYS", sys_doc)
+    save_document(tmp_path / "REQ", req_doc)
+
+    frame = _create_frame(tmp_path)
+    try:
+        frame._load_directory(tmp_path)
+        frame.on_document_selected("REQ")
+        wx_app.Yield()
+
+        active_keys = [label.key for label in frame.panel._labels]
+        assert active_keys == ["req"]
+    finally:
+        if frame and not frame.IsBeingDeleted():
+            frame.Destroy()
+            wx_app.Yield()

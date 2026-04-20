@@ -62,9 +62,17 @@ class DocumentsController:
         self.model.set_requirements(items)
         return derived_map
 
-    def collect_labels(self, prefix: str) -> tuple[list[LabelDef], bool]:
+    def collect_labels(
+        self,
+        prefix: str,
+        *,
+        include_inherited: bool = True,
+    ) -> tuple[list[LabelDef], bool]:
         """Return labels and free-form flag for document ``prefix``."""
-        return self.service.collect_label_defs(prefix)
+        return self.service.collect_label_defs(
+            prefix,
+            include_inherited=include_inherited,
+        )
 
     def label_usage_counts(self, prefix: str) -> dict[str, int]:
         """Return label usage counts for document ``prefix`` tree."""

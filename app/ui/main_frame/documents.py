@@ -515,7 +515,10 @@ class MainFrameDocumentsMixin:
             self._clear_editor_panel()
             self.splitter.UpdateSize()
             return False
-        labels, freeform = self.docs_controller.collect_labels(prefix)
+        labels, freeform = self.docs_controller.collect_labels(
+            prefix,
+            include_inherited=False,
+        )
         self.panel.set_requirements(self.model.get_all(), derived_map)
         self.editor.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels, freeform)
@@ -1518,7 +1521,10 @@ class MainFrameDocumentsMixin:
             except ValidationError as exc:
                 wx.MessageBox(str(exc), _("Error"), wx.ICON_ERROR)
             else:
-                labels_all, freeform = self.docs_controller.collect_labels(prefix)
+                labels_all, freeform = self.docs_controller.collect_labels(
+                    prefix,
+                    include_inherited=False,
+                )
                 current_prefix = getattr(self, "current_doc_prefix", None)
                 if prefix == current_prefix:
                     self.panel.update_labels_list(labels_all, freeform)
@@ -1532,7 +1538,8 @@ class MainFrameDocumentsMixin:
                     )
                 elif current_prefix:
                     current_labels, current_freeform = self.docs_controller.collect_labels(
-                        current_prefix
+                        current_prefix,
+                        include_inherited=False,
                     )
                     self.panel.update_labels_list(current_labels, current_freeform)
                     self.editor.update_labels_list(current_labels, current_freeform)

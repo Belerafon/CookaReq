@@ -155,7 +155,10 @@ class MainFrameEditorMixin:
         if hasattr(self.model, "clear_unsaved"):
             self.model.clear_unsaved(requirement)
         self.panel.recalc_derived_map(self.model.get_all())
-        labels, freeform = self.docs_controller.collect_labels(prefix)
+        labels, freeform = self.docs_controller.collect_labels(
+            prefix,
+            include_inherited=False,
+        )
         editor_panel.update_labels_list(labels, freeform)
         self.panel.update_labels_list(labels, freeform)
         if editor_panel is not self.editor:
@@ -242,7 +245,10 @@ class MainFrameEditorMixin:
         prefix = getattr(requirement, "doc_prefix", "") or self.current_doc_prefix
         if not prefix:
             return
-        labels, freeform = self.docs_controller.collect_labels(prefix)
+        labels, freeform = self.docs_controller.collect_labels(
+            prefix,
+            include_inherited=False,
+        )
         key = (prefix, getattr(requirement, "id", 0))
         existing = self._detached_editors.get(key)
         if existing:
@@ -272,7 +278,10 @@ class MainFrameEditorMixin:
         requirement = self._save_editor_contents(frame.editor, doc_prefix=prefix)
         if requirement is None:
             return False
-        labels, freeform = self.docs_controller.collect_labels(prefix)
+        labels, freeform = self.docs_controller.collect_labels(
+            prefix,
+            include_inherited=False,
+        )
         frame.reload(requirement, prefix, labels, freeform)
         if old_key in self._detached_editors and self._detached_editors[old_key] is frame:
             del self._detached_editors[old_key]

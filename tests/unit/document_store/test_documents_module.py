@@ -50,6 +50,22 @@ def test_collect_label_inheritance(tmp_path: Path) -> None:
     assert allowed == {"safety", "ux"}
     assert freeform is True
 
+    local_defs, local_freeform = collect_label_defs(
+        "HLR",
+        docs,
+        include_inherited=False,
+    )
+    assert [d.key for d in local_defs] == ["ux"]
+    assert local_freeform is False
+
+    local_allowed, local_freeform_allowed = collect_labels(
+        "HLR",
+        docs,
+        include_inherited=False,
+    )
+    assert local_allowed == {"ux"}
+    assert local_freeform_allowed is False
+
     assert validate_labels("HLR", ["ux"], docs) is None
     assert validate_labels("HLR", ["unknown"], docs) is None
 

@@ -220,10 +220,7 @@ class LabelsDialog(wx.Dialog):
 
         if not self._has_unsaved_changes():
             return True
-        return confirm(
-            _("Discard unsaved label changes?"),
-            caption=_("Unsaved changes"),
-        )
+        return confirm(_("Discard unsaved label changes?"))
 
     def _replace_state(self, labels: list[LabelDef], usage_counts: dict[str, int]) -> None:
         """Replace dialog state with labels loaded for another document."""

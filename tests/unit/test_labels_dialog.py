@@ -111,3 +111,22 @@ def test_labels_dialog_uses_larger_default_size_and_help_text(wx_app: wx.App) ->
         dlg.Destroy()
     finally:
         parent.Destroy()
+
+
+def test_labels_dialog_discard_confirmation_uses_confirm_signature(
+    wx_app: wx.App, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    parent = wx.Frame(None)
+    try:
+        dlg = LabelsDialog(parent, [LabelDef(key="req", title="Req", color=None)])
+        dlg._labels[0].title = "Changed"
+        captured: list[str] = []
+        monkeypatch.setattr(
+            "app.ui.labels_dialog.confirm",
+            lambda message: captured.append(message) or True,
+        )
+        assert dlg._confirm_discard_unsaved_changes()
+        assert captured == ["Discard unsaved label changes?"]
+        dlg.Destroy()
+    finally:
+        parent.Destroy()

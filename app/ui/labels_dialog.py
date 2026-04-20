@@ -69,7 +69,7 @@ class LabelsDialog(wx.Dialog):
         self._config = cfg
         self._help_text = _(
             "Labels are used to group and filter requirements.\n"
-            "Requirement records and filters use label keys.\n\n"
+            "The requirements list and filters use label keys.\n\n"
             "Fields:\n"
             "• Key — required unique label identifier in the current document.\n"
             "• Title — optional human-friendly label name used in dialogs and exports.\n"

@@ -11,6 +11,7 @@ def test_links_panel_refreshes_after_selection(wx_app, monkeypatch):
     panel = EditorPanel(frame)
     panel._refresh_links_visibility("links")
     assert panel.links_panel.GetItemCount() == 0
+    assert not panel.links_panel.IsShown()
 
     called = {}
 
@@ -22,6 +23,7 @@ def test_links_panel_refreshes_after_selection(wx_app, monkeypatch):
     panel._on_add_link_generic("links")
 
     assert panel.links_panel.GetItemCount() == 1
+    assert panel.links_panel.IsShown()
     assert panel.links_panel.GetItem(0, 0).GetText() == "SYS1"
     assert called.get("called")
     frame.Destroy()

@@ -518,7 +518,6 @@ class EditorPanel(wx.Panel):
         content_sizer.Add(container, 0, wx.EXPAND | wx.TOP, border)
 
         source_spec = text_specs["source"]
-        source_links_row = wx.BoxSizer(wx.HORIZONTAL)
         source_row = wx.BoxSizer(wx.VERTICAL)
         source_label_row = wx.BoxSizer(wx.HORIZONTAL)
         source_label = wx.StaticText(content, label=labels[source_spec.name])
@@ -531,15 +530,13 @@ class EditorPanel(wx.Panel):
         self.fields[source_spec.name] = source_ctrl
         self._install_text_history(source_ctrl)
         source_row.Add(source_ctrl, 0, wx.EXPAND | wx.TOP, border)
-        source_links_row.Add(source_row, 1, wx.EXPAND | wx.RIGHT, border)
-
+        content_sizer.Add(source_row, 0, wx.EXPAND | wx.TOP, border)
         links_sizer = self._create_links_section(
             locale.field_label("links"),
             "links",
             help_key="links",
         )
-        source_links_row.Add(links_sizer, 1, wx.EXPAND)
-        content_sizer.Add(source_links_row, 0, wx.EXPAND | wx.TOP, border)
+        content_sizer.Add(links_sizer, 0, wx.EXPAND | wx.TOP, border)
 
         add_grid_field("status")
 
@@ -1127,6 +1124,8 @@ class EditorPanel(wx.Panel):
         links_list.Bind(wx.EVT_LEFT_DCLICK, lambda evt, a=attr: self._on_links_click(a, evt))
         links_list.Bind(wx.EVT_MOTION, lambda evt, a=attr, control=links_list: self._on_links_list_motion(a, control, evt))
         links_list.Bind(wx.EVT_LEAVE_WINDOW, lambda evt, control=links_list: self._clear_list_tooltip(control, evt))
+        links_list.Show(False)
+        links_list.SetMinSize(wx.Size(-1, 0))
         row.Add(links_list, 1, wx.EXPAND | wx.RIGHT, 5)
         add_btn = wx.Button(box, label=_("Add"))
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
@@ -1453,8 +1452,16 @@ class EditorPanel(wx.Panel):
         finally:
             list_ctrl.Thaw()
         list_ctrl.InvalidateBestSize()
+        has_rows = list_ctrl.GetItemCount() > 0
         self._apply_links_list_height(list_ctrl, list_ctrl.GetItemCount())
         self._autosize_links_columns(list_ctrl)
+        container = list_ctrl.GetContainingSizer()
+        if container is not None:
+            container.Show(list_ctrl, has_rows)
+        list_ctrl.Show(has_rows)
+        if not has_rows:
+            list_ctrl.SetToolTip(None)
+            list_ctrl.SetMinSize(wx.Size(-1, 0))
         if select is not None and 0 <= select < list_ctrl.GetItemCount():
             list_ctrl.Select(select)
         self.Layout()

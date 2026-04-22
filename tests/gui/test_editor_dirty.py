@@ -356,7 +356,7 @@ def test_editor_panel_primary_and_secondary_fields_order(wx_app):
         assumptions_y = panel.fields["assumptions"].GetScreenPosition().y
 
         assert statement_y < source_y < status_y < labels_y < attachments_y
-        assert abs(source_y - links_y) < 80
+        assert source_y < links_y < status_y
         assert attachments_y < acceptance_y < assumptions_y
     finally:
         frame.Destroy()

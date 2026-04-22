@@ -30,12 +30,7 @@ def test_mark_link_as_suspect_updates_ui_and_serialization(wx_app):
     panel.set_link_suspect("links", 0, True)
 
     assert panel.links[0]["suspect"] is True
-    links_text = " ".join(
-        child.GetLabel()
-        for child in panel.links_panel.GetChildren()
-        if isinstance(child, wx.StaticText)
-    )
-    assert "⚠ SYS1" in links_text
+    assert panel.links_panel.GetItem(0, 0).GetText() == "⚠ SYS1"
 
     req = panel.get_data()
     assert req.links[0].suspect is True
@@ -54,12 +49,7 @@ def test_clear_suspect_resets_display(wx_app):
     panel.set_link_suspect("links", 0, False)
 
     assert panel.links[0]["suspect"] is False
-    links_text = " ".join(
-        child.GetLabel()
-        for child in panel.links_panel.GetChildren()
-        if isinstance(child, wx.StaticText)
-    )
-    assert "⚠ SYS1" not in links_text
+    assert panel.links_panel.GetItem(0, 0).GetText() == "SYS1"
     frame.Destroy()
 
 
@@ -97,10 +87,5 @@ def test_missing_target_is_added_as_suspect(wx_app, tmp_path: Path):
 
     assert panel.links and panel.links[0]["rid"] == "HLR999"
     assert panel.links[0]["suspect"] is True
-    links_text = " ".join(
-        child.GetLabel()
-        for child in panel.links_panel.GetChildren()
-        if isinstance(child, wx.StaticText)
-    )
-    assert "⚠ HLR999" in links_text
+    assert panel.links_panel.GetItem(0, 0).GetText() == "⚠ HLR999"
     frame.Destroy()

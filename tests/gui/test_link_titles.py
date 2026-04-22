@@ -1,5 +1,6 @@
 import pytest
 import wx
+import types
 
 from app.core.document_store import Document
 from app.services.requirements import RequirementsService
@@ -63,12 +64,9 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
 
     assert panel.links and panel.links[0]["rid"] == "SYS123"
     assert panel.links[0]["title"] == "Parent"
-    labels = [
-        child.GetLabel()
-        for child in panel.links_panel.GetChildren()
-        if isinstance(child, wx.StaticText)
-    ]
-    assert labels and labels[0] == "SYS123"
+    assert panel.links_panel.GetItemCount() == 1
+    assert panel.links_panel.GetItem(0, 0).GetText() == "SYS123"
+    assert panel.links_panel.GetItem(0, 1).GetText() == "Parent"
     frame.Destroy()
 
 
@@ -106,12 +104,10 @@ def test_link_chip_has_title_tooltip(wx_app, tmp_path):
 
     panel.load({"id": 1, "title": "Child", "statement": "", "links": [{"rid": "SYS123"}]})
 
-    link_chip = next(
-        child
-        for child in panel.links_panel.GetChildren()
-        if isinstance(child, wx.StaticText) and child.GetLabel() == "SYS123"
-    )
-    tooltip = link_chip.GetToolTip()
+    motion = types.SimpleNamespace(GetPosition=lambda: wx.Point(0, 0), Skip=lambda: None)
+    panel.links_panel.HitTest = lambda _pos: (0, 0)  # type: ignore[method-assign]
+    panel._on_links_list_motion("links", panel.links_panel, motion)  # type: ignore[arg-type]
+    tooltip = panel.links_panel.GetToolTip()
     assert tooltip is not None
     assert tooltip.GetTip() == "Parent title for tooltip"
     frame.Destroy()

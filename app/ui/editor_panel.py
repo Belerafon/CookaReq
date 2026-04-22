@@ -1113,13 +1113,21 @@ class EditorPanel(wx.Panel):
         )
         box = sizer.GetStaticBox()
         row = wx.BoxSizer(wx.HORIZONTAL)
-        links_panel = wx.Panel(box)
-        links_panel.SetBackgroundColour(box.GetBackgroundColour())
-        links_panel.SetSizer(wx.BoxSizer(wx.HORIZONTAL))
-        line_height = self.GetCharHeight() + 6
-        links_panel.SetMinSize((-1, line_height))
-        links_panel.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
-        row.Add(links_panel, 1, wx.EXPAND | wx.RIGHT, 5)
+        links_list = AutoHeightListCtrl(
+            box,
+            style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
+        )
+        links_list.InsertColumn(0, _("RID"))
+        links_list.InsertColumn(1, _("Title"))
+        links_list.Bind(
+            wx.EVT_SIZE,
+            lambda evt, control=links_list: (evt.Skip(), self._autosize_links_columns(control)),
+        )
+        links_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, lambda evt, a=attr: self._on_links_click(a, evt))
+        links_list.Bind(wx.EVT_LEFT_DCLICK, lambda evt, a=attr: self._on_links_click(a, evt))
+        links_list.Bind(wx.EVT_MOTION, lambda evt, a=attr, control=links_list: self._on_links_list_motion(a, control, evt))
+        links_list.Bind(wx.EVT_LEAVE_WINDOW, lambda evt, control=links_list: self._clear_list_tooltip(control, evt))
+        row.Add(links_list, 1, wx.EXPAND | wx.RIGHT, 5)
         add_btn = wx.Button(box, label=_("Add"))
         add_btn.Bind(wx.EVT_BUTTON, lambda _evt, a=attr: self._on_add_link_generic(a))
         row.Add(add_btn, 0)
@@ -1127,8 +1135,8 @@ class EditorPanel(wx.Panel):
         id_attr = id_name or f"{attr}_id"
         list_attr = list_name or f"{attr}_list"
         setattr(self, id_attr, None)
-        setattr(self, list_attr, links_panel)
-        setattr(self, f"{attr}_panel", links_panel)
+        setattr(self, list_attr, links_list)
+        setattr(self, f"{attr}_panel", links_list)
         setattr(self, f"{attr}_add", add_btn)
         setattr(self, attr, [])
         return sizer
@@ -1364,6 +1372,25 @@ class EditorPanel(wx.Panel):
         if total > 0:
             list_ctrl.SetColumnWidth(0, total)
 
+    def _autosize_links_columns(self, list_ctrl: wx.ListCtrl) -> None:
+        """Keep RID compact and allocate the rest of the width to the title."""
+        if not list_ctrl or not list_ctrl.IsShown():
+            return
+        total = list_ctrl.GetClientSize().width
+        if total <= 0:
+            return
+        list_ctrl.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
+        rid_width = list_ctrl.GetColumnWidth(0)
+        min_title_width = dip(self, 200)
+        available_title = max(total - rid_width, 0)
+        if available_title >= min_title_width:
+            list_ctrl.SetColumnWidth(1, available_title)
+        else:
+            list_ctrl.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
+            title_width = list_ctrl.GetColumnWidth(1)
+            if rid_width + title_width < total:
+                list_ctrl.SetColumnWidth(1, total - rid_width)
+
     def _apply_compact_list_height(self, list_ctrl: wx.ListCtrl, item_count: int) -> None:
         """Set list height to match the amount of visible data."""
         if item_count <= 0:
@@ -1375,44 +1402,61 @@ class EditorPanel(wx.Panel):
         target_height = header_height + row_height * item_count + vertical_padding
         list_ctrl.SetMinSize(wx.Size(-1, target_height))
 
+    def _apply_links_list_height(self, list_ctrl: wx.ListCtrl, item_count: int) -> None:
+        """Keep links table visible and grow it with each added item."""
+        visible_rows = max(int(item_count), 1)
+        row_height = list_ctrl.GetCharHeight() + dip(self, 8)
+        header_height = list_ctrl.GetCharHeight() + dip(self, 6)
+        vertical_padding = dip(self, 6)
+        target_height = header_height + row_height * visible_rows + vertical_padding
+        list_ctrl.SetMinSize(wx.Size(-1, target_height))
+
+    def _on_links_list_motion(self, attr: str, list_ctrl: wx.ListCtrl, event: wx.MouseEvent) -> None:
+        hit = list_ctrl.HitTest(event.GetPosition())
+        index = hit[0] if isinstance(hit, tuple) else hit
+        try:
+            item_index = int(index)
+        except (TypeError, ValueError):
+            item_index = wx.NOT_FOUND
+        _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
+        if 0 <= item_index < len(links_list):
+            title = str(links_list[item_index].get("title", "")).strip()
+            list_ctrl.SetToolTip(title or None)
+        else:
+            list_ctrl.SetToolTip(None)
+        event.Skip()
+
+    def _clear_list_tooltip(self, list_ctrl: wx.ListCtrl, event: wx.MouseEvent) -> None:
+        list_ctrl.SetToolTip(None)
+        event.Skip()
+
     def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
-        """Render links as comma-separated RID chips similar to labels."""
-        _id_ctrl, panel, links_list = self._link_widgets(attr)
-        if select is not None:
-            pass
-        if not isinstance(panel, wx.Panel):
+        """Render links as a two-column table (RID + title)."""
+        _id_ctrl, list_ctrl, links_list = self._link_widgets(attr)
+        if not isinstance(list_ctrl, wx.ListCtrl):
             return
         if links_list:
             links_list[:] = self._augment_links_with_metadata(list(links_list))
-        sizer = panel.GetSizer()
-        if sizer is None:
-            return
-        sizer.Clear(True)
-        if not links_list:
-            placeholder = wx.StaticText(panel, label=_("(none)"))
-            placeholder.SetForegroundColour(wx.Colour("grey"))
-            placeholder.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
-            sizer.Add(placeholder, 0)
-        else:
+        list_ctrl.Freeze()
+        try:
+            list_ctrl.DeleteAllItems()
             for index, link in enumerate(links_list):
                 rid = str(link.get("rid", "")).strip()
                 if not rid:
                     continue
-                label = rid
+                rid_label = rid
                 if link.get("suspect"):
-                    label = f"⚠ {label}"
-                txt = wx.StaticText(panel, label=label)
-                if link.get("suspect"):
-                    txt.SetForegroundColour(wx.Colour(180, 0, 0))
-                link_title = str(link.get("title", "")).strip()
-                txt.SetToolTip(link_title or None)
-                txt.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
-                sizer.Add(txt, 0, wx.RIGHT, 2)
-                if index < len(links_list) - 1:
-                    comma = wx.StaticText(panel, label=", ")
-                    comma.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
-                    sizer.Add(comma, 0, wx.RIGHT, 2)
-        panel.Layout()
+                    rid_label = f"⚠ {rid_label}"
+                title = str(link.get("title", "")).strip()
+                row = list_ctrl.InsertItem(list_ctrl.GetItemCount(), rid_label)
+                list_ctrl.SetItem(row, 1, title)
+        finally:
+            list_ctrl.Thaw()
+        list_ctrl.InvalidateBestSize()
+        self._apply_links_list_height(list_ctrl, list_ctrl.GetItemCount())
+        self._autosize_links_columns(list_ctrl)
+        if select is not None and 0 <= select < list_ctrl.GetItemCount():
+            list_ctrl.Select(select)
         self.Layout()
         self.FitInside()
         self._update_action_buttons()

@@ -72,6 +72,51 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
     frame.Destroy()
 
 
+def test_link_chip_has_title_tooltip(wx_app, tmp_path):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    service = RequirementsService(tmp_path)
+    service.save_document(Document(prefix="REQ", title="Requirements"))
+    service.save_document(Document(prefix="SYS", title="Systems"))
+    service.save_requirement_payload(
+        "SYS",
+        {
+            "id": 123,
+            "title": "Parent title for tooltip",
+            "statement": "",
+            "type": "requirement",
+            "status": "draft",
+            "owner": "",
+            "priority": "medium",
+            "source": "",
+            "verification": "analysis",
+            "acceptance": None,
+            "assumptions": "",
+            "conditions": "",
+            "rationale": "",
+            "labels": [],
+            "attachments": [],
+            "revision": 1,
+            "modified_at": "",
+            "notes": "",
+        },
+    )
+    panel.set_service(service)
+    panel.set_document("REQ")
+
+    panel.load({"id": 1, "title": "Child", "statement": "", "links": [{"rid": "SYS123"}]})
+
+    link_chip = next(
+        child
+        for child in panel.links_panel.GetChildren()
+        if isinstance(child, wx.StaticText) and child.GetLabel() == "SYS123"
+    )
+    tooltip = link_chip.GetToolTip()
+    assert tooltip is not None
+    assert tooltip.GetTip() == "Parent title for tooltip"
+    frame.Destroy()
+
+
 def test_duplicate_link_is_not_added_twice(wx_app):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)

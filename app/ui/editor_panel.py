@@ -120,6 +120,9 @@ class RequirementLinkPickerDialog(wx.Dialog):
         root.Add(search_row, 0, wx.ALL | wx.EXPAND, dip(self, 10))
 
         self._checklist = wx.CheckListBox(self)
+        self._checklist_hover_index: int | None = None
+        self._checklist.Bind(wx.EVT_MOTION, self._on_checklist_motion)
+        self._checklist.Bind(wx.EVT_LEAVE_WINDOW, self._on_checklist_leave)
         root.Add(self._checklist, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -201,6 +204,40 @@ class RequirementLinkPickerDialog(wx.Dialog):
             self._source_filter_key = self._source_options[index][0]
         self._apply_filter(self._search_ctrl.GetValue())
 
+    def _on_checklist_motion(self, event: wx.MouseEvent) -> None:
+        index = self._hit_test_checklist(event.GetPosition())
+        self._apply_checklist_tooltip(index)
+        event.Skip()
+
+    def _on_checklist_leave(self, event: wx.MouseEvent) -> None:
+        self._apply_checklist_tooltip(wx.NOT_FOUND)
+        event.Skip()
+
+    def _hit_test_checklist(self, point: wx.Point) -> int:
+        hit = self._checklist.HitTest(point)
+        if isinstance(hit, tuple):
+            try:
+                return int(hit[0])
+            except (TypeError, ValueError):
+                return wx.NOT_FOUND
+        try:
+            return int(hit)
+        except (TypeError, ValueError):
+            return wx.NOT_FOUND
+
+    def _apply_checklist_tooltip(self, index: int) -> None:
+        if index == self._checklist_hover_index:
+            return
+        self._checklist_hover_index = index
+        if not (0 <= index < len(self._visible_candidates)):
+            self._checklist.SetToolTip(None)
+            return
+        row = self._visible_candidates[index]
+        statement = str(row.get("statement", "")).strip()
+        title = str(row.get("title", "")).strip()
+        tooltip = statement or title
+        self._checklist.SetToolTip(tooltip or None)
+
     def _build_source_options(self) -> None:
         docs: dict[str, tuple[str, int]] = {}
         for row in self._all_candidates:
@@ -258,6 +295,8 @@ class RequirementLinkPickerDialog(wx.Dialog):
         else:
             self._visible_candidates = list(filtered_by_source)
         self._checklist.Clear()
+        self._checklist_hover_index = None
+        self._checklist.SetToolTip(None)
         if not self._visible_candidates:
             self._checklist.Append(_("No requirements available"))
             self._checklist.Enable(False)
@@ -1201,6 +1240,7 @@ class EditorPanel(wx.Panel):
                 {
                     "rid": rid,
                     "title": str(getattr(requirement, "title", "") or "").strip(),
+                    "statement": str(getattr(requirement, "statement", "") or "").strip(),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
                     "distance": _ancestor_distance(current_prefix, prefix.upper()),
@@ -1364,6 +1404,8 @@ class EditorPanel(wx.Panel):
                 txt = wx.StaticText(panel, label=label)
                 if link.get("suspect"):
                     txt.SetForegroundColour(wx.Colour(180, 0, 0))
+                link_title = str(link.get("title", "")).strip()
+                txt.SetToolTip(link_title or None)
                 txt.Bind(wx.EVT_LEFT_DOWN, lambda evt, a=attr: self._on_links_click(a, evt))
                 sizer.Add(txt, 0, wx.RIGHT, 2)
                 if index < len(links_list) - 1:

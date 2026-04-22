@@ -70,7 +70,7 @@ def test_load_restores_link_metadata(wx_app, tmp_path):
     frame.Destroy()
 
 
-def test_link_chip_has_title_tooltip(wx_app, tmp_path):
+def test_link_chip_has_statement_tooltip(wx_app, tmp_path):
     frame = wx.Frame(None)
     panel = EditorPanel(frame)
     service = RequirementsService(tmp_path)
@@ -81,7 +81,7 @@ def test_link_chip_has_title_tooltip(wx_app, tmp_path):
         {
             "id": 123,
             "title": "Parent title for tooltip",
-            "statement": "",
+            "statement": "Parent full statement for tooltip",
             "type": "requirement",
             "status": "draft",
             "owner": "",
@@ -109,7 +109,7 @@ def test_link_chip_has_title_tooltip(wx_app, tmp_path):
     panel._on_links_list_motion("links", panel.links_panel, motion)  # type: ignore[arg-type]
     tooltip = panel.links_panel.GetToolTip()
     assert tooltip is not None
-    assert tooltip.GetTip() == "Parent title for tooltip"
+    assert tooltip.GetTip() == "Parent full statement for tooltip"
     frame.Destroy()
 
 

@@ -1170,6 +1170,7 @@ class EditorPanel(wx.Panel):
             return None
         metadata = {
             "title": str(data.get("title", "")),
+            "statement": str(data.get("statement", "")),
             "revision": data.get("revision"),
             "doc_prefix": doc.prefix,
             "doc_title": doc.title,
@@ -1190,6 +1191,8 @@ class EditorPanel(wx.Panel):
             if metadata:
                 if metadata.get("title") and not entry.get("title"):
                     entry["title"] = metadata["title"]
+                if metadata.get("statement") and not entry.get("statement"):
+                    entry["statement"] = metadata["statement"]
                 if metadata.get("revision") and not entry.get("revision"):
                     entry["revision"] = metadata["revision"]
                 if metadata.get("doc_prefix"):
@@ -1423,8 +1426,8 @@ class EditorPanel(wx.Panel):
             item_index = wx.NOT_FOUND
         _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
         if 0 <= item_index < len(links_list):
-            title = str(links_list[item_index].get("title", "")).strip()
-            list_ctrl.SetToolTip(title or None)
+            statement = str(links_list[item_index].get("statement", "")).strip()
+            list_ctrl.SetToolTip(statement or None)
         else:
             list_ctrl.SetToolTip(None)
         event.Skip()

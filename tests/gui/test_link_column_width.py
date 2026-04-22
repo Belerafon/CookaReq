@@ -16,4 +16,5 @@ def test_links_render_as_two_column_table(wx_app):
     assert panel.links_panel.GetItem(0, 0).GetText() == "SYS1"
     assert panel.links_panel.GetItem(1, 0).GetText() == "SYS2"
     assert panel.links_panel.GetColumnCount() == 2
+    assert panel.links_panel.HasFlag(wx.LC_NO_HEADER)
     frame.Destroy()

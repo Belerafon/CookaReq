@@ -135,3 +135,22 @@ def test_pick_link_adds_selected_rid(wx_app, monkeypatch):
     assert len(panel.links) == 1
     assert panel.links[0]["rid"] == "SYS777"
     frame.Destroy()
+
+
+def test_remove_link_by_index_updates_links_table(wx_app):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    panel.set_document(None)
+    panel.links = [
+        {"rid": "SYS1", "title": "First"},
+        {"rid": "SYS2", "title": "Second"},
+    ]
+    panel._refresh_links_visibility("links")
+    assert panel.links_panel.GetItemCount() == 2
+
+    panel._remove_link_by_index("links", 0)
+
+    assert [entry["rid"] for entry in panel.links] == ["SYS2"]
+    assert panel.links_panel.GetItemCount() == 1
+    assert panel.links_panel.GetItem(0, 0).GetText() == "SYS2"
+    frame.Destroy()

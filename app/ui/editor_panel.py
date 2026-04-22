@@ -1112,7 +1112,7 @@ class EditorPanel(wx.Panel):
         row = wx.BoxSizer(wx.HORIZONTAL)
         links_list = AutoHeightListCtrl(
             box,
-            style=wx.LC_REPORT | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
+            style=wx.LC_REPORT | wx.LC_NO_HEADER | wx.BORDER_SUNKEN | wx.LC_SINGLE_SEL,
         )
         links_list.InsertColumn(0, _("RID"))
         links_list.InsertColumn(1, _("Title"))
@@ -1122,6 +1122,10 @@ class EditorPanel(wx.Panel):
         )
         links_list.Bind(wx.EVT_LIST_ITEM_ACTIVATED, lambda evt, a=attr: self._on_links_click(a, evt))
         links_list.Bind(wx.EVT_LEFT_DCLICK, lambda evt, a=attr: self._on_links_click(a, evt))
+        links_list.Bind(
+            wx.EVT_LIST_ITEM_RIGHT_CLICK,
+            lambda evt, a=attr, control=links_list: self._on_links_item_context_menu(a, control, evt),
+        )
         links_list.Bind(wx.EVT_MOTION, lambda evt, a=attr, control=links_list: self._on_links_list_motion(a, control, evt))
         links_list.Bind(wx.EVT_LEAVE_WINDOW, lambda evt, control=links_list: self._clear_list_tooltip(control, evt))
         links_list.Show(False)
@@ -1428,6 +1432,27 @@ class EditorPanel(wx.Panel):
     def _clear_list_tooltip(self, list_ctrl: wx.ListCtrl, event: wx.MouseEvent) -> None:
         list_ctrl.SetToolTip(None)
         event.Skip()
+
+    def _on_links_item_context_menu(self, attr: str, list_ctrl: wx.ListCtrl, event: wx.ListEvent) -> None:
+        row = event.GetIndex()
+        if row < 0:
+            return
+        menu = wx.Menu()
+        remove_item = menu.Append(wx.ID_ANY, _("Remove linked requirement"))
+        self.Bind(
+            wx.EVT_MENU,
+            lambda _evt, a=attr, index=row: self._remove_link_by_index(a, index),
+            remove_item,
+        )
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def _remove_link_by_index(self, attr: str, index: int) -> None:
+        _id_ctrl, _list_ctrl, links_list = self._link_widgets(attr)
+        if not (0 <= index < len(links_list)):
+            return
+        del links_list[index]
+        self._refresh_links_visibility(attr)
 
     def _rebuild_links_list(self, attr: str, *, select: int | None = None) -> None:
         """Render links as a two-column table (RID + title)."""

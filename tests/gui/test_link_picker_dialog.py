@@ -71,3 +71,25 @@ def test_link_picker_switches_between_document_lists(wx_app):
     finally:
         dialog.Destroy()
         frame.Destroy()
+
+
+def test_link_picker_shows_requirement_text_tooltip(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {
+            "rid": "HLR1",
+            "title": "High-level requirement",
+            "statement": "Полный текст высокоуровневого требования",
+            "document": "High",
+            "prefix": "HLR",
+        }
+    ]
+    dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
+    try:
+        dialog._apply_checklist_tooltip(0)
+        tooltip_obj = dialog._checklist.GetToolTip()
+        assert tooltip_obj is not None
+        assert tooltip_obj.GetTip() == "Полный текст высокоуровневого требования"
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

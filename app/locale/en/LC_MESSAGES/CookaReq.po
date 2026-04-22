@@ -3467,3 +3467,6 @@ msgstr ""
 "\n"
 "Changes are applied after pressing OK in this window.\n"
 "Key rules: non-empty, unique in the document (case-insensitive)."
+
+msgid "Remove linked requirement"
+msgstr "Remove linked requirement"

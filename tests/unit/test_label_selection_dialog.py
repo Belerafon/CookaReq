@@ -68,6 +68,25 @@ def test_label_selection_dialog_inherited_toggle_is_persisted(
         parent.Destroy()
 
 
+def test_label_selection_dialog_unchecked_label_is_removed_from_selection(wx_app: wx.App) -> None:
+    dlg = LabelSelectionDialog(
+        None,
+        [
+            LabelDef(key="backend", title="Backend", color=None),
+            LabelDef(key="legacy", title="Legacy", color=None),
+        ],
+        ["backend", "legacy"],
+    )
+    try:
+        assert dlg.list.IsItemChecked(0)
+        assert dlg.list.IsItemChecked(1)
+        dlg.list.CheckItem(1, False)
+        result = dlg.get_selected()
+        assert result == ["backend"]
+    finally:
+        dlg.Destroy()
+
+
 def test_editor_panel_passes_full_inherited_labels_to_selection_dialog(
     wx_app: wx.App, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -138,5 +157,41 @@ def test_label_selection_dialog_shows_document_source_column(wx_app: wx.App) -> 
         assert dlg.list.GetItemCount() == 2
         assert dlg.list.GetItemText(1, 2) == "SYS"
         dlg.Destroy()
+    finally:
+        parent.Destroy()
+
+
+def test_label_selection_dialog_persists_layout_and_column_widths(
+    wx_app: wx.App, tmp_path: Path
+) -> None:
+    config = ConfigManager(path=tmp_path / "config.json")
+    parent = wx.Frame(None)
+    parent.config = config  # type: ignore[attr-defined]
+    labels = [
+        LabelDef(key="local", title="Local", color=None),
+        LabelDef(key="parent", title="Parent", color=None),
+    ]
+    try:
+        dlg = LabelSelectionDialog(parent, labels, [], inherited_labels=labels)
+        dlg.SetSize((780, 560))
+        dlg.SetPosition((120, 140))
+        dlg.list.SetColumnWidth(0, 180)
+        dlg.list.SetColumnWidth(1, 220)
+        dlg.list.SetColumnWidth(2, 260)
+        dlg.Destroy()
+
+        dlg_restored = LabelSelectionDialog(parent, labels, [], inherited_labels=labels)
+        try:
+            restored_size = dlg_restored.GetSize()
+            restored_pos = dlg_restored.GetPosition()
+            assert restored_size.GetWidth() == 780
+            assert restored_size.GetHeight() == 560
+            assert restored_pos.x == 120
+            assert restored_pos.y == 140
+            assert dlg_restored.list.GetColumnWidth(0) == 180
+            assert dlg_restored.list.GetColumnWidth(1) == 220
+            assert dlg_restored.list.GetColumnWidth(2) == 260
+        finally:
+            dlg_restored.Destroy()
     finally:
         parent.Destroy()

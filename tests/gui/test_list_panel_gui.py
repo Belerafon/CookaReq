@@ -531,10 +531,15 @@ def test_list_panel_bulk_labels_change(monkeypatch, wx_app):
     captured: dict[str, object] = {}
 
     class DummyDialog:
-        def __init__(self, parent, labels, selected, allow_freeform):
+        def __init__(self, parent, labels, selected, allow_freeform, **kwargs):
             captured["labels"] = labels
             captured["selected"] = selected
             captured["allow_freeform"] = allow_freeform
+            captured["inherited_labels"] = kwargs.get("inherited_labels")
+            captured["label_sources"] = kwargs.get("label_sources")
+            captured["inherited_label_sources"] = kwargs.get(
+                "inherited_label_sources"
+            )
 
         def ShowModal(self):
             return wx.ID_OK
@@ -567,6 +572,8 @@ def test_list_panel_bulk_labels_change(monkeypatch, wx_app):
     assert captured["allow_freeform"] is True
     available = {label.key for label in captured["labels"]}
     assert {"backend", "api", "legacy"}.issubset(available)
+    inherited_available = {label.key for label in captured["inherited_labels"] or []}
+    assert {"backend", "api", "legacy"}.issubset(inherited_available)
     assert captured["selected"] == ["backend"]
     assert captured.get("destroyed") is True
 

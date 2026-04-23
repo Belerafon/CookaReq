@@ -3021,6 +3021,9 @@ msgstr ""
 msgid "Display and export options"
 msgstr "Display and export options"
 
+msgid "Direction"
+msgstr "Direction"
+
 msgid "Done"
 msgstr "Done"
 
@@ -3054,6 +3057,9 @@ msgstr "Orphan rows: {rows}"
 msgid "Output format"
 msgstr "Output format"
 
+msgid "Parent → Child"
+msgstr "Parent → Child"
+
 msgid "Requirement card fields (headers/details/export)"
 msgstr "Requirement card fields (headers/details/export)"
 
@@ -3086,6 +3092,9 @@ msgstr "Unsupported file extension"
 
 msgid "Use compact cell symbols (·/✓/!)"
 msgstr "Use compact cell symbols (·/✓/!)"
+
+msgid "Child → Parent"
+msgstr "Child → Parent"
 
 msgid "Verification"
 msgstr "Verification"

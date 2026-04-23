@@ -39,6 +39,38 @@ _FIELD_CHOICES: tuple[str, ...] = (
     "labels",
 )
 
+_CONFIG_DIALOG_PREFIX = "trace_matrix/dialog"
+_CONFIG_FRAME_PREFIX = "trace_matrix/frame"
+_DEFAULT_SELECTED_FIELDS: tuple[str, ...] = ("rid", "title", "status", "verification", "owner")
+_DIRECTION_CHOICES: tuple[tuple[TraceDirection, str], ...] = (
+    (TraceDirection.CHILD_TO_PARENT, _("Child → Parent")),
+    (TraceDirection.PARENT_TO_CHILD, _("Parent → Child")),
+)
+
+
+def _read_config_int(config: wx.ConfigBase, key: str, default: int) -> int:
+    try:
+        value = config.ReadInt(key)
+    except Exception:
+        return default
+    return value if isinstance(value, int) else default
+
+
+def _read_config_bool(config: wx.ConfigBase, key: str, default: bool) -> bool:
+    try:
+        value = config.ReadBool(key)
+    except Exception:
+        return default
+    return bool(value)
+
+
+def _read_config_str(config: wx.ConfigBase, key: str, default: str) -> str:
+    try:
+        value = config.Read(key, default)
+    except Exception:
+        return default
+    return value if isinstance(value, str) else default
+
 
 @dataclass(frozen=True)
 class TraceMatrixDisplayOptions:
@@ -154,7 +186,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         choices = [_format_document_label(documents[prefix]) for prefix in self._prefixes]
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
-        form = wx.FlexGridSizer(rows=4, cols=2, hgap=8, vgap=8)
+        form = wx.FlexGridSizer(rows=5, cols=2, hgap=8, vgap=8)
         form.AddGrowableCol(1, proportion=1)
 
         form.Add(wx.StaticText(self, label=_("Rows document")), 0, wx.ALIGN_CENTER_VERTICAL)
@@ -173,6 +205,10 @@ class TraceMatrixConfigDialog(wx.Dialog):
         form.Add(wx.StaticText(self, label=_("Columns sort field")), 0, wx.ALIGN_CENTER_VERTICAL)
         self._columns_sort = wx.Choice(self, choices=sort_choices)
         form.Add(self._columns_sort, 1, wx.EXPAND)
+
+        form.Add(wx.StaticText(self, label=_("Direction")), 0, wx.ALIGN_CENTER_VERTICAL)
+        self._direction_choice = wx.Choice(self, choices=[label for _value, label in _DIRECTION_CHOICES])
+        form.Add(self._direction_choice, 1, wx.EXPAND)
 
         padding = self.FromDIP(12)
         main_sizer.Add(form, 0, wx.ALL | wx.EXPAND, padding)
@@ -196,7 +232,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         options_box.Add(wx.StaticText(options_box.GetStaticBox(), label=_("Requirement card fields (headers/details/export)")), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(6))
         self._fields = wx.CheckListBox(options_box.GetStaticBox(), choices=[_field_label(field) for field in _FIELD_CHOICES])
         for idx, field in enumerate(_FIELD_CHOICES):
-            if field in {"rid", "title", "status", "verification", "owner"}:
+            if field in _DEFAULT_SELECTED_FIELDS:
                 self._fields.Check(idx, True)
         options_box.Add(self._fields, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
 
@@ -215,6 +251,8 @@ class TraceMatrixConfigDialog(wx.Dialog):
         self._select_default(self._columns_choice, default_columns)
         self._rows_sort.SetSelection(0)
         self._columns_sort.SetSelection(0)
+        self._set_direction_selection(self._direction)
+        self._restore_preferences()
 
         if self._columns_choice.GetSelection() == wx.NOT_FOUND:
             row_index = self._rows_choice.GetSelection()
@@ -226,6 +264,90 @@ class TraceMatrixConfigDialog(wx.Dialog):
         ok_button = self.FindWindowById(wx.ID_OK)
         if isinstance(ok_button, wx.Button):
             ok_button.SetDefault()
+            ok_button.Bind(wx.EVT_BUTTON, self._on_ok)
+
+    def _set_direction_selection(self, direction: TraceDirection) -> None:
+        for index, (value, _label) in enumerate(_DIRECTION_CHOICES):
+            if value == direction:
+                self._direction_choice.SetSelection(index)
+                return
+        self._direction_choice.SetSelection(0)
+
+    def _selected_direction(self) -> TraceDirection:
+        index = self._direction_choice.GetSelection()
+        if 0 <= index < len(_DIRECTION_CHOICES):
+            return _DIRECTION_CHOICES[index][0]
+        return TraceDirection.CHILD_TO_PARENT
+
+    def _restore_preferences(self) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            return
+
+        row_prefix = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/row_prefix", "")
+        column_prefix = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/column_prefix", "")
+        self._select_default(self._rows_choice, row_prefix)
+        self._select_default(self._columns_choice, column_prefix)
+
+        row_sort = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/row_sort", "rid")
+        column_sort = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/column_sort", "rid")
+        if row_sort in _FIELD_CHOICES:
+            self._rows_sort.SetSelection(_FIELD_CHOICES.index(row_sort))
+        if column_sort in _FIELD_CHOICES:
+            self._columns_sort.SetSelection(_FIELD_CHOICES.index(column_sort))
+
+        direction_raw = _read_config_str(
+            config,
+            f"{_CONFIG_DIALOG_PREFIX}/direction",
+            TraceDirection.CHILD_TO_PARENT.value,
+        )
+        try:
+            direction = TraceDirection(direction_raw)
+        except ValueError:
+            direction = TraceDirection.CHILD_TO_PARENT
+        self._set_direction_selection(direction)
+
+        self._compact_symbols.SetValue(
+            _read_config_bool(config, f"{_CONFIG_DIALOG_PREFIX}/compact_symbols", True)
+        )
+        self._hide_unlinked.SetValue(
+            _read_config_bool(config, f"{_CONFIG_DIALOG_PREFIX}/hide_unlinked", False)
+        )
+
+        output_format = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/output_format", "interactive")
+        if output_format == "interactive":
+            self._output_format.SetSelection(0)
+        else:
+            output_index = self._output_format.FindString(output_format)
+            if output_index != wx.NOT_FOUND:
+                self._output_format.SetSelection(output_index)
+
+        selected_fields_raw = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/selected_fields", "")
+        selected_fields = {field for field in selected_fields_raw.split(",") if field in _FIELD_CHOICES}
+        if selected_fields:
+            for idx, field in enumerate(_FIELD_CHOICES):
+                self._fields.Check(idx, field in selected_fields)
+
+    def _save_preferences(self, plan: TraceMatrixViewPlan) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            return
+        row_prefix = next(iter(plan.config.rows.documents), "")
+        column_prefix = next(iter(plan.config.columns.documents), "")
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/row_prefix", row_prefix)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/column_prefix", column_prefix)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/row_sort", plan.options.row_sort_field)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/column_sort", plan.options.column_sort_field)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/direction", plan.config.direction.value)
+        config.WriteBool(f"{_CONFIG_DIALOG_PREFIX}/compact_symbols", plan.options.compact_symbols)
+        config.WriteBool(f"{_CONFIG_DIALOG_PREFIX}/hide_unlinked", plan.options.hide_unlinked)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/output_format", plan.output_format)
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/selected_fields", ",".join(plan.options.selected_fields))
+        config.Flush()
+
+    def _on_ok(self, event: wx.CommandEvent) -> None:
+        self._save_preferences(self.get_plan())
+        event.Skip()
 
     def _select_default(self, choice: wx.Choice, prefix: str | None) -> None:
         if prefix and prefix in self._prefixes:
@@ -243,7 +365,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         return TraceMatrixConfig(
             rows=TraceMatrixAxisConfig(documents=(row_prefix,)),
             columns=TraceMatrixAxisConfig(documents=(column_prefix,)),
-            direction=self._direction,
+            direction=self._selected_direction(),
         )
 
     def get_plan(self) -> TraceMatrixViewPlan:
@@ -258,7 +380,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         format_index = self._output_format.GetSelection()
         output_format = "interactive" if format_index == 0 else self._output_format.GetString(format_index)
 
-        return TraceMatrixViewPlan(
+        plan = TraceMatrixViewPlan(
             config=config,
             options=TraceMatrixDisplayOptions(
                 row_sort_field=row_sort_field,
@@ -269,6 +391,8 @@ class TraceMatrixConfigDialog(wx.Dialog):
             ),
             output_format=output_format,
         )
+        self._save_preferences(plan)
+        return plan
 
 
 class TraceMatrixTable(gridlib.GridTableBase):
@@ -547,11 +671,46 @@ class TraceMatrixFrame(wx.Frame):
         self.config = config
         self.options = options or TraceMatrixDisplayOptions()
         self.matrix = apply_display_options(matrix, self.options)
-
-        self.SetSize((self.FromDIP(1100), self.FromDIP(680)))
+        self._restore_layout()
 
         self._build_ui()
         self._apply_matrix(self.matrix)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+
+    def _restore_layout(self) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            self.SetSize((self.FromDIP(1100), self.FromDIP(680)))
+            return
+        width = _read_config_int(config, f"{_CONFIG_FRAME_PREFIX}/w", self.FromDIP(1100))
+        height = _read_config_int(config, f"{_CONFIG_FRAME_PREFIX}/h", self.FromDIP(680))
+        width = max(self.FromDIP(900), min(width, 3200))
+        height = max(self.FromDIP(560), min(height, 2200))
+        self.SetSize((width, height))
+        x = _read_config_int(config, f"{_CONFIG_FRAME_PREFIX}/x", -1)
+        y = _read_config_int(config, f"{_CONFIG_FRAME_PREFIX}/y", -1)
+        if x != -1 and y != -1:
+            self.SetPosition((x, y))
+
+    def _save_layout(self) -> None:
+        config = wx.Config.Get()
+        if config is None:
+            return
+        width, height = self.GetSize()
+        x, y = self.GetPosition()
+        config.WriteInt(f"{_CONFIG_FRAME_PREFIX}/w", int(width))
+        config.WriteInt(f"{_CONFIG_FRAME_PREFIX}/h", int(height))
+        config.WriteInt(f"{_CONFIG_FRAME_PREFIX}/x", int(x))
+        config.WriteInt(f"{_CONFIG_FRAME_PREFIX}/y", int(y))
+        config.Flush()
+
+    def _on_close(self, event: wx.CloseEvent) -> None:  # pragma: no cover - GUI event
+        self._save_layout()
+        event.Skip()
+
+    def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
+        self._save_layout()
+        return super().Destroy()
 
     def _build_ui(self) -> None:
         container = wx.Panel(self)

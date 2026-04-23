@@ -3041,6 +3041,9 @@ msgstr ""
 msgid "Display and export options"
 msgstr "Параметры отображения и экспорта"
 
+msgid "Direction"
+msgstr "Направление"
+
 msgid "Done"
 msgstr "Готово"
 
@@ -3074,6 +3077,9 @@ msgstr "Строки без связей: {rows}"
 msgid "Output format"
 msgstr "Формат вывода"
 
+msgid "Parent → Child"
+msgstr "Родитель → Дочернее"
+
 msgid "Requirement card fields (headers/details/export)"
 msgstr "Поля карточки требования (заголовки/детали/экспорт)"
 
@@ -3106,6 +3112,9 @@ msgstr "Неподдерживаемое расширение файла"
 
 msgid "Use compact cell symbols (·/✓/!)"
 msgstr "Использовать компактные символы ячеек (·/✓/!)"
+
+msgid "Child → Parent"
+msgstr "Дочернее → Родитель"
 
 msgid "Verification"
 msgstr "Проверка"

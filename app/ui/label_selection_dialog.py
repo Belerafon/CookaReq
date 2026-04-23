@@ -52,6 +52,11 @@ class LabelSelectionDialog(wx.Dialog):
         self._selected_keys: set[str] = {key for key in selected if isinstance(key, str)}
         self._config = self._resolve_config(parent)
         self._include_inherited_key = "labels_include_inherited"
+        self._size_w_key = "label_selection_w"
+        self._size_h_key = "label_selection_h"
+        self._pos_x_key = "label_selection_x"
+        self._pos_y_key = "label_selection_y"
+        self._col_width_key_prefix = "label_selection_col_width_"
         self._has_inherited_toggle = inherited_labels is not None
         self._include_inherited = self._read_include_inherited_default()
 
@@ -65,6 +70,7 @@ class LabelSelectionDialog(wx.Dialog):
         self.list.AssignImageList(self._img_list, wx.IMAGE_LIST_SMALL)
 
         self.list.Bind(wx.EVT_SIZE, self._on_list_size)
+        self.list.Bind(wx.EVT_LIST_COL_END_DRAG, self._on_column_resize)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         if self._has_inherited_toggle:
@@ -90,9 +96,74 @@ class LabelSelectionDialog(wx.Dialog):
             sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
         self.SetSizer(sizer)
         sizer.Fit(self)
-        self.SetMinSize(self.GetSize())
+        self._load_layout()
         self._populate_labels()
-        wx.CallAfter(self._resize_columns)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+
+    def _read_int(self, key: str, default: int) -> int:
+        try:
+            value = self._config.get_value(key, default)
+        except Exception:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _write_int(self, key: str, value: int) -> None:
+        self._config.set_value(key, int(value))
+
+    def _load_layout(self) -> None:
+        default_w = self.FromDIP(920)
+        default_h = self.FromDIP(680)
+        min_w = self.FromDIP(640)
+        min_h = self.FromDIP(460)
+        max_w = self.FromDIP(1700)
+        max_h = self.FromDIP(1200)
+        width = max(min_w, min(self._read_int(self._size_w_key, default_w), max_w))
+        height = max(min_h, min(self._read_int(self._size_h_key, default_h), max_h))
+        self.SetMinSize((min_w, min_h))
+        self.SetSize((width, height))
+        pos_x = self._read_int(self._pos_x_key, -1)
+        pos_y = self._read_int(self._pos_y_key, -1)
+        if pos_x != -1 and pos_y != -1:
+            self.SetPosition((pos_x, pos_y))
+            rect = self.GetRect()
+            if not any(
+                wx.Display(index).GetGeometry().Intersects(rect)
+                for index in range(wx.Display.GetCount())
+            ):
+                if self.GetParent():
+                    self.CenterOnParent()
+                else:
+                    self.Centre()
+        else:
+            if self.GetParent():
+                self.CenterOnParent()
+            else:
+                self.Centre()
+
+    def _save_layout(self) -> None:
+        width, height = self.GetSize()
+        pos_x, pos_y = self.GetPosition()
+        self._write_int(self._size_w_key, width)
+        self._write_int(self._size_h_key, height)
+        self._write_int(self._pos_x_key, pos_x)
+        self._write_int(self._pos_y_key, pos_y)
+        for index in range(self.list.GetColumnCount()):
+            col_width = self.list.GetColumnWidth(index)
+            if col_width > 0:
+                self._write_int(f"{self._col_width_key_prefix}{index}", col_width)
+        self._config.flush()
+
+    def _restore_column_widths(self) -> bool:
+        restored = False
+        for index in range(self.list.GetColumnCount()):
+            width = self._read_int(f"{self._col_width_key_prefix}{index}", -1)
+            if width > 0:
+                self.list.SetColumnWidth(index, width)
+                restored = True
+        return restored
 
     def _resolve_config(self, parent: wx.Window | None) -> ConfigManager:
         cfg = getattr(parent, "config", None)
@@ -118,6 +189,12 @@ class LabelSelectionDialog(wx.Dialog):
             return
 
     def _sync_checked_selection(self) -> None:
+        visible_keys = {
+            label.key
+            for label in self._labels
+            if isinstance(label.key, str)
+        }
+        self._selected_keys.difference_update(visible_keys)
         for idx in self.list.GetCheckedItems():
             if 0 <= idx < len(self._labels):
                 self._selected_keys.add(self._labels[idx].key)
@@ -138,7 +215,8 @@ class LabelSelectionDialog(wx.Dialog):
             self.list.SetItemColumnImage(idx, 0, img_idx)
             if lbl.key in self._selected_keys:
                 self.list.CheckItem(idx)
-        self._resize_columns()
+        if not self._restore_column_widths():
+            self._resize_columns()
 
     def _on_toggle_inherited(self, event: wx.CommandEvent) -> None:  # pragma: no cover - GUI event
         self._sync_checked_selection()
@@ -170,7 +248,15 @@ class LabelSelectionDialog(wx.Dialog):
             self.list.SetColumnWidth(2, third)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        self._resize_columns()
+        if not self._restore_column_widths():
+            self._resize_columns()
+
+    def _on_column_resize(self, _event: wx.ListEvent) -> None:  # pragma: no cover - GUI event
+        self._save_layout()
+
+    def _on_close(self, event: wx.CloseEvent) -> None:  # pragma: no cover - GUI event
+        self._save_layout()
+        event.Skip()
 
     def get_selected(self) -> list[str]:
         """Return names of checked and custom labels."""
@@ -188,3 +274,7 @@ class LabelSelectionDialog(wx.Dialog):
                 if name not in names:
                     names.append(name)
         return names
+
+    def Destroy(self) -> bool:  # pragma: no cover - GUI side effect
+        self._save_layout()
+        return super().Destroy()

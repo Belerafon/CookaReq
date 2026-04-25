@@ -1663,7 +1663,7 @@ class MainFrameDocumentsMixin:
             wx.MessageBox(_("Select requirements folder first"), _("No Data"))
             return
         try:
-            from ..trace_matrix import TraceMatrixConfigDialog, TraceMatrixFrame
+            from ..trace_matrix import TraceDirectionalTablesFrame, TraceMatrixConfigDialog, TraceMatrixFrame
         except Exception as exc:  # pragma: no cover - missing wx
             wx.MessageBox(str(exc), _("Error"))
             return
@@ -1726,8 +1726,14 @@ class MainFrameDocumentsMixin:
                 "matrix-html": ".html",
                 "matrix-csv": ".csv",
                 "matrix-json": ".json",
+                "trace-html": ".html",
+                "trace-md": ".md",
+                "trace-pdf": ".pdf",
             }.get(plan.output_format, "")
-            wildcard = "HTML (*.html)|*.html|CSV (*.csv)|*.csv|JSON (*.json)|*.json"
+            if plan.options.view_mode == "matrix":
+                wildcard = "HTML (*.html)|*.html|CSV (*.csv)|*.csv|JSON (*.json)|*.json|Markdown (*.md)|*.md|PDF (*.pdf)|*.pdf"
+            else:
+                wildcard = "HTML (*.html)|*.html|Markdown (*.md)|*.md|PDF (*.pdf)|*.pdf"
             file_dialog = wx.FileDialog(
                 self,
                 message=_("Export trace matrix"),
@@ -1744,26 +1750,83 @@ class MainFrameDocumentsMixin:
             finally:
                 file_dialog.Destroy()
             try:
-                if path.lower().endswith(".html"):
-                    from ..trace_matrix import _write_matrix_html
+                target_path = Path(path)
+                suffix = target_path.suffix.lower()
+                if plan.options.view_mode == "matrix":
+                    if suffix == ".html":
+                        from ..trace_matrix import _write_matrix_html
 
-                    _write_matrix_html(Path(path), frame.matrix, frame.options)
-                elif path.lower().endswith(".csv"):
-                    from ..trace_matrix import _write_matrix_csv
+                        _write_matrix_html(target_path, frame.matrix, frame.options)
+                    elif suffix == ".csv":
+                        from ..trace_matrix import _write_matrix_csv
 
-                    _write_matrix_csv(Path(path), frame.matrix, frame.options)
-                elif path.lower().endswith(".json"):
-                    from ..trace_matrix import _write_matrix_json
+                        _write_matrix_csv(target_path, frame.matrix, frame.options)
+                    elif suffix == ".json":
+                        from ..trace_matrix import _write_matrix_json
 
-                    _write_matrix_json(Path(path), frame.matrix, frame.options)
+                        _write_matrix_json(target_path, frame.matrix, frame.options)
+                    elif suffix == ".md":
+                        from ..trace_matrix import _write_matrix_markdown
+
+                        _write_matrix_markdown(target_path, frame.matrix, frame.options)
+                    elif suffix == ".pdf":
+                        from ..trace_matrix import _write_matrix_pdf
+
+                        _write_matrix_pdf(target_path, frame.matrix, frame.options)
+                    else:
+                        wx.MessageBox(_("Unsupported file extension"), _("Error"))
+                        frame.Destroy()
+                        return
                 else:
-                    wx.MessageBox(_("Unsupported file extension"), _("Error"))
-                    frame.Destroy()
-                    return
+                    views = controller.build_trace_views(plan.config)
+                    if suffix == ".html":
+                        if plan.options.view_mode == "combined":
+                            from ..trace_matrix import _write_combined_html
+
+                            _write_combined_html(target_path, frame.matrix, views, frame.options)
+                        else:
+                            from ..trace_matrix import _write_directional_html
+
+                            _write_directional_html(target_path, views, frame.options)
+                    elif suffix == ".md":
+                        if plan.options.view_mode == "combined":
+                            from ..trace_matrix import _write_combined_markdown
+
+                            _write_combined_markdown(target_path, frame.matrix, views, frame.options)
+                        else:
+                            from ..trace_matrix import _write_directional_markdown
+
+                            _write_directional_markdown(target_path, views, frame.options)
+                    elif suffix == ".pdf":
+                        if plan.options.view_mode == "combined":
+                            from ..trace_matrix import _write_combined_pdf
+
+                            _write_combined_pdf(target_path, frame.matrix, views, frame.options)
+                        else:
+                            from ..trace_matrix import _write_directional_pdf
+
+                            _write_directional_pdf(target_path, views, frame.options)
+                    else:
+                        wx.MessageBox(_("Unsupported file extension"), _("Error"))
+                        frame.Destroy()
+                        return
             finally:
                 frame.Destroy()
             wx.MessageBox(_("Trace matrix exported"), _("Done"))
             return
+
+        if plan.options.view_mode in {"directional", "combined"}:
+            try:
+                views = controller.build_trace_views(plan.config)
+            except Exception as exc:  # pragma: no cover - report via UI
+                wx.MessageBox(str(exc), _("Error"))
+                return
+            direction_frame = TraceDirectionalTablesFrame(self, views, options=plan.options)
+            self.register_auxiliary_frame(direction_frame)
+            direction_frame.Show()
+
+            if plan.options.view_mode == "directional":
+                return
 
         try:
             frame = TraceMatrixFrame(self, controller, plan.config, matrix, options=plan.options)

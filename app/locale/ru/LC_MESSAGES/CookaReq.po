@@ -2371,6 +2371,18 @@ msgstr "ограничить поля поиска по строкам (чере
 msgid "n/a"
 msgstr "н/д"
 
+msgid "Column filters"
+msgstr "Фильтры по столбцам"
+
+msgid "Contains…"
+msgstr "Содержит…"
+
+msgid "Clear column filters"
+msgstr "Очистить фильтры столбцов"
+
+msgid "Syntax: plain=contains, =exact, ^prefix, ~regex, empty, !empty"
+msgstr "Синтаксис: plain=содержит, =точно, ^префикс, ~regex, empty, !empty"
+
 msgid "require all labels on columns"
 msgstr "требовать все метки на столбцах"
 
@@ -3499,3 +3511,54 @@ msgstr ""
 
 msgid "Remove linked requirement"
 msgstr "Удалить связанное требование"
+
+msgid "Matrix only"
+msgstr "Только матрица"
+
+msgid "Directional tables only"
+msgstr "Только направленные таблицы"
+
+msgid "Matrix + directional tables"
+msgstr "Матрица + направленные таблицы"
+
+msgid "View mode"
+msgstr "Режим отображения"
+
+msgid "Top level fields"
+msgstr "Поля верхнего уровня"
+
+msgid "Bottom level fields"
+msgstr "Поля нижнего уровня"
+
+msgid "Trace Directional Tables"
+msgstr "Направленные таблицы трассировки"
+
+msgid "Top level requirements traced to bottom level"
+msgstr "Требования верхнего уровня с трассировкой на нижний уровень"
+
+msgid "Bottom level requirements traced to top level"
+msgstr "Требования нижнего уровня с трассировкой на верхний уровень"
+
+msgid "Traced to"
+msgstr "Трассируется на"
+
+msgid "Top → Bottom"
+msgstr "Верх → Низ"
+
+msgid "Bottom → Top"
+msgstr "Низ → Верх"
+
+msgid "Type to filter rows"
+msgstr "Введите текст для фильтрации строк"
+
+msgid "Rows: {shown}/{total}. Sort: {field} ({order})."
+msgstr "Строки: {shown}/{total}. Сортировка: {field} ({order})."
+
+msgid "ascending"
+msgstr "по возрастанию"
+
+msgid "descending"
+msgstr "по убыванию"
+
+msgid "n/a"
+msgstr "н/д"

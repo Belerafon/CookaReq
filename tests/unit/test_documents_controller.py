@@ -26,6 +26,7 @@ from app.core.model import (
     Priority,
     Verification,
 )
+from app.core.trace_matrix import TraceMatrixAxisConfig, TraceMatrixConfig
 
 pytestmark = pytest.mark.unit
 
@@ -462,5 +463,48 @@ def test_rename_document_without_changes_returns_existing(tmp_path: Path) -> Non
     controller.load_documents()
     unchanged = controller.rename_document("SYS")
     assert unchanged.title == "System"
+
+
+def test_build_trace_views_returns_directional_tables(tmp_path: Path) -> None:
+    parent_doc = Document(prefix="SYS", title="System")
+    child_doc = Document(prefix="HLR", title="High", parent="SYS")
+    save_document(tmp_path / "SYS", parent_doc)
+    save_document(tmp_path / "HLR", child_doc)
+    save_item(
+        tmp_path / "SYS",
+        parent_doc,
+        {
+            "id": 1,
+            "title": "System requirement",
+            "statement": "Root",
+            "links": [],
+        },
+    )
+    save_item(
+        tmp_path / "HLR",
+        child_doc,
+        {
+            "id": 1,
+            "title": "High-level requirement",
+            "statement": "Derived",
+            "links": ["SYS1"],
+        },
+    )
+
+    controller = _controller(tmp_path, RequirementModel())
+    views = controller.build_trace_views(
+        TraceMatrixConfig(
+            rows=TraceMatrixAxisConfig(documents=("HLR",)),
+            columns=TraceMatrixAxisConfig(documents=("SYS",)),
+        )
+    )
+
+    assert views.matrix.summary.linked_pairs == 1
+    assert [row.source.rid for row in views.rows_to_columns.rows] == ["HLR1"]
+    assert [target.rid for target in views.rows_to_columns.rows[0].targets] == ["SYS1"]
+    assert [row.source.rid for row in views.columns_to_rows.rows] == ["SYS1"]
+    assert [target.rid for target in views.columns_to_rows.rows[0].targets] == ["HLR1"]
+
+
 def _controller(root: Path, model: RequirementModel) -> DocumentsController:
     return DocumentsController(RequirementsService(root), model)

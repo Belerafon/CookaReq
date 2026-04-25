@@ -2357,6 +2357,18 @@ msgstr "limit row search fields (comma separated)"
 msgid "n/a"
 msgstr "n/a"
 
+msgid "Column filters"
+msgstr "Column filters"
+
+msgid "Contains…"
+msgstr "Contains…"
+
+msgid "Clear column filters"
+msgstr "Clear column filters"
+
+msgid "Syntax: plain=contains, =exact, ^prefix, ~regex, empty, !empty"
+msgstr "Syntax: plain=contains, =exact, ^prefix, ~regex, empty, !empty"
+
 msgid "require all labels on columns"
 msgstr "require all labels on columns"
 
@@ -3479,3 +3491,54 @@ msgstr ""
 
 msgid "Remove linked requirement"
 msgstr "Remove linked requirement"
+
+msgid "Matrix only"
+msgstr "Matrix only"
+
+msgid "Directional tables only"
+msgstr "Directional tables only"
+
+msgid "Matrix + directional tables"
+msgstr "Matrix + directional tables"
+
+msgid "View mode"
+msgstr "View mode"
+
+msgid "Top level fields"
+msgstr "Top level fields"
+
+msgid "Bottom level fields"
+msgstr "Bottom level fields"
+
+msgid "Trace Directional Tables"
+msgstr "Trace Directional Tables"
+
+msgid "Top level requirements traced to bottom level"
+msgstr "Top level requirements traced to bottom level"
+
+msgid "Bottom level requirements traced to top level"
+msgstr "Bottom level requirements traced to top level"
+
+msgid "Traced to"
+msgstr "Traced to"
+
+msgid "Top → Bottom"
+msgstr "Top → Bottom"
+
+msgid "Bottom → Top"
+msgstr "Bottom → Top"
+
+msgid "Type to filter rows"
+msgstr "Type to filter rows"
+
+msgid "Rows: {shown}/{total}. Sort: {field} ({order})."
+msgstr "Rows: {shown}/{total}. Sort: {field} ({order})."
+
+msgid "ascending"
+msgstr "ascending"
+
+msgid "descending"
+msgstr "descending"
+
+msgid "n/a"
+msgstr "n/a"

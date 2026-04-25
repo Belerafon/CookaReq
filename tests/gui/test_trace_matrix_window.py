@@ -18,8 +18,16 @@ from app.services.requirements import RequirementsService
 from app.ui.controllers import DocumentsController
 from app.ui.requirement_model import RequirementModel
 from app.ui.trace_matrix import (
+    TraceDirectionalTablesFrame,
+    TraceMatrixDisplayOptions,
     TraceMatrixConfigDialog,
     TraceMatrixFrame,
+    _write_combined_html,
+    _write_combined_markdown,
+    _write_combined_pdf,
+    _write_directional_html,
+    _write_directional_markdown,
+    _write_directional_pdf,
     _build_health_snapshot,
     _format_health_report,
 )
@@ -151,13 +159,17 @@ def test_trace_matrix_dialog_persists_preferences(wx_app):
         first._compact_symbols.SetValue(False)
         first._hide_unlinked.SetValue(True)
         first._output_format.SetSelection(2)  # matrix-csv
-        for idx in range(first._fields.GetCount()):
-            first._fields.Check(idx, False)
-        first._fields.Check(0, True)  # rid
-        first._fields.Check(2, True)  # status
+        first._view_mode.SetSelection(2)  # matrix + directional tables
+        for idx in range(first._row_fields.GetCount()):
+            first._row_fields.Check(idx, False)
+            first._column_fields.Check(idx, False)
+        first._row_fields.Check(0, True)  # rid
+        first._row_fields.Check(2, True)  # status
+        first._column_fields.Check(0, True)  # rid
+        first._column_fields.Check(1, True)  # title
         _ = first.get_plan()
     finally:
-        first.Destroy()
+        first.Close()
         wx_app.Yield()
 
     second = TraceMatrixConfigDialog(None, docs, default_rows="HLR", default_columns="SYS")
@@ -170,10 +182,13 @@ def test_trace_matrix_dialog_persists_preferences(wx_app):
         assert second._compact_symbols.GetValue() is False
         assert second._hide_unlinked.GetValue() is True
         assert second._output_format.GetString(second._output_format.GetSelection()) == "matrix-csv"
+        assert second._view_mode.GetSelection() == 2
 
         plan = second.get_plan()
         assert plan.config.direction == TraceDirection.PARENT_TO_CHILD
-        assert plan.options.selected_fields == ("rid", "status")
+        assert plan.options.row_fields == ("rid", "status")
+        assert plan.options.column_fields == ("rid", "title")
+        assert plan.options.view_mode == "combined"
     finally:
         second.Destroy()
         wx_app.Yield()
@@ -214,6 +229,177 @@ def test_trace_matrix_frame_persists_window_size(wx_app, tmp_path):
         width, height = second.GetSize()
         assert width >= second.FromDIP(1200)
         assert height >= second.FromDIP(720)
+    finally:
+        second.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_directional_tables_frame_renders_both_tabs(wx_app, tmp_path):
+    _wx = pytest.importorskip("wx")
+    controller = DocumentsController(RequirementsService(tmp_path), RequirementModel())
+
+    top = Document(prefix="TOP", title="Top")
+    top_dir = tmp_path / "TOP"
+    save_document(top_dir, top)
+    save_item(top_dir, top, _requirement(1, "Top requirement", doc_prefix="TOP").to_mapping())
+
+    low = Document(prefix="LOW", title="Low", parent="TOP")
+    low_dir = tmp_path / "LOW"
+    save_document(low_dir, low)
+    save_item(low_dir, low, _requirement(1, "Low linked", doc_prefix="LOW", links=[Link(rid="TOP1")]).to_mapping())
+    save_item(low_dir, low, _requirement(2, "Low orphan", doc_prefix="LOW").to_mapping())
+
+    controller.load_documents()
+    views = controller.build_trace_views(
+        TraceMatrixConfig(
+            rows=TraceMatrixAxisConfig(documents=("LOW",)),
+            columns=TraceMatrixAxisConfig(documents=("TOP",)),
+        )
+    )
+    frame = TraceDirectionalTablesFrame(None, views)
+    try:
+        frame.Show()
+        wx_app.Yield()
+        notebook = next((child for child in frame.GetChildren() if isinstance(child, _wx.Notebook)), None)
+        assert isinstance(notebook, _wx.Notebook)
+        assert notebook.GetPageCount() == 2
+        assert notebook.GetPageText(0) == "Top → Bottom"
+        assert notebook.GetPageText(1) == "Bottom → Top"
+
+        first_panel = notebook.GetPage(0)
+        assert hasattr(first_panel, "_column_filter_ctrls")
+        rid_filter = first_panel._column_filter_ctrls["rid"]
+        rid_filter.SetValue("LOW1")
+        wx_app.Yield()
+        assert "1/2" in first_panel._summary.GetLabel()
+
+        rid_filter.SetValue("=LOW2")
+        wx_app.Yield()
+        assert "1/2" in first_panel._summary.GetLabel()
+
+        rid_filter.SetValue("~LOW[12]")
+        wx_app.Yield()
+        assert "2/2" in first_panel._summary.GetLabel()
+
+        target_filter = first_panel._column_filter_ctrls["__targets__"]
+        target_filter.SetValue("empty")
+        wx_app.Yield()
+        assert "1/2" in first_panel._summary.GetLabel()
+
+        first_panel._on_clear_column_filters(_wx.CommandEvent())
+        wx_app.Yield()
+        assert "2/2" in first_panel._summary.GetLabel()
+    finally:
+        frame.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_directional_and_combined_exports(wx_app, tmp_path):
+    pytest.importorskip("wx")
+    controller = DocumentsController(RequirementsService(tmp_path), RequirementModel())
+
+    top = Document(prefix="TOP", title="Top")
+    top_dir = tmp_path / "TOP"
+    save_document(top_dir, top)
+    save_item(top_dir, top, _requirement(1, "Top requirement", doc_prefix="TOP").to_mapping())
+
+    low = Document(prefix="LOW", title="Low", parent="TOP")
+    low_dir = tmp_path / "LOW"
+    save_document(low_dir, low)
+    save_item(low_dir, low, _requirement(1, "Low linked", doc_prefix="LOW", links=[Link(rid="TOP1")]).to_mapping())
+    save_item(low_dir, low, _requirement(2, "Low orphan", doc_prefix="LOW").to_mapping())
+
+    controller.load_documents()
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(documents=("LOW",)),
+        columns=TraceMatrixAxisConfig(documents=("TOP",)),
+    )
+    matrix = controller.build_trace_matrix(config)
+    views = controller.build_trace_views(config)
+    options = TraceMatrixDisplayOptions(row_fields=("rid", "title"), column_fields=("rid", "title"))
+
+    directional_md = tmp_path / "directional.md"
+    _write_directional_markdown(directional_md, views, options)
+    markdown_text = directional_md.read_text(encoding="utf-8")
+    assert "Top → Bottom" in markdown_text
+    assert "—" in markdown_text
+
+    directional_html = tmp_path / "directional.html"
+    _write_directional_html(directional_html, views, options)
+    html_text = directional_html.read_text(encoding="utf-8")
+    assert "Trace directional tables" in html_text
+    assert "Top → Bottom" in html_text
+
+    directional_pdf = tmp_path / "directional.pdf"
+    _write_directional_pdf(directional_pdf, views, options)
+    assert directional_pdf.exists()
+    assert directional_pdf.stat().st_size > 0
+
+    combined_md = tmp_path / "combined.md"
+    _write_combined_markdown(combined_md, matrix, views, options)
+    combined_md_text = combined_md.read_text(encoding="utf-8")
+    assert "Trace report" in combined_md_text
+    assert "## Matrix" in combined_md_text
+    assert "## Directional views" in combined_md_text
+
+    combined_html = tmp_path / "combined.html"
+    _write_combined_html(combined_html, matrix, views, options)
+    combined_html_text = combined_html.read_text(encoding="utf-8")
+    assert "Trace report" in combined_html_text
+    assert "Directional views" in combined_html_text
+
+    combined_pdf = tmp_path / "combined.pdf"
+    _write_combined_pdf(combined_pdf, matrix, views, options)
+    assert combined_pdf.exists()
+    assert combined_pdf.stat().st_size > 0
+
+
+def test_trace_directional_tables_frame_persists_preferences(wx_app, tmp_path):
+    wx = pytest.importorskip("wx")
+    controller = DocumentsController(RequirementsService(tmp_path), RequirementModel())
+
+    top = Document(prefix="TOP", title="Top")
+    top_dir = tmp_path / "TOP"
+    save_document(top_dir, top)
+    save_item(top_dir, top, _requirement(1, "Top requirement", doc_prefix="TOP").to_mapping())
+
+    low = Document(prefix="LOW", title="Low", parent="TOP")
+    low_dir = tmp_path / "LOW"
+    save_document(low_dir, low)
+    save_item(low_dir, low, _requirement(1, "Low linked", doc_prefix="LOW", links=[Link(rid="TOP1")]).to_mapping())
+    save_item(low_dir, low, _requirement(2, "Low orphan", doc_prefix="LOW").to_mapping())
+
+    controller.load_documents()
+    views = controller.build_trace_views(
+        TraceMatrixConfig(
+            rows=TraceMatrixAxisConfig(documents=("LOW",)),
+            columns=TraceMatrixAxisConfig(documents=("TOP",)),
+        )
+    )
+
+    first = TraceDirectionalTablesFrame(None, views)
+    try:
+        first.Show()
+        wx_app.Yield()
+        first.SetSize((first.FromDIP(1240), first.FromDIP(740)))
+        first._forward_panel._filter_ctrl.SetValue("low")
+        first._forward_panel._column_filter_ctrls["rid"].SetValue("=LOW1")
+        event = wx.ListEvent()
+        event.SetColumn(1)
+        first._forward_panel._on_column_clicked(event)
+        wx_app.Yield()
+    finally:
+        first.Close()
+        wx_app.Yield()
+
+    second = TraceDirectionalTablesFrame(None, views)
+    try:
+        width, height = second.GetSize()
+        assert width >= second.FromDIP(1200)
+        assert height >= second.FromDIP(700)
+        assert second._forward_panel._filter_ctrl.GetValue() == "low"
+        assert second._forward_panel._column_filter_ctrls["rid"].GetValue() == "=LOW1"
+        assert second._forward_panel._sort_column == 1
     finally:
         second.Destroy()
         wx_app.Yield()

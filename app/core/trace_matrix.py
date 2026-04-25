@@ -111,6 +111,35 @@ class TraceMatrix:
     documents: Mapping[str, Document]
 
 
+@dataclass(frozen=True)
+class TraceDirectionalRow:
+    """Directional trace row (one source requirement and linked targets)."""
+
+    source: TraceMatrixAxisEntry
+    targets: tuple[TraceMatrixAxisEntry, ...]
+
+    @property
+    def has_links(self) -> bool:
+        """Return ``True`` when at least one target requirement is linked."""
+        return bool(self.targets)
+
+
+@dataclass(frozen=True)
+class TraceDirectionalTable:
+    """Directional projection of trace links across matrix axes."""
+
+    rows: tuple[TraceDirectionalRow, ...]
+
+
+@dataclass(frozen=True)
+class TraceViewsBundle:
+    """Trace matrix plus both directional table projections."""
+
+    matrix: TraceMatrix
+    rows_to_columns: TraceDirectionalTable
+    columns_to_rows: TraceDirectionalTable
+
+
 def build_trace_matrix(
     root: str | Path,
     config: TraceMatrixConfig,
@@ -141,6 +170,56 @@ def build_trace_matrix(
         summary=summary,
         documents=dict(docs_map),
     )
+
+
+def build_trace_views(
+    root: str | Path,
+    config: TraceMatrixConfig,
+    *,
+    docs: Mapping[str, Document] | None = None,
+) -> TraceViewsBundle:
+    """Build matrix and both directional table projections for ``config``."""
+    matrix = build_trace_matrix(root, config, docs=docs)
+    rows_to_columns = _build_directional_table(
+        sources=matrix.rows,
+        targets=matrix.columns,
+        cells=matrix.cells,
+        reverse=False,
+    )
+    columns_to_rows = _build_directional_table(
+        sources=matrix.columns,
+        targets=matrix.rows,
+        cells=matrix.cells,
+        reverse=True,
+    )
+    return TraceViewsBundle(
+        matrix=matrix,
+        rows_to_columns=rows_to_columns,
+        columns_to_rows=columns_to_rows,
+    )
+
+
+def _build_directional_table(
+    *,
+    sources: Sequence[TraceMatrixAxisEntry],
+    targets: Sequence[TraceMatrixAxisEntry],
+    cells: Mapping[tuple[str, str], TraceMatrixCell],
+    reverse: bool,
+) -> TraceDirectionalTable:
+    targets_by_rid = {entry.rid: entry for entry in targets}
+    rows: list[TraceDirectionalRow] = []
+    for source in sources:
+        linked: list[TraceMatrixAxisEntry] = []
+        for target in targets:
+            key = (target.rid, source.rid) if reverse else (source.rid, target.rid)
+            cell = cells.get(key)
+            if not cell or not cell.links:
+                continue
+            resolved_target = targets_by_rid.get(target.rid)
+            if resolved_target is not None:
+                linked.append(resolved_target)
+        rows.append(TraceDirectionalRow(source=source, targets=tuple(linked)))
+    return TraceDirectionalTable(rows=tuple(rows))
 
 
 def _resolve_prefixes(axis: TraceMatrixAxisConfig, docs: Mapping[str, Document]) -> list[str]:
@@ -370,5 +449,9 @@ __all__ = [
     "TraceMatrixAxisEntry",
     "TraceMatrixLinkView",
     "TraceMatrixSummary",
+    "TraceDirectionalRow",
+    "TraceDirectionalTable",
+    "TraceViewsBundle",
     "build_trace_matrix",
+    "build_trace_views",
 ]

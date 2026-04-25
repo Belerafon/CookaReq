@@ -7,6 +7,7 @@ from app.core.trace_matrix import (
     TraceMatrixAxisConfig,
     TraceMatrixConfig,
     build_trace_matrix,
+    build_trace_views,
 )
 
 
@@ -192,3 +193,41 @@ def test_demo_derived_llr_requirements_are_reported_as_orphans() -> None:
     ]
     assert matrix.summary.linked_pairs == 6
     assert matrix.summary.orphan_rows == ("LLR7", "LLR8", "LLR9")
+
+
+@pytest.mark.unit
+def test_build_trace_views_exposes_forward_and_reverse_tables(tmp_path):
+    _write_documents(tmp_path)
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(documents=("HLR",)),
+        columns=TraceMatrixAxisConfig(documents=("SYS",)),
+    )
+
+    views = build_trace_views(tmp_path, config)
+
+    assert [row.source.rid for row in views.rows_to_columns.rows] == ["HLR1", "HLR2"]
+    assert [target.rid for target in views.rows_to_columns.rows[0].targets] == ["SYS1"]
+    assert views.rows_to_columns.rows[1].targets == ()
+    assert views.rows_to_columns.rows[1].has_links is False
+
+    assert [row.source.rid for row in views.columns_to_rows.rows] == ["SYS1"]
+    assert [target.rid for target in views.columns_to_rows.rows[0].targets] == ["HLR1"]
+
+
+@pytest.mark.unit
+def test_build_trace_views_parent_to_child_respects_direction(tmp_path):
+    _write_documents(tmp_path)
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+        direction=TraceDirection.PARENT_TO_CHILD,
+    )
+
+    views = build_trace_views(tmp_path, config)
+
+    assert [row.source.rid for row in views.rows_to_columns.rows] == ["SYS1"]
+    assert [target.rid for target in views.rows_to_columns.rows[0].targets] == ["HLR1"]
+
+    assert [row.source.rid for row in views.columns_to_rows.rows] == ["HLR1", "HLR2"]
+    assert [target.rid for target in views.columns_to_rows.rows[0].targets] == ["SYS1"]
+    assert views.columns_to_rows.rows[1].targets == ()

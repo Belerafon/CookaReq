@@ -20,7 +20,13 @@ from ...services.requirements import (
     rid_for,
 )
 from ...core.model import Requirement
-from ...core.trace_matrix import TraceMatrix, TraceMatrixConfig, build_trace_matrix
+from ...core.trace_matrix import (
+    TraceMatrix,
+    TraceMatrixConfig,
+    TraceViewsBundle,
+    build_trace_matrix,
+    build_trace_views,
+)
 
 _UNSET = object()
 
@@ -112,6 +118,12 @@ class DocumentsController:
         if not self.documents:
             self.load_documents()
         return build_trace_matrix(self.service.root, config, docs=self.documents)
+
+    def build_trace_views(self, config: TraceMatrixConfig) -> TraceViewsBundle:
+        """Construct matrix and directional projections for ``config``."""
+        if not self.documents:
+            self.load_documents()
+        return build_trace_views(self.service.root, config, docs=self.documents)
 
     # helpers ---------------------------------------------------------
     def _get_document(self, prefix: str) -> Document:

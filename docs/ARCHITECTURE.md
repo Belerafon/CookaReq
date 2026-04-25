@@ -80,7 +80,10 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   status. Sorting also happens in these layers.
 * **Traceability** — `app/core/trace_matrix.py` builds matrices that map
   requirements to external artefacts. The GUI reuses cached document data to
-  avoid expensive reloads.
+  avoid expensive reloads. The same module now provides `build_trace_views`,
+  which returns `TraceViewsBundle` (`matrix`, `rows_to_columns`,
+  `columns_to_rows`) so GUI/exports can render directional trace tables without
+  duplicating link traversal in presentation code.
 * **Import/export** — `requirement_import.py`, `requirement_export.py`,
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all
@@ -371,7 +374,7 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   agent events (`timeline.sequence`, kind, tool call id/step index) so a
   reordered or deduplicated timeline triggers a rerender even if entry IDs and
   counts stay the same.
-  * `trace_matrix.py` and `derivation_graph.py` visualise relationships. The trace matrix dialog now carries a richer configuration surface: row/column sort field selection, trace direction selection (child→parent or parent→child), selectable requirement card fields used in headers/details/export, compact symbol rendering, orphan filtering, direct export to HTML/CSV/JSON from the matrix window, and an in-window health snapshot panel with coverage/suspect ratios plus orphan row/column lists for quick GUI triage. Dialog preferences (selected docs/sort/fields/direction/output mode) and interactive matrix window geometry are persisted via `wx.Config`, and users can also copy a plain-text health report to the clipboard directly from the matrix toolbar.
+  * `trace_matrix.py` and `derivation_graph.py` visualise relationships. The trace matrix dialog now carries a richer configuration surface: row/column sort field selection, trace direction selection (child→parent or parent→child), separate selectable field sets for top/bottom levels, view mode selection (matrix, directional tables, combined mode), compact symbol rendering, orphan filtering, per-column filters in directional tables (contains/exact/prefix/regex/empty via syntax), and direct export to HTML/CSV/JSON/Markdown/PDF from the matrix window. Dialog preferences (selected docs/sort/fields/direction/view mode/output mode), directional table filter/sort state, and interactive window geometry are persisted via `wx.Config`, and users can also copy a plain-text health report to the clipboard directly from the matrix toolbar.
 * **Controllers** — under `app/ui/controllers/`, they translate wx events into
   service calls (`DocumentsController`, `MCPController`, etc.). Controllers take
   care of ID uniqueness, validation and model updates before hitting the store.

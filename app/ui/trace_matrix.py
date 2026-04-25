@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,14 +12,21 @@ from collections.abc import Mapping
 
 import wx
 import wx.grid as gridlib
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 from ..services.requirements import Document
 from ..core.trace_matrix import (
     TraceDirection,
+    TraceDirectionalRow,
+    TraceDirectionalTable,
     TraceMatrix,
     TraceMatrixAxisConfig,
     TraceMatrixCell,
     TraceMatrixConfig,
+    TraceViewsBundle,
 )
 from ..i18n import _
 from .export_helpers import text_export_encoding
@@ -41,10 +49,16 @@ _FIELD_CHOICES: tuple[str, ...] = (
 
 _CONFIG_DIALOG_PREFIX = "trace_matrix/dialog"
 _CONFIG_FRAME_PREFIX = "trace_matrix/frame"
-_DEFAULT_SELECTED_FIELDS: tuple[str, ...] = ("rid", "title", "status", "verification", "owner")
+_CONFIG_DIRECTIONAL_PREFIX = "trace_matrix/directional"
+_DEFAULT_SELECTED_FIELDS: tuple[str, ...] = ("rid", "title")
 _DIRECTION_CHOICES: tuple[tuple[TraceDirection, str], ...] = (
     (TraceDirection.CHILD_TO_PARENT, _("Child → Parent")),
     (TraceDirection.PARENT_TO_CHILD, _("Parent → Child")),
+)
+_VIEW_MODE_CHOICES: tuple[tuple[str, str], ...] = (
+    ("matrix", _("Matrix only")),
+    ("directional", _("Directional tables only")),
+    ("combined", _("Matrix + directional tables")),
 )
 
 
@@ -72,15 +86,31 @@ def _read_config_str(config: wx.ConfigBase, key: str, default: str) -> str:
     return value if isinstance(value, str) else default
 
 
+def _ensure_wx_config() -> wx.ConfigBase:
+    config = wx.Config.Get()
+    if config is not None:
+        return config
+    fallback = wx.FileConfig("CookaReq")
+    wx.Config.Set(fallback)
+    return fallback
+
+
 @dataclass(frozen=True)
 class TraceMatrixDisplayOptions:
     """Presentation options selected by the user for matrix rendering/export."""
 
     row_sort_field: str = "rid"
     column_sort_field: str = "rid"
-    selected_fields: tuple[str, ...] = ("rid", "title", "status", "verification", "owner")
+    row_fields: tuple[str, ...] = ("rid", "title")
+    column_fields: tuple[str, ...] = ("rid", "title")
     compact_symbols: bool = True
     hide_unlinked: bool = False
+    view_mode: str = "matrix"
+
+    @property
+    def selected_fields(self) -> tuple[str, ...]:
+        """Backward-compatible alias used by legacy matrix-only exporters."""
+        return self.row_fields
 
 
 @dataclass(frozen=True)
@@ -215,6 +245,21 @@ class TraceMatrixConfigDialog(wx.Dialog):
 
         options_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Display and export options"))
 
+        view_mode_row = wx.BoxSizer(wx.HORIZONTAL)
+        view_mode_row.Add(
+            wx.StaticText(options_box.GetStaticBox(), label=_("View mode")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            self.FromDIP(8),
+        )
+        self._view_mode = wx.Choice(
+            options_box.GetStaticBox(),
+            choices=[label for _value, label in _VIEW_MODE_CHOICES],
+        )
+        self._view_mode.SetSelection(0)
+        view_mode_row.Add(self._view_mode, 1, wx.EXPAND)
+        options_box.Add(view_mode_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
+
         self._compact_symbols = wx.CheckBox(options_box.GetStaticBox(), label=_("Use compact cell symbols (·/✓/!)"))
         self._compact_symbols.SetValue(True)
         options_box.Add(self._compact_symbols, 0, wx.ALL | wx.EXPAND, self.FromDIP(6))
@@ -223,18 +268,49 @@ class TraceMatrixConfigDialog(wx.Dialog):
         options_box.Add(self._hide_unlinked, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
 
         output_row = wx.BoxSizer(wx.HORIZONTAL)
-        output_row.Add(wx.StaticText(options_box.GetStaticBox(), label=_("Output format")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
-        self._output_format = wx.Choice(options_box.GetStaticBox(), choices=[_("Interactive matrix window"), "matrix-html", "matrix-csv", "matrix-json"])
+        output_row.Add(
+            wx.StaticText(options_box.GetStaticBox(), label=_("Output format")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            self.FromDIP(8),
+        )
+        self._output_format = wx.Choice(
+            options_box.GetStaticBox(),
+            choices=[_("Interactive matrix window"), "matrix-html", "matrix-csv", "matrix-json", "trace-html", "trace-md", "trace-pdf"],
+        )
         self._output_format.SetSelection(0)
         output_row.Add(self._output_format, 1, wx.EXPAND)
         options_box.Add(output_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
 
-        options_box.Add(wx.StaticText(options_box.GetStaticBox(), label=_("Requirement card fields (headers/details/export)")), 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(6))
-        self._fields = wx.CheckListBox(options_box.GetStaticBox(), choices=[_field_label(field) for field in _FIELD_CHOICES])
+        options_box.Add(
+            wx.StaticText(options_box.GetStaticBox(), label=_("Top level fields")),
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            self.FromDIP(6),
+        )
+        self._row_fields = wx.CheckListBox(
+            options_box.GetStaticBox(),
+            choices=[_field_label(field) for field in _FIELD_CHOICES],
+        )
         for idx, field in enumerate(_FIELD_CHOICES):
             if field in _DEFAULT_SELECTED_FIELDS:
-                self._fields.Check(idx, True)
-        options_box.Add(self._fields, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
+                self._row_fields.Check(idx, True)
+        options_box.Add(self._row_fields, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
+
+        options_box.Add(
+            wx.StaticText(options_box.GetStaticBox(), label=_("Bottom level fields")),
+            0,
+            wx.LEFT | wx.RIGHT | wx.BOTTOM,
+            self.FromDIP(6),
+        )
+        self._column_fields = wx.CheckListBox(
+            options_box.GetStaticBox(),
+            choices=[_field_label(field) for field in _FIELD_CHOICES],
+        )
+        for idx, field in enumerate(_FIELD_CHOICES):
+            if field in _DEFAULT_SELECTED_FIELDS:
+                self._column_fields.Check(idx, True)
+        options_box.Add(self._column_fields, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(6))
 
         main_sizer.Add(options_box, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, padding)
 
@@ -280,9 +356,7 @@ class TraceMatrixConfigDialog(wx.Dialog):
         return TraceDirection.CHILD_TO_PARENT
 
     def _restore_preferences(self) -> None:
-        config = wx.Config.Get()
-        if config is None:
-            return
+        config = _ensure_wx_config()
 
         row_prefix = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/row_prefix", "")
         column_prefix = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/column_prefix", "")
@@ -322,11 +396,25 @@ class TraceMatrixConfigDialog(wx.Dialog):
             if output_index != wx.NOT_FOUND:
                 self._output_format.SetSelection(output_index)
 
-        selected_fields_raw = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/selected_fields", "")
-        selected_fields = {field for field in selected_fields_raw.split(",") if field in _FIELD_CHOICES}
-        if selected_fields:
+        row_fields_raw = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/row_fields", "")
+        if not row_fields_raw:
+            row_fields_raw = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/selected_fields", "")
+        row_fields = {field for field in row_fields_raw.split(",") if field in _FIELD_CHOICES}
+        if row_fields:
             for idx, field in enumerate(_FIELD_CHOICES):
-                self._fields.Check(idx, field in selected_fields)
+                self._row_fields.Check(idx, field in row_fields)
+
+        column_fields_raw = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/column_fields", "")
+        column_fields = {field for field in column_fields_raw.split(",") if field in _FIELD_CHOICES}
+        if column_fields:
+            for idx, field in enumerate(_FIELD_CHOICES):
+                self._column_fields.Check(idx, field in column_fields)
+
+        view_mode = _read_config_str(config, f"{_CONFIG_DIALOG_PREFIX}/view_mode", "matrix")
+        for index, (value, _label) in enumerate(_VIEW_MODE_CHOICES):
+            if value == view_mode:
+                self._view_mode.SetSelection(index)
+                break
 
     def _save_preferences(self, plan: TraceMatrixViewPlan) -> None:
         config = wx.Config.Get()
@@ -342,7 +430,9 @@ class TraceMatrixConfigDialog(wx.Dialog):
         config.WriteBool(f"{_CONFIG_DIALOG_PREFIX}/compact_symbols", plan.options.compact_symbols)
         config.WriteBool(f"{_CONFIG_DIALOG_PREFIX}/hide_unlinked", plan.options.hide_unlinked)
         config.Write(f"{_CONFIG_DIALOG_PREFIX}/output_format", plan.output_format)
-        config.Write(f"{_CONFIG_DIALOG_PREFIX}/selected_fields", ",".join(plan.options.selected_fields))
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/row_fields", ",".join(plan.options.row_fields))
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/column_fields", ",".join(plan.options.column_fields))
+        config.Write(f"{_CONFIG_DIALOG_PREFIX}/view_mode", plan.options.view_mode)
         config.Flush()
 
     def _on_ok(self, event: wx.CommandEvent) -> None:
@@ -372,22 +462,31 @@ class TraceMatrixConfigDialog(wx.Dialog):
         config = self.get_config()
         row_sort_field = _FIELD_CHOICES[self._rows_sort.GetSelection()]
         column_sort_field = _FIELD_CHOICES[self._columns_sort.GetSelection()]
-        selected_fields = tuple(
-            field for idx, field in enumerate(_FIELD_CHOICES) if self._fields.IsChecked(idx)
+        row_fields = tuple(
+            field for idx, field in enumerate(_FIELD_CHOICES) if self._row_fields.IsChecked(idx)
         )
-        if not selected_fields:
-            selected_fields = ("rid", "title")
+        if not row_fields:
+            row_fields = ("rid", "title")
+        column_fields = tuple(
+            field for idx, field in enumerate(_FIELD_CHOICES) if self._column_fields.IsChecked(idx)
+        )
+        if not column_fields:
+            column_fields = ("rid", "title")
         format_index = self._output_format.GetSelection()
         output_format = "interactive" if format_index == 0 else self._output_format.GetString(format_index)
+        view_mode_idx = self._view_mode.GetSelection()
+        view_mode = _VIEW_MODE_CHOICES[view_mode_idx][0] if 0 <= view_mode_idx < len(_VIEW_MODE_CHOICES) else "matrix"
 
         plan = TraceMatrixViewPlan(
             config=config,
             options=TraceMatrixDisplayOptions(
                 row_sort_field=row_sort_field,
                 column_sort_field=column_sort_field,
-                selected_fields=selected_fields,
+                row_fields=row_fields,
+                column_fields=column_fields,
                 compact_symbols=self._compact_symbols.GetValue(),
                 hide_unlinked=self._hide_unlinked.GetValue(),
+                view_mode=view_mode,
             ),
             output_format=output_format,
         )
@@ -831,7 +930,7 @@ class TraceMatrixFrame(wx.Frame):
         return plan.config
 
     def _on_export(self, _event: wx.CommandEvent) -> None:
-        wildcard = "HTML (*.html)|*.html|CSV (*.csv)|*.csv|JSON (*.json)|*.json"
+        wildcard = "HTML (*.html)|*.html|CSV (*.csv)|*.csv|JSON (*.json)|*.json|Markdown (*.md)|*.md|PDF (*.pdf)|*.pdf"
         dialog = wx.FileDialog(
             self,
             message=_("Export trace matrix"),
@@ -852,6 +951,10 @@ class TraceMatrixFrame(wx.Frame):
                 _write_matrix_csv(path, self.matrix, self.options)
             elif path.suffix.lower() == ".json":
                 _write_matrix_json(path, self.matrix, self.options)
+            elif path.suffix.lower() == ".md":
+                _write_matrix_markdown(path, self.matrix, self.options)
+            elif path.suffix.lower() == ".pdf":
+                _write_matrix_pdf(path, self.matrix, self.options)
             else:
                 wx.MessageBox(_("Unsupported file extension"), _("Error"))
                 return
@@ -881,8 +984,8 @@ class TraceMatrixFrame(wx.Frame):
         column_entry = self.matrix.columns[col]
         cell = self.matrix.cells.get((row_entry.rid, column_entry.rid))
         state = _DetailsState(
-            row_label=_build_axis_line(row_entry, self.options.selected_fields),
-            column_label=_build_axis_line(column_entry, self.options.selected_fields),
+            row_label=_build_axis_line(row_entry, self.options.row_fields),
+            column_label=_build_axis_line(column_entry, self.options.column_fields),
             link_details=_describe_links(cell, self.matrix.direction),
         )
         self.details_panel.show_state(state)
@@ -891,7 +994,7 @@ class TraceMatrixFrame(wx.Frame):
         if row < 0 or row >= len(self.matrix.rows):
             return
         state = _DetailsState(
-            row_label=_build_axis_line(self.matrix.rows[row], self.options.selected_fields),
+            row_label=_build_axis_line(self.matrix.rows[row], self.options.row_fields),
             column_label="",
             link_details=_("Select a cell to view link information."),
         )
@@ -902,7 +1005,7 @@ class TraceMatrixFrame(wx.Frame):
             return
         state = _DetailsState(
             row_label="",
-            column_label=_build_axis_line(self.matrix.columns[col], self.options.selected_fields),
+            column_label=_build_axis_line(self.matrix.columns[col], self.options.column_fields),
             link_details=_("Select a cell to view link information."),
         )
         self.details_panel.show_state(state)
@@ -965,6 +1068,369 @@ class TraceMatrixFrame(wx.Frame):
             dc.SelectObject(wx.NullBitmap)
 
 
+class _DirectionalTablePanel(wx.Panel):
+    """Simple sortable/filterable table for directional trace rows."""
+
+    def __init__(
+        self,
+        parent: wx.Window,
+        title: str,
+        rows: tuple[TraceDirectionalRow, ...],
+        *,
+        source_fields: tuple[str, ...],
+        target_fields: tuple[str, ...],
+        target_label: str,
+    ) -> None:
+        super().__init__(parent)
+        self._rows = rows
+        self._source_fields = source_fields or ("rid", "title")
+        self._target_fields = target_fields or ("rid", "title")
+        self._target_label = target_label
+        self._sort_column = 0
+        self._sort_ascending = True
+        self._filter_query = ""
+        self._column_keys: list[str] = [*self._source_fields, "__targets__"]
+        self._column_filter_values: dict[str, str] = {}
+        self._column_filter_ctrls: dict[str, wx.TextCtrl] = {}
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(wx.StaticText(self, label=title), 0, wx.ALL, self.FromDIP(8))
+
+        filter_row = wx.BoxSizer(wx.HORIZONTAL)
+        filter_row.Add(wx.StaticText(self, label=_("Filter")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, self.FromDIP(8))
+        self._filter_ctrl = wx.TextCtrl(self)
+        self._filter_ctrl.SetHint(_("Type to filter rows"))
+        self._filter_ctrl.Bind(wx.EVT_TEXT, self._on_filter_changed)
+        filter_row.Add(self._filter_ctrl, 1, wx.EXPAND)
+        root.Add(filter_row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(8))
+
+        self._summary = wx.StaticText(self, label="")
+        root.Add(self._summary, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(8))
+
+        filters_box = wx.StaticBoxSizer(wx.VERTICAL, self, _("Column filters"))
+        syntax_hint = wx.StaticText(
+            filters_box.GetStaticBox(),
+            label=_("Syntax: plain=contains, =exact, ^prefix, ~regex, empty, !empty"),
+        )
+        filters_box.Add(syntax_hint, 0, wx.LEFT | wx.RIGHT | wx.TOP, self.FromDIP(8))
+        filters_grid = wx.FlexGridSizer(cols=2, hgap=self.FromDIP(8), vgap=self.FromDIP(6))
+        filters_grid.AddGrowableCol(1, 1)
+        for key in self._column_keys:
+            label = self._target_label if key == "__targets__" else _field_label(key)
+            filters_grid.Add(wx.StaticText(filters_box.GetStaticBox(), label=label), 0, wx.ALIGN_CENTER_VERTICAL)
+            ctrl = wx.TextCtrl(filters_box.GetStaticBox())
+            ctrl.SetHint(_("Contains…"))
+            ctrl.Bind(wx.EVT_TEXT, lambda _evt, column_key=key: self._on_column_filter_changed(column_key))
+            filters_grid.Add(ctrl, 1, wx.EXPAND)
+            self._column_filter_ctrls[key] = ctrl
+            self._column_filter_values[key] = ""
+        filters_box.Add(filters_grid, 1, wx.EXPAND | wx.ALL, self.FromDIP(8))
+        clear_btn = wx.Button(filters_box.GetStaticBox(), label=_("Clear column filters"))
+        clear_btn.Bind(wx.EVT_BUTTON, self._on_clear_column_filters)
+        filters_box.Add(clear_btn, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(8))
+        root.Add(filters_box, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, self.FromDIP(8))
+
+        style = wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_THEME
+        self._list = wx.ListCtrl(self, style=style)
+        for idx, field in enumerate(self._source_fields):
+            self._list.InsertColumn(idx, _field_label(field))
+        self._list.InsertColumn(len(self._source_fields), target_label)
+        self._list.Bind(wx.EVT_LIST_COL_CLICK, self._on_column_clicked)
+        root.Add(self._list, 1, wx.ALL | wx.EXPAND, self.FromDIP(8))
+
+        self.SetSizer(root)
+        self._refresh_rows()
+
+    def _row_matches_filter(self, row: TraceDirectionalRow) -> bool:
+        query = self._filter_query.strip().lower()
+        source_values = {field: _entry_field_value(row.source, field).lower() for field in self._source_fields}
+        targets_text = self._render_targets(row).lower()
+
+        if query:
+            haystack = " ".join((*source_values.values(), targets_text))
+            if query not in haystack:
+                return False
+
+        for key, raw_filter in self._column_filter_values.items():
+            if not raw_filter.strip():
+                continue
+            if key == "__targets__":
+                if not self._match_filter(targets_text, raw_filter):
+                    return False
+            else:
+                value = source_values.get(key, "")
+                if not self._match_filter(value, raw_filter):
+                    return False
+
+        return True
+
+    @staticmethod
+    def _match_filter(value: str, raw_filter: str) -> bool:
+        expression = raw_filter.strip()
+        if not expression:
+            return True
+        lowered = expression.lower()
+        normalized_value = value.strip()
+        normalized_lower = normalized_value.lower()
+
+        if lowered == "empty":
+            return normalized_value == "" or normalized_value == "—"
+        if lowered == "!empty":
+            return normalized_value != "" and normalized_value != "—"
+        if expression.startswith("="):
+            target = expression[1:].strip().lower()
+            return normalized_lower == target
+        if expression.startswith("^"):
+            target = expression[1:].strip().lower()
+            return normalized_lower.startswith(target)
+        if expression.startswith("~"):
+            pattern = expression[1:].strip()
+            if not pattern:
+                return True
+            try:
+                return re.search(pattern, normalized_value, flags=re.IGNORECASE) is not None
+            except re.error:
+                return False
+        return lowered in normalized_lower
+
+    def _render_targets(self, row: TraceDirectionalRow) -> str:
+        if not row.targets:
+            return "—"
+        chunks: list[str] = []
+        for target in row.targets:
+            lines = [_entry_field_value(target, field).strip() for field in self._target_fields]
+            normalized = " | ".join(value for value in lines if value)
+            if normalized:
+                chunks.append(normalized)
+        return "; ".join(chunks) if chunks else "—"
+
+    def _refresh_rows(self) -> None:
+        visible = [row for row in self._rows if self._row_matches_filter(row)]
+        sort_key = self._column_keys[self._sort_column] if 0 <= self._sort_column < len(self._column_keys) else "rid"
+        if sort_key == "__targets__":
+            visible.sort(key=lambda row: self._render_targets(row).lower(), reverse=not self._sort_ascending)
+        else:
+            visible.sort(
+                key=lambda row: _entry_field_value(row.source, sort_key).lower(),
+                reverse=not self._sort_ascending,
+            )
+
+        self._list.Freeze()
+        try:
+            self._list.DeleteAllItems()
+            for row in visible:
+                first_value = _entry_field_value(row.source, self._source_fields[0])
+                idx = self._list.InsertItem(self._list.GetItemCount(), first_value)
+                for col, field in enumerate(self._source_fields[1:], start=1):
+                    self._list.SetItem(idx, col, _entry_field_value(row.source, field))
+                self._list.SetItem(idx, len(self._source_fields), self._render_targets(row))
+        finally:
+            self._list.Thaw()
+
+        for col in range(self._list.GetColumnCount()):
+            self._list.SetColumnWidth(col, wx.LIST_AUTOSIZE_USEHEADER)
+
+        total = len(self._rows)
+        shown = len(visible)
+        order = _("ascending") if self._sort_ascending else _("descending")
+        if 0 <= self._sort_column < len(self._column_keys):
+            key = self._column_keys[self._sort_column]
+            field_label = self._target_label if key == "__targets__" else _field_label(key)
+        else:
+            field_label = ""
+        self._summary.SetLabel(
+            _("Rows: {shown}/{total}. Sort: {field} ({order}).").format(
+                shown=shown,
+                total=total,
+                field=field_label or _("n/a"),
+                order=order,
+            )
+        )
+
+    def _on_filter_changed(self, _event: wx.CommandEvent) -> None:
+        self._filter_query = self._filter_ctrl.GetValue()
+        self._refresh_rows()
+
+    def _on_column_filter_changed(self, column_key: str) -> None:
+        ctrl = self._column_filter_ctrls.get(column_key)
+        self._column_filter_values[column_key] = ctrl.GetValue() if ctrl is not None else ""
+        self._refresh_rows()
+
+    def _on_clear_column_filters(self, _event: wx.CommandEvent) -> None:
+        for key, ctrl in self._column_filter_ctrls.items():
+            if ctrl.GetValue():
+                ctrl.ChangeValue("")
+            self._column_filter_values[key] = ""
+        self._refresh_rows()
+
+    def export_state(self) -> dict[str, str | int]:
+        column_filters = [
+            f"{key}:{self._column_filter_values.get(key, '').replace('|', '\\|').replace(':', '\\:')}"
+            for key in self._column_keys
+            if self._column_filter_values.get(key, "")
+        ]
+        return {
+            "query": self._filter_query,
+            "sort_column": self._sort_column,
+            "sort_ascending": int(self._sort_ascending),
+            "column_filters": "|".join(column_filters),
+        }
+
+    def apply_state(self, state: Mapping[str, str]) -> None:
+        query = state.get("query", "")
+        self._filter_query = query
+        self._filter_ctrl.ChangeValue(query)
+
+        raw_sort_col = state.get("sort_column", "0")
+        try:
+            sort_column = int(raw_sort_col)
+        except ValueError:
+            sort_column = 0
+        self._sort_column = sort_column if 0 <= sort_column < len(self._column_keys) else 0
+
+        self._sort_ascending = state.get("sort_ascending", "1") != "0"
+
+        for key in self._column_keys:
+            self._column_filter_values[key] = ""
+            ctrl = self._column_filter_ctrls.get(key)
+            if ctrl is not None:
+                ctrl.ChangeValue("")
+
+        raw_filters = state.get("column_filters", "")
+        if raw_filters:
+            parts: list[str] = []
+            chunk = ""
+            escape = False
+            for ch in raw_filters:
+                if escape:
+                    chunk += ch
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == "|":
+                    parts.append(chunk)
+                    chunk = ""
+                else:
+                    chunk += ch
+            parts.append(chunk)
+            for part in parts:
+                if not part:
+                    continue
+                key, _, value = part.partition(":")
+                if key not in self._column_filter_ctrls:
+                    continue
+                self._column_filter_values[key] = value
+                ctrl = self._column_filter_ctrls[key]
+                ctrl.ChangeValue(value)
+        self._refresh_rows()
+
+    def _on_column_clicked(self, event: wx.ListEvent) -> None:
+        col = event.GetColumn()
+        if col == self._sort_column:
+            self._sort_ascending = not self._sort_ascending
+        else:
+            self._sort_column = col
+            self._sort_ascending = True
+        self._refresh_rows()
+
+
+class TraceDirectionalTablesFrame(wx.Frame):
+    """Window that renders both directional trace tables."""
+
+    def __init__(
+        self,
+        parent: wx.Window | None,
+        bundle: TraceViewsBundle,
+        *,
+        options: TraceMatrixDisplayOptions | None = None,
+    ) -> None:
+        super().__init__(
+            parent,
+            title=_("Trace Directional Tables"),
+            style=wx.DEFAULT_FRAME_STYLE | wx.RESIZE_BORDER,
+        )
+        self.SetSize((self.FromDIP(1280), self.FromDIP(760)))
+        self.bundle = bundle
+        self.options = options or TraceMatrixDisplayOptions()
+        notebook = wx.Notebook(self)
+
+        forward = _DirectionalTablePanel(
+            notebook,
+            _("Top level requirements traced to bottom level"),
+            bundle.rows_to_columns.rows,
+            source_fields=self.options.row_fields,
+            target_fields=self.options.column_fields,
+            target_label=_("Traced to"),
+        )
+        reverse = _DirectionalTablePanel(
+            notebook,
+            _("Bottom level requirements traced to top level"),
+            bundle.columns_to_rows.rows,
+            source_fields=self.options.column_fields,
+            target_fields=self.options.row_fields,
+            target_label=_("Traced to"),
+        )
+        notebook.AddPage(forward, _("Top → Bottom"))
+        notebook.AddPage(reverse, _("Bottom → Top"))
+        self._forward_panel = forward
+        self._reverse_panel = reverse
+        self._preferences_saved = False
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(notebook, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+        self._restore_preferences()
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+
+    def _restore_preferences(self) -> None:
+        config = _ensure_wx_config()
+        width = _read_config_int(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/width", self.GetSize().Width)
+        height = _read_config_int(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/height", self.GetSize().Height)
+        if width > 0 and height > 0:
+            self.SetSize((width, height))
+
+        forward_state = {
+            "query": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/forward/query", ""),
+            "sort_column": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/forward/sort_column", "0"),
+            "sort_ascending": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/forward/sort_ascending", "1"),
+            "column_filters": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/forward/column_filters", ""),
+        }
+        reverse_state = {
+            "query": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/reverse/query", ""),
+            "sort_column": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/reverse/sort_column", "0"),
+            "sort_ascending": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/reverse/sort_ascending", "1"),
+            "column_filters": _read_config_str(config, f"{_CONFIG_DIRECTIONAL_PREFIX}/reverse/column_filters", ""),
+        }
+        self._forward_panel.apply_state(forward_state)
+        self._reverse_panel.apply_state(reverse_state)
+
+    def _save_preferences(self) -> None:
+        if self._preferences_saved:
+            return
+        config = _ensure_wx_config()
+        size = self.GetSize()
+        config.WriteInt(f"{_CONFIG_DIRECTIONAL_PREFIX}/width", int(size.Width))
+        config.WriteInt(f"{_CONFIG_DIRECTIONAL_PREFIX}/height", int(size.Height))
+
+        forward_state = self._forward_panel.export_state()
+        reverse_state = self._reverse_panel.export_state()
+        for key, value in forward_state.items():
+            config.Write(f"{_CONFIG_DIRECTIONAL_PREFIX}/forward/{key}", str(value))
+        for key, value in reverse_state.items():
+            config.Write(f"{_CONFIG_DIRECTIONAL_PREFIX}/reverse/{key}", str(value))
+        config.Flush()
+        self._preferences_saved = True
+
+    def _on_close(self, event: wx.CloseEvent) -> None:
+        self._save_preferences()
+        event.Skip()
+
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        self._save_preferences()
+        event.Skip()
+
+
 def _describe_links(cell: TraceMatrixCell | None, direction: TraceDirection) -> str:
     if cell is None or not cell.links:
         return _("No links.")
@@ -983,7 +1449,7 @@ def _describe_links(cell: TraceMatrixCell | None, direction: TraceDirection) -> 
 def _write_matrix_csv(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
     with path.open("w", encoding=text_export_encoding(path), newline="") as out:
         writer = csv.writer(out)
-        header = [field.upper() for field in options.selected_fields]
+        header = [field.upper() for field in options.row_fields]
         header.extend(column.rid for column in matrix.columns)
         writer.writerow(header)
         for row in matrix.rows:
@@ -994,7 +1460,7 @@ def _write_matrix_csv(path: Path, matrix: TraceMatrix, options: TraceMatrixDispl
                     cells.append("")
                 else:
                     cells.append("suspect" if cell.suspect else "linked")
-            writer.writerow([_entry_field_value(row, field) for field in options.selected_fields] + cells)
+            writer.writerow([_entry_field_value(row, field) for field in options.row_fields] + cells)
 
 
 def _write_matrix_html(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
@@ -1002,14 +1468,14 @@ def _write_matrix_html(path: Path, matrix: TraceMatrix, options: TraceMatrixDisp
         out.write("<!DOCTYPE html><html><head><meta charset='utf-8'>")
         out.write("<style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px}thead th{position:sticky;top:0;background:#f2f2f2}.linked{background:#d1f2d9}.suspect{background:#fff3cd}</style>")
         out.write("</head><body><h1>Trace matrix</h1><table><thead><tr>")
-        for field in options.selected_fields:
+        for field in options.row_fields:
             out.write(f"<th>{html.escape(field.upper())}</th>")
         for column in matrix.columns:
             out.write(f"<th>{html.escape(column.rid)}</th>")
         out.write("</tr></thead><tbody>")
         for row in matrix.rows:
             out.write("<tr>")
-            for field in options.selected_fields:
+            for field in options.row_fields:
                 out.write(f"<td>{html.escape(_entry_field_value(row, field))}</td>")
             for column in matrix.columns:
                 cell = matrix.cells.get((row.rid, column.rid))
@@ -1026,12 +1492,16 @@ def _write_matrix_html(path: Path, matrix: TraceMatrix, options: TraceMatrixDisp
 def _write_matrix_json(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
     payload = {
         "direction": matrix.direction.value,
-        "selected_fields": list(options.selected_fields),
+        "row_fields": list(options.row_fields),
+        "column_fields": list(options.column_fields),
         "rows": [
-            {field: _entry_field_value(entry, field) for field in options.selected_fields}
+            {field: _entry_field_value(entry, field) for field in options.row_fields}
             for entry in matrix.rows
         ],
-        "columns": [column.rid for column in matrix.columns],
+        "columns": [
+            {field: _entry_field_value(entry, field) for field in options.column_fields}
+            for entry in matrix.columns
+        ],
         "summary": {
             "total_rows": matrix.summary.total_rows,
             "total_columns": matrix.summary.total_columns,
@@ -1046,8 +1516,359 @@ def _write_matrix_json(path: Path, matrix: TraceMatrix, options: TraceMatrixDisp
         json.dump(payload, out, ensure_ascii=False, indent=2, sort_keys=True)
 
 
+def _write_matrix_markdown(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
+    with path.open("w", encoding="utf-8") as out:
+        out.write("# Trace matrix\n\n")
+        header = [field.upper() for field in options.row_fields]
+        header.extend(column.rid for column in matrix.columns)
+        out.write("| " + " | ".join(header) + " |\n")
+        out.write("| " + " | ".join("---" for _ in header) + " |\n")
+        for row in matrix.rows:
+            values = [_entry_field_value(row, field).replace("\n", " ").strip() for field in options.row_fields]
+            for column in matrix.columns:
+                cell = matrix.cells.get((row.rid, column.rid))
+                if not cell or not cell.links:
+                    values.append("—")
+                else:
+                    values.append("!" if cell.suspect else "✓")
+            out.write("| " + " | ".join(values) + " |\n")
+
+
+def _write_matrix_pdf(path: Path, matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> None:
+    document = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm)
+    header = [field.upper() for field in options.row_fields]
+    header.extend(column.rid for column in matrix.columns)
+    data: list[list[str]] = [header]
+    for row in matrix.rows:
+        row_values = [_entry_field_value(row, field) for field in options.row_fields]
+        for column in matrix.columns:
+            cell = matrix.cells.get((row.rid, column.rid))
+            if not cell or not cell.links:
+                row_values.append("—")
+            else:
+                row_values.append("!" if cell.suspect else "✓")
+        data.append(row_values)
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    document.build([table])
+
+
+def _directional_headers(
+    source_fields: tuple[str, ...],
+    target_label: str,
+) -> list[str]:
+    return [field.upper() for field in source_fields] + [target_label]
+
+
+def _directional_row_values(
+    row: TraceDirectionalRow,
+    *,
+    source_fields: tuple[str, ...],
+    target_fields: tuple[str, ...],
+) -> list[str]:
+    source_values = [_entry_field_value(row.source, field) for field in source_fields]
+    if not row.targets:
+        return [*source_values, "—"]
+    chunks: list[str] = []
+    for target in row.targets:
+        values = [_entry_field_value(target, field).strip() for field in target_fields]
+        normalized = " | ".join(value for value in values if value)
+        if normalized:
+            chunks.append(normalized)
+    return [*source_values, "; ".join(chunks) if chunks else "—"]
+
+
+def _write_directional_markdown(path: Path, bundle: TraceViewsBundle, options: TraceMatrixDisplayOptions) -> None:
+    with path.open("w", encoding="utf-8") as out:
+        out.write("# Trace directional tables\n\n")
+        sections = (
+            (
+                _("Top → Bottom"),
+                bundle.rows_to_columns,
+                options.row_fields,
+                options.column_fields,
+            ),
+            (
+                _("Bottom → Top"),
+                bundle.columns_to_rows,
+                options.column_fields,
+                options.row_fields,
+            ),
+        )
+        for section_title, table, source_fields, target_fields in sections:
+            out.write(f"## {section_title}\n\n")
+            header = _directional_headers(source_fields, _("Traced to"))
+            out.write("| " + " | ".join(header) + " |\n")
+            out.write("| " + " | ".join("---" for _ in header) + " |\n")
+            for row in table.rows:
+                values = _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                )
+                escaped = [value.replace("\n", " ").strip() for value in values]
+                out.write("| " + " | ".join(escaped) + " |\n")
+            out.write("\n")
+
+
+def _write_directional_html(path: Path, bundle: TraceViewsBundle, options: TraceMatrixDisplayOptions) -> None:
+    with path.open("w", encoding="utf-8") as out:
+        out.write("<!DOCTYPE html><html><head><meta charset='utf-8'>")
+        out.write("<style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%;margin-bottom:20px}th,td{border:1px solid #ccc;padding:6px;vertical-align:top}thead th{background:#f2f2f2}</style>")
+        out.write("</head><body><h1>Trace directional tables</h1>")
+
+        sections = (
+            (
+                _("Top → Bottom"),
+                bundle.rows_to_columns,
+                options.row_fields,
+                options.column_fields,
+            ),
+            (
+                _("Bottom → Top"),
+                bundle.columns_to_rows,
+                options.column_fields,
+                options.row_fields,
+            ),
+        )
+        for section_title, table, source_fields, target_fields in sections:
+            out.write(f"<h2>{html.escape(section_title)}</h2><table><thead><tr>")
+            for head in _directional_headers(source_fields, _("Traced to")):
+                out.write(f"<th>{html.escape(head)}</th>")
+            out.write("</tr></thead><tbody>")
+            for row in table.rows:
+                out.write("<tr>")
+                for value in _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                ):
+                    out.write(f"<td>{html.escape(value)}</td>")
+                out.write("</tr>")
+            out.write("</tbody></table>")
+
+        out.write("</body></html>")
+
+
+def _write_directional_pdf(path: Path, bundle: TraceViewsBundle, options: TraceMatrixDisplayOptions) -> None:
+    story = []
+    sections = (
+        (
+            bundle.rows_to_columns,
+            options.row_fields,
+            options.column_fields,
+        ),
+        (
+            bundle.columns_to_rows,
+            options.column_fields,
+            options.row_fields,
+        ),
+    )
+    for table, source_fields, target_fields in sections:
+        header = _directional_headers(source_fields, _("Traced to"))
+        data = [header]
+        for row in table.rows:
+            data.append(
+                _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                )
+            )
+        rendered = Table(data, repeatRows=1)
+        rendered.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(rendered)
+
+    document = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm)
+    document.build(story)
+
+
+def _write_combined_markdown(
+    path: Path,
+    matrix: TraceMatrix,
+    bundle: TraceViewsBundle,
+    options: TraceMatrixDisplayOptions,
+) -> None:
+    with path.open("w", encoding="utf-8") as out:
+        out.write("# Trace report\n\n")
+        out.write("## Matrix\n\n")
+        header = [field.upper() for field in options.row_fields]
+        header.extend(column.rid for column in matrix.columns)
+        out.write("| " + " | ".join(header) + " |\n")
+        out.write("| " + " | ".join("---" for _ in header) + " |\n")
+        for row in matrix.rows:
+            values = [_entry_field_value(row, field).replace("\n", " ").strip() for field in options.row_fields]
+            for column in matrix.columns:
+                cell = matrix.cells.get((row.rid, column.rid))
+                if not cell or not cell.links:
+                    values.append("—")
+                else:
+                    values.append("!" if cell.suspect else "✓")
+            out.write("| " + " | ".join(values) + " |\n")
+        out.write("\n## Directional views\n\n")
+        sections = (
+            (_("Top → Bottom"), bundle.rows_to_columns, options.row_fields, options.column_fields),
+            (_("Bottom → Top"), bundle.columns_to_rows, options.column_fields, options.row_fields),
+        )
+        for section_title, table, source_fields, target_fields in sections:
+            out.write(f"### {section_title}\n\n")
+            direction_header = _directional_headers(source_fields, _("Traced to"))
+            out.write("| " + " | ".join(direction_header) + " |\n")
+            out.write("| " + " | ".join("---" for _ in direction_header) + " |\n")
+            for row in table.rows:
+                values = _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                )
+                escaped = [value.replace("\n", " ").strip() for value in values]
+                out.write("| " + " | ".join(escaped) + " |\n")
+            out.write("\n")
+
+
+def _write_combined_html(
+    path: Path,
+    matrix: TraceMatrix,
+    bundle: TraceViewsBundle,
+    options: TraceMatrixDisplayOptions,
+) -> None:
+    with path.open("w", encoding="utf-8") as out:
+        out.write("<!DOCTYPE html><html><head><meta charset='utf-8'>")
+        out.write("<style>body{font-family:Arial,sans-serif;margin:24px}table{border-collapse:collapse;width:100%;margin-bottom:20px}th,td{border:1px solid #ccc;padding:6px;vertical-align:top}thead th{background:#f2f2f2}.linked{background:#d1f2d9}.suspect{background:#fff3cd}</style>")
+        out.write("</head><body><h1>Trace report</h1><h2>Matrix</h2><table><thead><tr>")
+        for field in options.row_fields:
+            out.write(f"<th>{html.escape(field.upper())}</th>")
+        for column in matrix.columns:
+            out.write(f"<th>{html.escape(column.rid)}</th>")
+        out.write("</tr></thead><tbody>")
+        for row in matrix.rows:
+            out.write("<tr>")
+            for field in options.row_fields:
+                out.write(f"<td>{html.escape(_entry_field_value(row, field))}</td>")
+            for column in matrix.columns:
+                cell = matrix.cells.get((row.rid, column.rid))
+                if not cell or not cell.links:
+                    out.write("<td>—</td>")
+                else:
+                    cls = "suspect" if cell.suspect else "linked"
+                    marker = "!" if cell.suspect else "✓"
+                    out.write(f"<td class='{cls}'>{marker}</td>")
+            out.write("</tr>")
+        out.write("</tbody></table><h2>Directional views</h2>")
+
+        sections = (
+            (_("Top → Bottom"), bundle.rows_to_columns, options.row_fields, options.column_fields),
+            (_("Bottom → Top"), bundle.columns_to_rows, options.column_fields, options.row_fields),
+        )
+        for section_title, table, source_fields, target_fields in sections:
+            out.write(f"<h3>{html.escape(section_title)}</h3><table><thead><tr>")
+            for head in _directional_headers(source_fields, _("Traced to")):
+                out.write(f"<th>{html.escape(head)}</th>")
+            out.write("</tr></thead><tbody>")
+            for row in table.rows:
+                out.write("<tr>")
+                for value in _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                ):
+                    out.write(f"<td>{html.escape(value)}</td>")
+                out.write("</tr>")
+            out.write("</tbody></table>")
+        out.write("</body></html>")
+
+
+def _write_combined_pdf(
+    path: Path,
+    matrix: TraceMatrix,
+    bundle: TraceViewsBundle,
+    options: TraceMatrixDisplayOptions,
+) -> None:
+    story = []
+    matrix_header = [field.upper() for field in options.row_fields]
+    matrix_header.extend(column.rid for column in matrix.columns)
+    matrix_data = [matrix_header]
+    for row in matrix.rows:
+        values = [_entry_field_value(row, field) for field in options.row_fields]
+        for column in matrix.columns:
+            cell = matrix.cells.get((row.rid, column.rid))
+            values.append("—" if not cell or not cell.links else ("!" if cell.suspect else "✓"))
+        matrix_data.append(values)
+    matrix_table = Table(matrix_data, repeatRows=1)
+    matrix_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(matrix_table)
+
+    sections = (
+        (bundle.rows_to_columns, options.row_fields, options.column_fields),
+        (bundle.columns_to_rows, options.column_fields, options.row_fields),
+    )
+    for table, source_fields, target_fields in sections:
+        header = _directional_headers(source_fields, _("Traced to"))
+        data = [header]
+        for row in table.rows:
+            data.append(
+                _directional_row_values(
+                    row,
+                    source_fields=source_fields,
+                    target_fields=target_fields,
+                )
+            )
+        directional_table = Table(data, repeatRows=1)
+        directional_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2f2f2")),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(directional_table)
+
+    document = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm)
+    document.build(story)
+
+
 __all__ = [
     "TraceMatrixConfigDialog",
+    "TraceDirectionalTablesFrame",
     "TraceMatrixDisplayOptions",
     "TraceMatrixFrame",
     "TraceMatrixViewPlan",

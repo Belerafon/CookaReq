@@ -262,3 +262,82 @@ def test_trace_matrix_auto_recovers_direction_when_selected_mode_has_no_links(
         if not frame.IsBeingDeleted():
             frame.Destroy()
         wx_app.Yield()
+
+
+def test_trace_matrix_logs_error_when_matrix_build_fails(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+    caplog,
+):
+    """Trace matrix failures should be logged before showing a popup."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    try:
+        from types import SimpleNamespace
+
+        from app.core.trace_matrix import TraceDirection, TraceMatrixAxisConfig, TraceMatrixConfig
+        from app.ui.trace_matrix import TraceMatrixDisplayOptions, TraceMatrixViewPlan
+        import app.ui.trace_matrix as trace_matrix_module
+
+        class _Controller:
+            def __init__(self):
+                self.documents = {
+                    "SYS": SimpleNamespace(prefix="SYS", title="System", parent=None),
+                    "HLR": SimpleNamespace(prefix="HLR", title="High", parent="SYS"),
+                }
+
+            def load_documents(self):
+                return self.documents
+
+            def build_trace_matrix(self, _config):
+                raise SyntaxError("'(' was never closed (trace_matrix.py, line 170)")
+
+        frame.docs_controller = _Controller()
+        frame.current_dir = tmp_path
+        frame.current_doc_prefix = "SYS"
+
+        class _DialogStub:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def get_plan(self):
+                return TraceMatrixViewPlan(
+                    config=TraceMatrixConfig(
+                        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+                        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+                        direction=TraceDirection.CHILD_TO_PARENT,
+                    ),
+                    options=TraceMatrixDisplayOptions(),
+                    output_format="interactive",
+                )
+
+            def Destroy(self):
+                return None
+
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixConfigDialog", _DialogStub)
+
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert intercept_message_box
+        assert "never closed" in intercept_message_box[0][0]
+        assert "Failed to build trace matrix for plan" in caplog.text
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()

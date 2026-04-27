@@ -1727,12 +1727,14 @@ class MainFrameDocumentsMixin:
         try:
             from ..trace_matrix import TraceDirectionalTablesFrame, TraceMatrixConfigDialog, TraceMatrixFrame
         except Exception as exc:  # pragma: no cover - missing wx
+            logger.exception("Failed to import trace matrix UI module")
             wx.MessageBox(str(exc), _("Error"))
             return
         controller = self.docs_controller
         try:
             documents = controller.load_documents()
         except Exception as exc:  # pragma: no cover - defensive guard
+            logger.exception("Failed to load documents before opening trace matrix")
             wx.MessageBox(str(exc), _("Error"))
             return
         if not documents:
@@ -1783,6 +1785,7 @@ class MainFrameDocumentsMixin:
                 plan = replace(plan, config=recovered_config)
                 matrix = recovered_matrix
         except Exception as exc:  # pragma: no cover - report via UI
+            logger.exception("Failed to build trace matrix for plan: %s", plan)
             wx.MessageBox(str(exc), _("Error"))
             return
         if not matrix.rows or not matrix.columns:
@@ -1886,6 +1889,10 @@ class MainFrameDocumentsMixin:
                         wx.MessageBox(_("Unsupported file extension"), _("Error"))
                         frame.Destroy()
                         return
+            except Exception as exc:
+                logger.exception("Failed to export trace matrix to %s", path)
+                wx.MessageBox(str(exc), _("Error"))
+                return
             finally:
                 frame.Destroy()
             wx.MessageBox(_("Trace matrix exported"), _("Done"))
@@ -1895,6 +1902,7 @@ class MainFrameDocumentsMixin:
             try:
                 views = controller.build_trace_views(plan.config)
             except Exception as exc:  # pragma: no cover - report via UI
+                logger.exception("Failed to build directional trace views")
                 wx.MessageBox(str(exc), _("Error"))
                 return
             direction_frame = TraceDirectionalTablesFrame(self, views, options=plan.options)

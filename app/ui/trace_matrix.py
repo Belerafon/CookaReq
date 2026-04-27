@@ -17,7 +17,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
-from ..services.requirements import Document
+from ..services.requirements import Document, title_starts_with_rid
 from ..core.trace_matrix import (
     TraceDirection,
     TraceDirectionalRow,
@@ -158,31 +158,7 @@ def _entry_field_value(entry, field: str) -> str:
     return str(value)
 
 
-def _build_axis_line(entry, selected_fields: tuple[str, ...]) -> str:
-    lines = [_entry_field_value(entry, field) for field in selected_fields]
-    filtered = [line for line in lines if line.strip()]
-    return "\n".join(filtered)
-
-
-def apply_display_options(matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> TraceMatrix:
-    """Return matrix reordered/filtered according to ``options``."""
-
-    rows = tuple(sorted(matrix.rows, key=lambda entry: _entry_field_value(entry, options.row_sort_field)))
-    columns = tuple(
-        sorted(matrix.columns, key=lambda entry: _entry_field_value(entry, options.column_sort_field))
-    )
-
-    if options.hide_unlinked:
-        rows = tuple(
-            row for row in rows if any(matrix.cells.get((row.rid, column.rid)) for column in columns)
-        )
-        columns = tuple(
-            column for column in columns if any(matrix.cells.get((row.rid, column.rid)) for row in rows)
-        )
-
-    return TraceMatrix(
-        config=matrix.config,
-        direction=matrix.direction,
+    if rid_value and title_value and title_starts_with_rid(title_value, rid_value):
         rows=rows,
         columns=columns,
         cells=matrix.cells,

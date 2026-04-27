@@ -28,7 +28,7 @@ from .documents import (
     validate_labels,
 )
 
-RID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(\d+)$")
+RID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)-?0*(\d+)$")
 KNOWN_REQUIREMENT_FIELDS = {f.name for f in fields(Requirement)}
 
 EDITABLE_SINGLE_FIELDS = {

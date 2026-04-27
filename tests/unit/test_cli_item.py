@@ -125,7 +125,7 @@ def test_item_edit_keeps_revision_when_statement_not_changed(tmp_path, capsys, c
 
 @pytest.mark.unit
 def test_item_edit_rejects_invalid_rid(tmp_path, capsys, cli_context):
-    edit_args = argparse.Namespace(directory=str(tmp_path), rid="SYS-0001")
+    edit_args = argparse.Namespace(directory=str(tmp_path), rid="SYS--0001")
 
     commands.cmd_item_edit(edit_args, cli_context)
 

@@ -61,6 +61,9 @@ __all__ = [
     "stable_color",
     "parse_rid",
     "rid_for",
+    "canonicalize_rid",
+    "same_rid",
+    "title_starts_with_rid",
 ]
 
 iter_links = doc_store.iter_links
@@ -68,6 +71,29 @@ label_color = doc_store.label_color
 stable_color = doc_store.stable_color
 parse_rid = doc_store.parse_rid
 rid_for = doc_store.rid_for
+
+
+def canonicalize_rid(rid: str) -> str:
+    """Return canonical RID form ``<PREFIX><number>`` for ``rid``."""
+    prefix, numeric = parse_rid(str(rid).strip())
+    return f"{prefix}{numeric}"
+
+
+def same_rid(left: str, right: str) -> bool:
+    """Return ``True`` when two RID strings identify the same requirement."""
+    try:
+        return canonicalize_rid(left) == canonicalize_rid(right)
+    except ValueError:
+        return False
+
+
+def title_starts_with_rid(title: str, rid: str) -> bool:
+    """Return ``True`` when ``title`` begins with ``rid`` (dash/zero variants allowed)."""
+    title_text = str(title).strip()
+    if not title_text:
+        return False
+    first_token = title_text.split(maxsplit=1)[0]
+    return same_rid(first_token, rid)
 
 
 @dataclass

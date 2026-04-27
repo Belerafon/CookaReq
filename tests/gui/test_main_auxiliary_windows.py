@@ -150,3 +150,115 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_
         if not frame.IsBeingDeleted():
             frame.Destroy()
         wx_app.Yield()
+
+
+def test_trace_matrix_auto_recovers_direction_when_selected_mode_has_no_links(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+):
+    """Main frame should flip direction if reverse configuration is the only linked one."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    try:
+        from types import SimpleNamespace
+
+        from app.core.trace_matrix import (
+            TraceDirection,
+            TraceMatrixAxisConfig,
+            TraceMatrixConfig,
+        )
+        from app.ui.trace_matrix import TraceMatrixDisplayOptions, TraceMatrixViewPlan
+        import app.ui.trace_matrix as trace_matrix_module
+
+        class _Controller:
+            def __init__(self):
+                self.documents = {
+                    "SYS": SimpleNamespace(prefix="SYS", title="System", parent=None),
+                    "HLR": SimpleNamespace(prefix="HLR", title="High", parent="SYS"),
+                }
+
+            def load_documents(self):
+                return self.documents
+
+            def build_trace_matrix(self, config):
+                entry = SimpleNamespace(rid="SYS1")
+                linked_pairs = 6 if config.direction == TraceDirection.PARENT_TO_CHILD else 0
+                summary = SimpleNamespace(
+                    total_rows=6,
+                    total_columns=6,
+                    total_pairs=36,
+                    linked_pairs=linked_pairs,
+                    link_count=linked_pairs,
+                    row_coverage=1.0 if linked_pairs else 0.0,
+                    column_coverage=1.0 if linked_pairs else 0.0,
+                    pair_coverage=(linked_pairs / 36) if linked_pairs else 0.0,
+                    orphan_rows=(),
+                    orphan_columns=(),
+                )
+                return SimpleNamespace(
+                    config=config,
+                    direction=config.direction,
+                    rows=(entry,),
+                    columns=(entry,),
+                    cells={},
+                    summary=summary,
+                )
+
+        frame.docs_controller = _Controller()
+        frame.current_dir = tmp_path
+        frame.current_doc_prefix = "SYS"
+
+        class _DialogStub:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def get_plan(self):
+                return TraceMatrixViewPlan(
+                    config=TraceMatrixConfig(
+                        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+                        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+                        direction=TraceDirection.CHILD_TO_PARENT,
+                    ),
+                    options=TraceMatrixDisplayOptions(),
+                    output_format="interactive",
+                )
+
+            def Destroy(self):
+                return None
+
+        captured: dict[str, object] = {}
+
+        class _MatrixFrameStub(wx.Frame):
+            def __init__(self, parent, controller, config, matrix, options=None):
+                super().__init__(parent, title="Trace Matrix Stub")
+                captured["direction"] = config.direction
+                captured["linked_pairs"] = matrix.summary.linked_pairs
+
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixConfigDialog", _DialogStub)
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixFrame", _MatrixFrameStub)
+
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert captured["direction"] == TraceDirection.PARENT_TO_CHILD
+        assert captured["linked_pairs"] == 6
+        assert intercept_message_box == []
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()

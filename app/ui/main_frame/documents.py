@@ -87,6 +87,34 @@ def _infer_trace_direction(
     return TraceDirection.CHILD_TO_PARENT
 
 
+def _recover_trace_matrix_direction(
+    controller: object,
+    config: object,
+    matrix: object,
+) -> tuple[object, object, bool]:
+    """Switch direction when current configuration has zero links but reverse has matches."""
+    from ...core.trace_matrix import TraceDirection
+
+    linked_pairs = int(getattr(getattr(matrix, "summary", None), "linked_pairs", 0) or 0)
+    if linked_pairs > 0:
+        return config, matrix, False
+
+    current_direction = getattr(config, "direction", TraceDirection.CHILD_TO_PARENT)
+    reverse_direction = (
+        TraceDirection.PARENT_TO_CHILD
+        if current_direction == TraceDirection.CHILD_TO_PARENT
+        else TraceDirection.CHILD_TO_PARENT
+    )
+    reverse_config = replace(config, direction=reverse_direction)
+    reverse_matrix = controller.build_trace_matrix(reverse_config)
+    reverse_linked_pairs = int(
+        getattr(getattr(reverse_matrix, "summary", None), "linked_pairs", 0) or 0
+    )
+    if reverse_linked_pairs > linked_pairs:
+        return reverse_config, reverse_matrix, True
+    return config, matrix, False
+
+
 class MainFrameDocumentsMixin:
     """Encapsulate document-related handlers and helpers."""
 
@@ -1746,6 +1774,14 @@ class MainFrameDocumentsMixin:
 
         try:
             matrix = controller.build_trace_matrix(plan.config)
+            recovered_config, recovered_matrix, recovered = _recover_trace_matrix_direction(
+                controller,
+                plan.config,
+                matrix,
+            )
+            if recovered:
+                plan = replace(plan, config=recovered_config)
+                matrix = recovered_matrix
         except Exception as exc:  # pragma: no cover - report via UI
             wx.MessageBox(str(exc), _("Error"))
             return

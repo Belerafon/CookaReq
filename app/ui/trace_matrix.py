@@ -158,15 +158,46 @@ def _entry_field_value(entry, field: str) -> str:
     return str(value)
 
 
-    """Render one directional target row without duplicating equivalent RID/title prefixes."""
+def _build_axis_line(entry, selected_fields: tuple[str, ...]) -> str:
+    lines = [_entry_field_value(entry, field) for field in selected_fields]
+    filtered = [line for line in lines if line.strip()]
+    return "\n".join(filtered)
+
+
+def _normalize_directional_target_values(values: list[str], target_fields: tuple[str, ...]) -> list[str]:
+    """Drop duplicate RID when title already starts with the same identifier."""
     field_to_value = dict(zip(target_fields, values, strict=False))
     rid_value = field_to_value.get("rid", "").strip()
     title_value = field_to_value.get("title", "").strip()
-        values = [
-            value
-            for idx, value in enumerate(values)
-            if target_fields[idx] != "rid"
-        ]
+    if rid_value and title_value and title_starts_with_rid(title_value, rid_value):
+        return [value for idx, value in enumerate(values) if target_fields[idx] != "rid"]
+    return values
+
+
+def apply_display_options(matrix: TraceMatrix, options: TraceMatrixDisplayOptions) -> TraceMatrix:
+    """Return matrix reordered/filtered according to ``options``."""
+
+    rows = tuple(sorted(matrix.rows, key=lambda entry: _entry_field_value(entry, options.row_sort_field)))
+    columns = tuple(sorted(matrix.columns, key=lambda entry: _entry_field_value(entry, options.column_sort_field)))
+
+    if options.hide_unlinked:
+        rows = tuple(
+            row
+            for row in rows
+            if any((cell := matrix.cells.get((row.rid, column.rid))) is not None and cell.links for column in columns)
+        )
+        columns = tuple(
+            column
+            for column in columns
+            if any((cell := matrix.cells.get((row.rid, column.rid))) is not None and cell.links for row in rows)
+        )
+
+    return TraceMatrix(
+        config=matrix.config,
+        direction=matrix.direction,
+        rows=rows,
+        columns=columns,
+        cells=matrix.cells,
         summary=matrix.summary,
         documents=matrix.documents,
     )
@@ -1565,6 +1596,7 @@ def _directional_row_values(
     chunks: list[str] = []
     for target in row.targets:
         values = [_entry_field_value(target, field).strip() for field in target_fields]
+        values = _normalize_directional_target_values(values, target_fields)
         normalized = " | ".join(value for value in values if value)
         if normalized:
             chunks.append(normalized)

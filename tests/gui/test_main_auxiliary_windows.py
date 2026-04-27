@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import types
 
 import pytest
@@ -337,6 +338,63 @@ def test_trace_matrix_logs_error_when_matrix_build_fails(
         assert intercept_message_box
         assert "never closed" in intercept_message_box[0][0]
         assert "Failed to build trace matrix for plan" in caplog.text
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_matrix_import_syntax_error_shows_recovery_hint(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+    caplog,
+):
+    """Syntax errors during trace-matrix import should include actionable recovery steps."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    frame.current_dir = tmp_path
+    frame.current_doc_prefix = "SYS"
+    frame.docs_controller = object()
+
+    real_import = builtins.__import__
+
+    def _failing_import(name, globals=None, locals=None, fromlist=(), level=0):
+        resolved_name = name
+        if level > 0 and globals and "__package__" in globals:
+            package = globals["__package__"] or ""
+            parts = package.split(".")
+            keep = max(0, len(parts) - level + 1)
+            prefix = ".".join(parts[:keep])
+            resolved_name = f"{prefix}.{name}" if prefix else name
+        if resolved_name == "app.ui.trace_matrix":
+            raise SyntaxError("unmatched ')'", ("app/ui/trace_matrix.py", 167, 5, ")"))
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _failing_import)
+
+    try:
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert intercept_message_box
+        message, caption, _style = intercept_message_box[0]
+        assert caption == "Error"
+        assert "py_compile app/ui/trace_matrix.py" in message
+        assert "git restore app/ui/trace_matrix.py" in message
+        assert "app/ui/trace_matrix.py:167" in message
+        assert "Failed to import trace matrix UI module" in caplog.text
     finally:
         if not frame.IsBeingDeleted():
             frame.Destroy()

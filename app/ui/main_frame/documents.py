@@ -1728,7 +1728,19 @@ class MainFrameDocumentsMixin:
             from ..trace_matrix import TraceDirectionalTablesFrame, TraceMatrixConfigDialog, TraceMatrixFrame
         except Exception as exc:  # pragma: no cover - missing wx
             logger.exception("Failed to import trace matrix UI module")
-            wx.MessageBox(str(exc), _("Error"))
+            if isinstance(exc, SyntaxError):
+                syntax_path = str(getattr(exc, "filename", "app/ui/trace_matrix.py"))
+                syntax_line = int(getattr(exc, "lineno", 0) or 0)
+                hint = _(
+                    "Trace matrix module has invalid Python syntax in your local working copy.\n"
+                    "Check for unresolved merge/conflict edits and run:\n"
+                    "python3 -m py_compile app/ui/trace_matrix.py\n"
+                    "git restore app/ui/trace_matrix.py"
+                )
+                details = f"{exc}\n\n{hint}\n{syntax_path}:{syntax_line}"
+                wx.MessageBox(details, _("Error"))
+            else:
+                wx.MessageBox(str(exc), _("Error"))
             return
         controller = self.docs_controller
         try:

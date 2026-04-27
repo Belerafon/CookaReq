@@ -40,6 +40,7 @@ from ..labels_dialog import LabelsDialog
 from ..requirement_exporter import build_tabular_export
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from ...core.trace_matrix import TraceDirection
     from .frame import MainFrame
 
 
@@ -51,6 +52,39 @@ def _format_display_path(path: Path, *, max_parts: int = 3) -> str:
     if len(parts) <= max_parts:
         return str(path)
     return f"…/{'/'.join(parts[-max_parts:])}"
+
+
+def _infer_trace_direction(
+    documents: Mapping[str, object],
+    *,
+    row_prefix: str | None,
+    column_prefix: str | None,
+) -> TraceDirection:
+    """Infer default trace direction from selected document hierarchy."""
+    from ...core.trace_matrix import TraceDirection
+
+    if not row_prefix or not column_prefix or row_prefix == column_prefix:
+        return TraceDirection.CHILD_TO_PARENT
+
+    def _is_ancestor(ancestor_prefix: str, descendant_prefix: str) -> bool:
+        visited: set[str] = set()
+        current = descendant_prefix
+        while current and current not in visited:
+            visited.add(current)
+            document = documents.get(current)
+            if document is None:
+                return False
+            parent = str(getattr(document, "parent", "") or "")
+            if not parent:
+                return False
+            if parent == ancestor_prefix:
+                return True
+            current = parent
+        return False
+
+    if _is_ancestor(row_prefix, column_prefix):
+        return TraceDirection.PARENT_TO_CHILD
+    return TraceDirection.CHILD_TO_PARENT
 
 
 class MainFrameDocumentsMixin:
@@ -1681,12 +1715,18 @@ class MainFrameDocumentsMixin:
         default_column: str | None = None
         if default_row and default_row in documents:
             default_column = documents[default_row].parent
+        direction = _infer_trace_direction(
+            documents,
+            row_prefix=default_row,
+            column_prefix=default_column,
+        )
 
         dialog = TraceMatrixConfigDialog(
             self,
             documents,
             default_rows=default_row,
             default_columns=default_column,
+            direction=direction,
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:

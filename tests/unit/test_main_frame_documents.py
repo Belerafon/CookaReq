@@ -5,8 +5,9 @@ from types import SimpleNamespace
 import wx
 
 from app.core.document_store import Document, SharedArtifact
+from app.core.trace_matrix import TraceDirection
 from app.settings import MCPSettings
-from app.ui.main_frame.documents import MainFrameDocumentsMixin
+from app.ui.main_frame.documents import MainFrameDocumentsMixin, _infer_trace_direction
 
 
 class _StubConfig:
@@ -143,6 +144,29 @@ def test_current_document_summary_includes_revision() -> None:
     frame = _SummaryFrame()
 
     assert frame._current_document_summary() == "SYS: System (rev 5)"
+
+
+def test_infer_trace_direction_defaults_to_parent_to_child_for_parent_rows() -> None:
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "HLR": Document(prefix="HLR", title="High", parent="SYS"),
+        "LLR": Document(prefix="LLR", title="Low", parent="HLR"),
+    }
+
+    direction = _infer_trace_direction(docs, row_prefix="SYS", column_prefix="HLR")
+
+    assert direction is TraceDirection.PARENT_TO_CHILD
+
+
+def test_infer_trace_direction_keeps_child_to_parent_for_child_rows() -> None:
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "HLR": Document(prefix="HLR", title="High", parent="SYS"),
+    }
+
+    direction = _infer_trace_direction(docs, row_prefix="HLR", column_prefix="SYS")
+
+    assert direction is TraceDirection.CHILD_TO_PARENT
 
 
 def test_resolve_export_document_prefixes_orders_subtree() -> None:

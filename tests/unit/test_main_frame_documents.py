@@ -5,8 +5,13 @@ from types import SimpleNamespace
 import wx
 
 from app.core.document_store import Document, SharedArtifact
+from app.core.trace_matrix import TraceDirection, TraceMatrixAxisConfig, TraceMatrixConfig
 from app.settings import MCPSettings
-from app.ui.main_frame.documents import MainFrameDocumentsMixin
+from app.ui.main_frame.documents import (
+    MainFrameDocumentsMixin,
+    _infer_trace_direction,
+    _recover_trace_matrix_direction,
+)
 
 
 class _StubConfig:
@@ -143,6 +148,76 @@ def test_current_document_summary_includes_revision() -> None:
     frame = _SummaryFrame()
 
     assert frame._current_document_summary() == "SYS: System (rev 5)"
+
+
+def test_infer_trace_direction_defaults_to_parent_to_child_for_parent_rows() -> None:
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "HLR": Document(prefix="HLR", title="High", parent="SYS"),
+        "LLR": Document(prefix="LLR", title="Low", parent="HLR"),
+    }
+
+    direction = _infer_trace_direction(docs, row_prefix="SYS", column_prefix="HLR")
+
+    assert direction is TraceDirection.PARENT_TO_CHILD
+
+
+def test_infer_trace_direction_keeps_child_to_parent_for_child_rows() -> None:
+    docs = {
+        "SYS": Document(prefix="SYS", title="System"),
+        "HLR": Document(prefix="HLR", title="High", parent="SYS"),
+    }
+
+    direction = _infer_trace_direction(docs, row_prefix="HLR", column_prefix="SYS")
+
+    assert direction is TraceDirection.CHILD_TO_PARENT
+
+
+def test_recover_trace_matrix_direction_switches_to_reverse_when_only_reverse_has_links() -> None:
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+        direction=TraceDirection.CHILD_TO_PARENT,
+    )
+    matrix = SimpleNamespace(summary=SimpleNamespace(linked_pairs=0))
+
+    class _Controller:
+        def build_trace_matrix(self, cfg):
+            linked = 6 if cfg.direction is TraceDirection.PARENT_TO_CHILD else 0
+            return SimpleNamespace(summary=SimpleNamespace(linked_pairs=linked))
+
+    recovered_config, recovered_matrix, recovered = _recover_trace_matrix_direction(
+        _Controller(),
+        config,
+        matrix,
+    )
+
+    assert recovered is True
+    assert recovered_config.direction is TraceDirection.PARENT_TO_CHILD
+    assert recovered_matrix.summary.linked_pairs == 6
+
+
+def test_recover_trace_matrix_direction_keeps_original_when_reverse_not_better() -> None:
+    config = TraceMatrixConfig(
+        rows=TraceMatrixAxisConfig(documents=("HLR",)),
+        columns=TraceMatrixAxisConfig(documents=("SYS",)),
+        direction=TraceDirection.CHILD_TO_PARENT,
+    )
+    matrix = SimpleNamespace(summary=SimpleNamespace(linked_pairs=6))
+
+    class _Controller:
+        def build_trace_matrix(self, cfg):
+            return SimpleNamespace(summary=SimpleNamespace(linked_pairs=0))
+
+    recovered_config, recovered_matrix, recovered = _recover_trace_matrix_direction(
+        _Controller(),
+        config,
+        matrix,
+    )
+
+    assert recovered is False
+    assert recovered_config is config
+    assert recovered_matrix is matrix
 
 
 def test_resolve_export_document_prefixes_orders_subtree() -> None:

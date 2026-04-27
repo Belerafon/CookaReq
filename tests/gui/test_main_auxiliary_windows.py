@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import types
 
 import pytest
@@ -146,6 +147,254 @@ def test_auxiliary_frames_closed_on_shutdown(monkeypatch, wx_app, tmp_path, gui_
                 aux.IsShownOnScreen()
 
         assert intercept_message_box == []
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_matrix_auto_recovers_direction_when_selected_mode_has_no_links(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+):
+    """Main frame should flip direction if reverse configuration is the only linked one."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    try:
+        from types import SimpleNamespace
+
+        from app.core.trace_matrix import (
+            TraceDirection,
+            TraceMatrixAxisConfig,
+            TraceMatrixConfig,
+        )
+        from app.ui.trace_matrix import TraceMatrixDisplayOptions, TraceMatrixViewPlan
+        import app.ui.trace_matrix as trace_matrix_module
+
+        class _Controller:
+            def __init__(self):
+                self.documents = {
+                    "SYS": SimpleNamespace(prefix="SYS", title="System", parent=None),
+                    "HLR": SimpleNamespace(prefix="HLR", title="High", parent="SYS"),
+                }
+
+            def load_documents(self):
+                return self.documents
+
+            def build_trace_matrix(self, config):
+                entry = SimpleNamespace(rid="SYS1")
+                linked_pairs = 6 if config.direction == TraceDirection.PARENT_TO_CHILD else 0
+                summary = SimpleNamespace(
+                    total_rows=6,
+                    total_columns=6,
+                    total_pairs=36,
+                    linked_pairs=linked_pairs,
+                    link_count=linked_pairs,
+                    row_coverage=1.0 if linked_pairs else 0.0,
+                    column_coverage=1.0 if linked_pairs else 0.0,
+                    pair_coverage=(linked_pairs / 36) if linked_pairs else 0.0,
+                    orphan_rows=(),
+                    orphan_columns=(),
+                )
+                return SimpleNamespace(
+                    config=config,
+                    direction=config.direction,
+                    rows=(entry,),
+                    columns=(entry,),
+                    cells={},
+                    summary=summary,
+                )
+
+        frame.docs_controller = _Controller()
+        frame.current_dir = tmp_path
+        frame.current_doc_prefix = "SYS"
+
+        class _DialogStub:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def get_plan(self):
+                return TraceMatrixViewPlan(
+                    config=TraceMatrixConfig(
+                        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+                        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+                        direction=TraceDirection.CHILD_TO_PARENT,
+                    ),
+                    options=TraceMatrixDisplayOptions(),
+                    output_format="interactive",
+                )
+
+            def Destroy(self):
+                return None
+
+        captured: dict[str, object] = {}
+
+        class _MatrixFrameStub(wx.Frame):
+            def __init__(self, parent, controller, config, matrix, options=None):
+                super().__init__(parent, title="Trace Matrix Stub")
+                captured["direction"] = config.direction
+                captured["linked_pairs"] = matrix.summary.linked_pairs
+
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixConfigDialog", _DialogStub)
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixFrame", _MatrixFrameStub)
+
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert captured["direction"] == TraceDirection.PARENT_TO_CHILD
+        assert captured["linked_pairs"] == 6
+        assert intercept_message_box == []
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_matrix_logs_error_when_matrix_build_fails(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+    caplog,
+):
+    """Trace matrix failures should be logged before showing a popup."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    try:
+        from types import SimpleNamespace
+
+        from app.core.trace_matrix import TraceDirection, TraceMatrixAxisConfig, TraceMatrixConfig
+        from app.ui.trace_matrix import TraceMatrixDisplayOptions, TraceMatrixViewPlan
+        import app.ui.trace_matrix as trace_matrix_module
+
+        class _Controller:
+            def __init__(self):
+                self.documents = {
+                    "SYS": SimpleNamespace(prefix="SYS", title="System", parent=None),
+                    "HLR": SimpleNamespace(prefix="HLR", title="High", parent="SYS"),
+                }
+
+            def load_documents(self):
+                return self.documents
+
+            def build_trace_matrix(self, _config):
+                raise SyntaxError("'(' was never closed (trace_matrix.py, line 170)")
+
+        frame.docs_controller = _Controller()
+        frame.current_dir = tmp_path
+        frame.current_doc_prefix = "SYS"
+
+        class _DialogStub:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def ShowModal(self):
+                return wx.ID_OK
+
+            def get_plan(self):
+                return TraceMatrixViewPlan(
+                    config=TraceMatrixConfig(
+                        rows=TraceMatrixAxisConfig(documents=("SYS",)),
+                        columns=TraceMatrixAxisConfig(documents=("HLR",)),
+                        direction=TraceDirection.CHILD_TO_PARENT,
+                    ),
+                    options=TraceMatrixDisplayOptions(),
+                    output_format="interactive",
+                )
+
+            def Destroy(self):
+                return None
+
+        monkeypatch.setattr(trace_matrix_module, "TraceMatrixConfigDialog", _DialogStub)
+
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert intercept_message_box
+        assert "never closed" in intercept_message_box[0][0]
+        assert "Failed to build trace matrix for plan" in caplog.text
+    finally:
+        if not frame.IsBeingDeleted():
+            frame.Destroy()
+        wx_app.Yield()
+
+
+def test_trace_matrix_import_syntax_error_shows_recovery_hint(
+    monkeypatch,
+    wx_app,
+    tmp_path,
+    gui_context,
+    intercept_message_box,
+    caplog,
+):
+    """Syntax errors during trace-matrix import should include actionable recovery steps."""
+
+    wx = pytest.importorskip("wx")
+
+    config = ConfigManager(path=tmp_path / "config.ini")
+    config.set_mcp_settings(MCPSettings(auto_start=False))
+    frame = MainFrame(
+        None,
+        context=gui_context,
+        config=config,
+        model=RequirementModel(),
+    )
+    frame.current_dir = tmp_path
+    frame.current_doc_prefix = "SYS"
+    frame.docs_controller = object()
+
+    real_import = builtins.__import__
+
+    def _failing_import(name, globals=None, locals=None, fromlist=(), level=0):
+        resolved_name = name
+        if level > 0 and globals and "__package__" in globals:
+            package = globals["__package__"] or ""
+            parts = package.split(".")
+            keep = max(0, len(parts) - level + 1)
+            prefix = ".".join(parts[:keep])
+            resolved_name = f"{prefix}.{name}" if prefix else name
+        if resolved_name == "app.ui.trace_matrix":
+            raise SyntaxError("unmatched ')'", ("app/ui/trace_matrix.py", 167, 5, ")"))
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _failing_import)
+
+    try:
+        frame.on_show_trace_matrix(None)
+        wx_app.Yield()
+
+        assert intercept_message_box
+        message, caption, _style = intercept_message_box[0]
+        assert caption == "Error"
+        assert "py_compile app/ui/trace_matrix.py" in message
+        assert "git restore app/ui/trace_matrix.py" in message
+        assert "app/ui/trace_matrix.py:167" in message
+        assert "Failed to import trace matrix UI module" in caplog.text
     finally:
         if not frame.IsBeingDeleted():
             frame.Destroy()

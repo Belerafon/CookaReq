@@ -11,7 +11,13 @@ import wx
 from wx.lib.mixins.listctrl import ColumnSorterMixin
 
 from .. import columns
-from ..services.requirements import LabelDef, label_color, parse_rid, stable_color
+from ..services.requirements import (
+    LabelDef,
+    label_color,
+    parse_rid,
+    stable_color,
+    title_starts_with_rid,
+)
 from ..core.model import Requirement, Status, normalized_verification_methods
 from ..core.markdown_utils import strip_markdown
 from ..i18n import _
@@ -538,7 +544,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                     title = str(data.get("title", ""))
         base = rid
         if title:
-            base = f"{rid} — {title}"
+            base = title if title_starts_with_rid(title, rid) else f"{rid} — {title}"
         if doc_title and doc_title not in base:
             base = f"{base} ({doc_title})"
         self._link_display_cache[rid] = base

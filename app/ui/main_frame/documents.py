@@ -40,6 +40,7 @@ from ..labels_dialog import LabelsDialog
 from ..requirement_exporter import build_tabular_export
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from ...core.trace_matrix import TraceDirection
     from .frame import MainFrame
 
 
@@ -51,6 +52,67 @@ def _format_display_path(path: Path, *, max_parts: int = 3) -> str:
     if len(parts) <= max_parts:
         return str(path)
     return f"…/{'/'.join(parts[-max_parts:])}"
+
+
+def _infer_trace_direction(
+    documents: Mapping[str, object],
+    *,
+    row_prefix: str | None,
+    column_prefix: str | None,
+) -> TraceDirection:
+    """Infer default trace direction from selected document hierarchy."""
+    from ...core.trace_matrix import TraceDirection
+
+    if not row_prefix or not column_prefix or row_prefix == column_prefix:
+        return TraceDirection.CHILD_TO_PARENT
+
+    def _is_ancestor(ancestor_prefix: str, descendant_prefix: str) -> bool:
+        visited: set[str] = set()
+        current = descendant_prefix
+        while current and current not in visited:
+            visited.add(current)
+            document = documents.get(current)
+            if document is None:
+                return False
+            parent = str(getattr(document, "parent", "") or "")
+            if not parent:
+                return False
+            if parent == ancestor_prefix:
+                return True
+            current = parent
+        return False
+
+    if _is_ancestor(row_prefix, column_prefix):
+        return TraceDirection.PARENT_TO_CHILD
+    return TraceDirection.CHILD_TO_PARENT
+
+
+def _recover_trace_matrix_direction(
+    controller: object,
+    config: object,
+    matrix: object,
+) -> tuple[object, object, bool]:
+    """Switch direction when current configuration has zero links but reverse has matches."""
+    from ...core.trace_matrix import TraceDirection
+
+    linked_pairs = int(getattr(getattr(matrix, "summary", None), "linked_pairs", 0) or 0)
+    if linked_pairs > 0:
+        return config, matrix, False
+
+    current_direction = getattr(config, "direction", TraceDirection.CHILD_TO_PARENT)
+    reverse_direction = (
+        TraceDirection.PARENT_TO_CHILD
+        if current_direction == TraceDirection.CHILD_TO_PARENT
+        else TraceDirection.CHILD_TO_PARENT
+    )
+    reverse_config = replace(config, direction=reverse_direction)
+    reverse_matrix = controller.build_trace_matrix(reverse_config)
+    reverse_linked_pairs = int(
+        getattr(getattr(reverse_matrix, "summary", None), "linked_pairs", 0) or 0
+    )
+    if reverse_linked_pairs > linked_pairs:
+        return reverse_config, reverse_matrix, True
+    return config, matrix, False
 
 
 class MainFrameDocumentsMixin:
@@ -1665,12 +1727,26 @@ class MainFrameDocumentsMixin:
         try:
             from ..trace_matrix import TraceDirectionalTablesFrame, TraceMatrixConfigDialog, TraceMatrixFrame
         except Exception as exc:  # pragma: no cover - missing wx
-            wx.MessageBox(str(exc), _("Error"))
+            logger.exception("Failed to import trace matrix UI module")
+            if isinstance(exc, SyntaxError):
+                syntax_path = str(getattr(exc, "filename", "app/ui/trace_matrix.py"))
+                syntax_line = int(getattr(exc, "lineno", 0) or 0)
+                hint = _(
+                    "Trace matrix module has invalid Python syntax in your local working copy.\n"
+                    "Check for unresolved merge/conflict edits and run:\n"
+                    "python3 -m py_compile app/ui/trace_matrix.py\n"
+                    "git restore app/ui/trace_matrix.py"
+                )
+                details = f"{exc}\n\n{hint}\n{syntax_path}:{syntax_line}"
+                wx.MessageBox(details, _("Error"))
+            else:
+                wx.MessageBox(str(exc), _("Error"))
             return
         controller = self.docs_controller
         try:
             documents = controller.load_documents()
         except Exception as exc:  # pragma: no cover - defensive guard
+            logger.exception("Failed to load documents before opening trace matrix")
             wx.MessageBox(str(exc), _("Error"))
             return
         if not documents:
@@ -1681,12 +1757,18 @@ class MainFrameDocumentsMixin:
         default_column: str | None = None
         if default_row and default_row in documents:
             default_column = documents[default_row].parent
+        direction = _infer_trace_direction(
+            documents,
+            row_prefix=default_row,
+            column_prefix=default_column,
+        )
 
         dialog = TraceMatrixConfigDialog(
             self,
             documents,
             default_rows=default_row,
             default_columns=default_column,
+            direction=direction,
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:
@@ -1706,7 +1788,16 @@ class MainFrameDocumentsMixin:
 
         try:
             matrix = controller.build_trace_matrix(plan.config)
+            recovered_config, recovered_matrix, recovered = _recover_trace_matrix_direction(
+                controller,
+                plan.config,
+                matrix,
+            )
+            if recovered:
+                plan = replace(plan, config=recovered_config)
+                matrix = recovered_matrix
         except Exception as exc:  # pragma: no cover - report via UI
+            logger.exception("Failed to build trace matrix for plan: %s", plan)
             wx.MessageBox(str(exc), _("Error"))
             return
         if not matrix.rows or not matrix.columns:
@@ -1810,6 +1901,10 @@ class MainFrameDocumentsMixin:
                         wx.MessageBox(_("Unsupported file extension"), _("Error"))
                         frame.Destroy()
                         return
+            except Exception as exc:
+                logger.exception("Failed to export trace matrix to %s", path)
+                wx.MessageBox(str(exc), _("Error"))
+                return
             finally:
                 frame.Destroy()
             wx.MessageBox(_("Trace matrix exported"), _("Done"))
@@ -1819,6 +1914,7 @@ class MainFrameDocumentsMixin:
             try:
                 views = controller.build_trace_views(plan.config)
             except Exception as exc:  # pragma: no cover - report via UI
+                logger.exception("Failed to build directional trace views")
                 wx.MessageBox(str(exc), _("Error"))
                 return
             direction_frame = TraceDirectionalTablesFrame(self, views, options=plan.options)

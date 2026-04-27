@@ -158,10 +158,15 @@ def _entry_field_value(entry, field: str) -> str:
     return str(value)
 
 
-    if rid_value and title_value and title_starts_with_rid(title_value, rid_value):
-        rows=rows,
-        columns=columns,
-        cells=matrix.cells,
+    """Render one directional target row without duplicating equivalent RID/title prefixes."""
+    field_to_value = dict(zip(target_fields, values, strict=False))
+    rid_value = field_to_value.get("rid", "").strip()
+    title_value = field_to_value.get("title", "").strip()
+        values = [
+            value
+            for idx, value in enumerate(values)
+            if target_fields[idx] != "rid"
+        ]
         summary=matrix.summary,
         documents=matrix.documents,
     )

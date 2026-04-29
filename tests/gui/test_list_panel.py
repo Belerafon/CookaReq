@@ -16,6 +16,7 @@ from app.core.model import (
     Verification,
 )
 from app.services.requirements import RequirementsService
+from app.services.requirements import LabelDef
 
 pytestmark = pytest.mark.gui
 pytest_plugins = ("tests.gui.wx_stub_utils",)
@@ -342,7 +343,7 @@ def test_sort_by_labels(stubbed_list_panel_env):
     )
 
     panel.sort(0, True)
-    assert [r.id for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
 
 
 def test_sort_by_multiple_labels(stubbed_list_panel_env):
@@ -357,7 +358,31 @@ def test_sort_by_multiple_labels(stubbed_list_panel_env):
     )
 
     panel.sort(0, True)
-    assert [r.id for r in panel.model.get_visible()] == [2, 1]
+    assert [r.id for r in panel.model.get_visible()] == [1, 2]
+
+
+def test_sort_by_labels_uses_group_levels(stubbed_list_panel_env):
+    env = stubbed_list_panel_env
+    panel = env.create_panel()
+    panel.set_columns(["labels"])
+    panel.update_labels_list(
+        [
+            LabelDef("alpha", "Alpha", None, 1),
+            LabelDef("beta", "Beta", None, 2),
+            LabelDef("gamma", "Gamma", None, 1),
+        ],
+        allow_freeform=False,
+    )
+    panel.set_requirements(
+        [
+            _req(1, "A", labels=["gamma", "beta"]),
+            _req(2, "B", labels=["alpha"]),
+            _req(3, "C", labels=[]),
+        ],
+    )
+
+    panel.sort(0, True)
+    assert [r.id for r in panel.model.get_visible()] == [2, 1, 3]
 
 
 def test_bulk_edit_updates_requirements(stubbed_list_panel_env, monkeypatch):

@@ -3542,3 +3542,9 @@ msgstr "descending"
 
 msgid "n/a"
 msgstr "n/a"
+
+msgid "Grouping level"
+msgstr "Grouping level"
+
+msgid "None"
+msgstr "None"

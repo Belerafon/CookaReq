@@ -149,7 +149,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   dialog also lets users toggle label background coloring for HTML and DOCX
   cards so label chips in both the legend and requirement metadata can match
   configured document label colors; DOCX chips use non-breaking inner spacing
-  so colored padding remains visible on both sides of the label text. DOCX
+  so colored padding remains visible on both sides of the label text. Document
+  label definitions now also carry an optional `groupLevel` (`0`/none, `1`,
+  `2`, `3`) used by the requirements list "sort by labels" mode: the sort key
+  is built from the alphabetically-first label at each configured level, while
+  missing values are sorted after populated ones for that level. DOCX
   metadata rows explicitly bold only field labels while values remain regular
   weight for parity with HTML cards. Source sorting uses a natural numeric order (например, `1.2` идет перед `1.12`) to
   match the list view behavior. The GUI export flow writes

@@ -1549,7 +1549,7 @@ class MainFrameDocumentsMixin:
             if selected_doc is None:
                 raise ValueError(_("Document not found"))
             loaded_labels = [
-                LabelDef(label.key, label.title, label.color)
+                LabelDef(label.key, label.title, label.color, getattr(label, "group_level", 0))
                 for label in selected_doc.labels.defs
             ]
             loaded_usage = self.docs_controller.label_usage_counts(prefix)

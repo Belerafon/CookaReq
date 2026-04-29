@@ -91,6 +91,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         candidates: list[dict[str, str]],
         selected_rids: set[str] | None = None,
         current_prefix: str | None = None,
+        list_columns: list[str] | None = None,
     ):
         super().__init__(
             parent,
@@ -105,6 +106,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._current_prefix = (current_prefix or "").strip().upper()
         self._source_options: list[tuple[str, str]] = []
         self._source_filter_key = ""
+        self._list_columns = list_columns or ["labels", "id", "source", "status"]
 
         root = wx.BoxSizer(wx.VERTICAL)
         search_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -118,7 +120,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
 
         self._list_panel = ListPanel(self)
         self._list_panel.document_summary.Hide()
-        self._list_panel.set_columns(["id", "status", "type", "priority", "owner", "labels", "verification"])
+        self._list_panel.set_columns(self._list_columns)
         self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
@@ -288,9 +290,23 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._visible_candidates = list(filtered_by_source)
         requirements = []
         for idx, row in enumerate(self._visible_candidates, start=1):
+            labels = row.get("labels")
+            if not isinstance(labels, list):
+                labels = []
             requirements.append(
                 Requirement.from_mapping(
-                    {"id": idx, "title": str(row.get("title", "")), "statement": str(row.get("statement", ""))},
+                    {
+                        "id": idx,
+                        "title": str(row.get("title", "")),
+                        "statement": str(row.get("statement", "")),
+                        "status": str(row.get("status", Status.DRAFT.value)),
+                        "type": str(row.get("type", RequirementType.REQUIREMENT.value)),
+                        "priority": str(row.get("priority", Priority.MEDIUM.value)),
+                        "owner": str(row.get("owner", "")),
+                        "source": str(row.get("source", "")),
+                        "labels": labels,
+                        "verification": row.get("verification", Verification.NOT_DEFINED.value),
+                    },
                     doc_prefix=str(row.get("prefix", "")),
                     rid=row["rid"],
                 )
@@ -1252,6 +1268,13 @@ class EditorPanel(wx.Panel):
                     "rid": rid,
                     "title": str(getattr(requirement, "title", "") or "").strip(),
                     "statement": str(getattr(requirement, "statement", "") or "").strip(),
+                    "status": str(getattr(requirement, "status", Status.DRAFT.value)),
+                    "type": str(getattr(requirement, "type", RequirementType.REQUIREMENT.value)),
+                    "priority": str(getattr(requirement, "priority", Priority.MEDIUM.value)),
+                    "owner": str(getattr(requirement, "owner", "") or "").strip(),
+                    "source": str(getattr(requirement, "source", "") or "").strip(),
+                    "labels": list(getattr(requirement, "labels", []) or []),
+                    "verification": list(getattr(requirement, "verification", []) or [Verification.NOT_DEFINED.value]),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
                     "distance": _ancestor_distance(current_prefix, prefix.upper()),
@@ -1260,6 +1283,21 @@ class EditorPanel(wx.Panel):
         rows.sort(key=lambda row: (row["rid"], row["title"]))
         return rows
 
+    def _resolve_link_picker_columns(self) -> list[str]:
+        """Reuse configured main-list columns in the links picker."""
+        config = getattr(self, "config", None)
+        if config is None:
+            top_level = wx.GetTopLevelParent(self)
+            config = getattr(top_level, "config", None) if top_level is not None else None
+        if config is None:
+            return ["labels", "id", "source", "status"]
+        try:
+            columns = list(config.get_columns())
+        except Exception:
+            logger.exception("Failed to read columns from config for link picker")
+            return ["labels", "id", "source", "status"]
+        return columns or ["labels", "id", "source", "status"]
+
     def _show_link_picker(self, attr: str, selected_rids: set[str] | None = None) -> list[str]:
         """Open picker dialog and return selected RIDs."""
         dialog = RequirementLinkPickerDialog(
@@ -1267,6 +1305,7 @@ class EditorPanel(wx.Panel):
             self._collect_link_picker_candidates(attr),
             selected_rids=selected_rids,
             current_prefix=self._effective_prefix(),
+            list_columns=self._resolve_link_picker_columns(),
         )
         try:
             if dialog.ShowModal() != wx.ID_OK:

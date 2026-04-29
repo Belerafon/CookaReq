@@ -154,3 +154,43 @@ def test_remove_link_by_index_updates_links_table(wx_app):
     assert panel.links_panel.GetItemCount() == 1
     assert panel.links_panel.GetItem(0, 0).GetText() == "SYS2"
     frame.Destroy()
+
+
+def test_link_picker_uses_main_columns_and_shows_labels(wx_app, tmp_path):
+    frame = wx.Frame(None)
+    panel = EditorPanel(frame)
+    service = RequirementsService(tmp_path)
+    service.save_document(Document(prefix="REQ", title="Requirements"))
+    service.save_document(Document(prefix="SYS", title="Systems"))
+    service.save_requirement_payload(
+        "SYS",
+        {
+            "id": 123,
+            "title": "Parent",
+            "statement": "",
+            "type": "requirement",
+            "status": "approved",
+            "owner": "QA",
+            "priority": "medium",
+            "source": "Spec",
+            "verification": "analysis",
+            "acceptance": None,
+            "assumptions": "",
+            "conditions": "",
+            "rationale": "",
+            "labels": ["Safety", "UI"],
+            "attachments": [],
+            "revision": 1,
+            "modified_at": "",
+            "notes": "",
+        },
+    )
+    panel.set_service(service)
+    panel.set_document("REQ")
+    panel.config.set_columns(["labels", "id", "source", "status"])
+
+    candidates = panel._collect_link_picker_candidates("links")
+    assert candidates and candidates[0]["labels"] == ["Safety", "UI"]
+    columns = panel._resolve_link_picker_columns()
+    assert columns == ["labels", "id", "source", "status"]
+    frame.Destroy()

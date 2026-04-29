@@ -1274,7 +1274,10 @@ class EditorPanel(wx.Panel):
                     "owner": str(getattr(requirement, "owner", "") or "").strip(),
                     "source": str(getattr(requirement, "source", "") or "").strip(),
                     "labels": list(getattr(requirement, "labels", []) or []),
-                    "verification": list(getattr(requirement, "verification", []) or [Verification.NOT_DEFINED.value]),
+                    "verification": str(
+                        getattr(requirement, "verification", Verification.NOT_DEFINED.value)
+                        or Verification.NOT_DEFINED.value
+                    ),
                     "document": docs.get(prefix, prefix),
                     "prefix": prefix.upper(),
                     "distance": _ancestor_distance(current_prefix, prefix.upper()),

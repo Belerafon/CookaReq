@@ -129,3 +129,19 @@ def test_link_picker_reuses_main_list_layout_config(wx_app, tmp_path):
     finally:
         dialog.Destroy()
         frame.Destroy()
+
+
+def test_link_picker_marks_preselected_items_with_checkboxes(wx_app):
+    frame = wx.Frame(None)
+    candidates = [{"rid": "SYS1", "title": "Title", "document": "System", "prefix": "SYS"}]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"})
+    try:
+        assert dialog._list_panel.list.GetItemCount() == 1
+        is_checked = getattr(dialog._list_panel.list, "IsItemChecked", None)
+        if callable(is_checked):
+            assert dialog._list_panel.list.IsItemChecked(0)
+        else:
+            assert dialog._list_panel.list.IsSelected(0)
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

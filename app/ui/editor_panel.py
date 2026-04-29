@@ -128,8 +128,14 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
+        checked_evt = getattr(wx, "EVT_LIST_ITEM_CHECKED", None)
+        unchecked_evt = getattr(wx, "EVT_LIST_ITEM_UNCHECKED", None)
+        if checked_evt is not None and unchecked_evt is not None:
+            self._list_panel.list.Bind(checked_evt, self._on_item_checked)
+            self._list_panel.list.Bind(unchecked_evt, self._on_item_unchecked)
         self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
         self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
+        self._checkboxes_available = self._enable_list_checkboxes()
         root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -153,6 +159,44 @@ class RequirementLinkPickerDialog(wx.Dialog):
             get_parent = getattr(node, "GetParent", None)
             node = get_parent() if callable(get_parent) else None
         return ConfigManager()
+
+    def _enable_list_checkboxes(self) -> bool:
+        """Enable list checkboxes for explicit multi-select when backend supports it."""
+        enable = getattr(self._list_panel.list, "EnableCheckBoxes", None)
+        if not callable(enable):
+            return False
+        try:
+            enable(True)
+        except Exception:
+            return False
+        return True
+
+    def _set_row_checked(self, index: int, checked: bool) -> None:
+        check_item = getattr(self._list_panel.list, "CheckItem", None)
+        if callable(check_item):
+            try:
+                check_item(index, checked)
+                return
+            except Exception:
+                pass
+        self._list_panel.list.Select(index, checked)
+
+    def _is_row_checked(self, index: int) -> bool:
+        is_checked = getattr(self._list_panel.list, "IsItemChecked", None)
+        if callable(is_checked):
+            try:
+                return bool(is_checked(index))
+            except Exception:
+                return False
+        return bool(self._list_panel.list.IsSelected(index))
+
+    def _refresh_selected_visible_rids(self) -> None:
+        visible = self._list_panel.model.get_visible()
+        self._selected_visible_rids = {
+            str(getattr(req, "rid", "")).strip().upper()
+            for idx, req in enumerate(visible)
+            if self._is_row_checked(idx) and str(getattr(req, "rid", "")).strip()
+        }
 
     @property
     def selected_rids(self) -> list[str]:
@@ -276,12 +320,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         return prefix == key
 
     def _on_filter_button(self, _event: wx.CommandEvent) -> None:
-        for req in self._list_panel.model.get_visible():
-            rid = str(getattr(req, "rid", "")).strip().upper()
-            if rid:
-                self._selected_visible_rids.add(rid)
+        self._refresh_selected_visible_rids()
+
+    def _on_item_checked(self, _event: wx.ListEvent) -> None:
+        self._refresh_selected_visible_rids()
+
+    def _on_item_unchecked(self, _event: wx.ListEvent) -> None:
+        self._refresh_selected_visible_rids()
 
     def _on_item_selected(self, event: wx.ListEvent) -> None:
+        if self._checkboxes_available:
+            event.Skip()
+            return
         index = event.GetIndex()
         visible = self._list_panel.model.get_visible()
         if 0 <= index < len(visible):
@@ -291,6 +341,9 @@ class RequirementLinkPickerDialog(wx.Dialog):
         event.Skip()
 
     def _on_item_deselected(self, event: wx.ListEvent) -> None:
+        if self._checkboxes_available:
+            event.Skip()
+            return
         index = event.GetIndex()
         visible = self._list_panel.model.get_visible()
         if 0 <= index < len(visible):
@@ -335,7 +388,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         visible = self._list_panel.model.get_visible()
         for idx, req in enumerate(visible):
             rid = str(getattr(req, "rid", "")).strip().upper()
-            self._list_panel.list.Select(idx, rid in selected)
+            self._set_row_checked(idx, rid in selected)
 
 
 class EditorPanel(wx.Panel):

@@ -40,6 +40,7 @@ from .helpers import AutoHeightListCtrl, HelpStaticBox, dip, inherit_background,
 from .label_selection_dialog import LabelSelectionDialog
 from .list_panel import ListPanel
 from .resources import load_editor_config
+from ..config import ConfigManager
 from .widgets.markdown_view import MarkdownContent
 
 logger = logging.getLogger(__name__)
@@ -121,6 +122,9 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._list_panel = ListPanel(self)
         self._list_panel.document_summary.Hide()
         self._list_panel.set_columns(self._list_columns)
+        self._main_list_config = self._resolve_main_list_config()
+        self._list_panel.load_column_widths(self._main_list_config)
+        self._list_panel.load_column_order(self._main_list_config)
         self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
@@ -137,6 +141,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._apply_filter()
         self._restore_layout()
         self.Bind(wx.EVT_CLOSE, self._on_close)
+
+
+    def _resolve_main_list_config(self) -> ConfigManager:
+        """Return config that stores main requirements list layout."""
+        node: wx.Window | None = self.GetParent()
+        while node is not None:
+            config = getattr(node, "config", None)
+            if isinstance(config, ConfigManager):
+                return config
+            get_parent = getattr(node, "GetParent", None)
+            node = get_parent() if callable(get_parent) else None
+        return ConfigManager()
 
     @property
     def selected_rids(self) -> list[str]:

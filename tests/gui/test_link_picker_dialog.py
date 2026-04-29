@@ -1,6 +1,7 @@
 import pytest
 import wx
 
+from app.config import ConfigManager
 from app.ui.editor_panel import RequirementLinkPickerDialog
 
 pytestmark = pytest.mark.gui
@@ -91,6 +92,40 @@ def test_link_picker_shows_requirement_text_tooltip(wx_app):
         tooltip_obj = dialog._list_panel.list.GetToolTip()
         assert tooltip_obj is not None
         assert tooltip_obj.GetTip() == "Полный текст высокоуровневого требования"
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_reuses_main_list_layout_config(wx_app, tmp_path):
+    config = ConfigManager(path=tmp_path / "cfg.json")
+    config.set_columns(["labels", "id", "source", "status"])
+    config.set_column_width(0, 210)
+    config.set_column_width(1, 430)
+    config.set_column_width(2, 120)
+    config.set_column_width(3, 180)
+    config.set_column_width(4, 150)
+    config.set_column_order(["labels", "title", "status", "id", "source"])
+
+    frame = wx.Frame(None)
+    frame.config = config  # type: ignore[attr-defined]
+    candidates = [{"rid": "SYS1", "title": "Title", "source": "Spec", "status": "draft", "document": "System", "prefix": "SYS", "labels": ["L1"]}]
+
+    dialog = RequirementLinkPickerDialog(
+        frame,
+        candidates,
+        selected_rids={"SYS1"},
+        list_columns=["labels", "id", "source", "status"],
+    )
+    try:
+        assert dialog._list_panel._field_order == ["labels", "title", "id", "source", "status"]
+        assert dialog._list_panel.list.GetColumnWidth(0) == 210
+        assert dialog._list_panel.list.GetColumnWidth(1) == 430
+        assert dialog._list_panel.list.GetColumnWidth(2) == 120
+        assert dialog._list_panel.list.GetColumnWidth(3) == 180
+        assert dialog._list_panel.list.GetColumnWidth(4) == 150
+        assert dialog._list_panel.list.GetItemCount() == 1
+        assert dialog._list_panel.list.GetItem(0, 0).GetText() == ""
     finally:
         dialog.Destroy()
         frame.Destroy()

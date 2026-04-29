@@ -38,6 +38,7 @@ from . import locale
 from .enums import ENUMS
 from .helpers import AutoHeightListCtrl, HelpStaticBox, dip, inherit_background, make_help_button
 from .label_selection_dialog import LabelSelectionDialog
+from .list_panel import ListPanel
 from .resources import load_editor_config
 from .widgets.markdown_view import MarkdownContent
 
@@ -100,6 +101,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._all_candidates = candidates
         self._visible_candidates: list[dict[str, str]] = []
         self._selected_rids = {rid.strip().upper() for rid in (selected_rids or set()) if rid.strip()}
+        self._selected_visible_rids: set[str] = set()
         self._current_prefix = (current_prefix or "").strip().upper()
         self._source_options: list[tuple[str, str]] = []
         self._source_filter_key = ""
@@ -111,19 +113,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._source_choice.Bind(wx.EVT_CHOICE, self._on_source_change)
         search_row.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 8))
         search_row.Add(self._source_choice, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, dip(self, 12))
-        search_label = wx.StaticText(self, label=_("Search"))
-        self._search_ctrl = wx.TextCtrl(self)
-        self._search_ctrl.SetHint(_("RID, title, or document"))
-        self._search_ctrl.Bind(wx.EVT_TEXT, self._on_search_change)
-        search_row.Add(search_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        search_row.Add(self._search_ctrl, 1, wx.LEFT | wx.EXPAND, dip(self, 8))
+        search_row.Add((0, 0), 1, wx.EXPAND)
         root.Add(search_row, 0, wx.ALL | wx.EXPAND, dip(self, 10))
 
-        self._checklist = wx.CheckListBox(self)
-        self._checklist_hover_index: int | None = None
-        self._checklist.Bind(wx.EVT_MOTION, self._on_checklist_motion)
-        self._checklist.Bind(wx.EVT_LEAVE_WINDOW, self._on_checklist_leave)
-        root.Add(self._checklist, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
+        self._list_panel = ListPanel(self)
+        self._list_panel.document_summary.Hide()
+        self._list_panel.set_columns(["id", "status", "type", "priority", "owner", "labels", "verification"])
+        self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
+        self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
+        self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
+        self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
+        self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
+        root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if buttons is not None:
@@ -131,18 +132,14 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self.SetSizer(root)
 
         self._build_source_options()
-        self._apply_filter("")
+        self._apply_filter()
         self._restore_layout()
         self.Bind(wx.EVT_CLOSE, self._on_close)
 
     @property
     def selected_rids(self) -> list[str]:
-        selected: list[str] = []
-        for index, row in enumerate(self._visible_candidates):
-            if self._checklist.IsChecked(index):
-                selected.append(row["rid"])
-        hidden = sorted(rid for rid in self._selected_rids if rid not in {row["rid"] for row in self._visible_candidates})
-        return selected + hidden
+        hidden = sorted(rid for rid in self._selected_rids if rid not in {row["rid"] for row in self._all_candidates})
+        return sorted(self._selected_visible_rids) + hidden
 
     def _read_int(self, config: wx.ConfigBase, key: str, default: int) -> int:
         try:
@@ -195,48 +192,30 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._save_layout()
         return super().Destroy()
 
-    def _on_search_change(self, _event: wx.CommandEvent) -> None:
-        self._apply_filter(self._search_ctrl.GetValue())
-
     def _on_source_change(self, _event: wx.CommandEvent) -> None:
         index = self._source_choice.GetSelection()
         if 0 <= index < len(self._source_options):
             self._source_filter_key = self._source_options[index][0]
-        self._apply_filter(self._search_ctrl.GetValue())
+        self._apply_filter()
 
-    def _on_checklist_motion(self, event: wx.MouseEvent) -> None:
-        index = self._hit_test_checklist(event.GetPosition())
-        self._apply_checklist_tooltip(index)
+    def _on_list_motion(self, event: wx.MouseEvent) -> None:
+        index, _flags = self._list_panel.list.HitTest(event.GetPosition())
+        self._apply_list_tooltip(index)
         event.Skip()
 
-    def _on_checklist_leave(self, event: wx.MouseEvent) -> None:
-        self._apply_checklist_tooltip(wx.NOT_FOUND)
+    def _on_list_leave(self, event: wx.MouseEvent) -> None:
+        self._apply_list_tooltip(wx.NOT_FOUND)
         event.Skip()
 
-    def _hit_test_checklist(self, point: wx.Point) -> int:
-        hit = self._checklist.HitTest(point)
-        if isinstance(hit, tuple):
-            try:
-                return int(hit[0])
-            except (TypeError, ValueError):
-                return wx.NOT_FOUND
-        try:
-            return int(hit)
-        except (TypeError, ValueError):
-            return wx.NOT_FOUND
-
-    def _apply_checklist_tooltip(self, index: int) -> None:
-        if index == self._checklist_hover_index:
-            return
-        self._checklist_hover_index = index
+    def _apply_list_tooltip(self, index: int) -> None:
         if not (0 <= index < len(self._visible_candidates)):
-            self._checklist.SetToolTip(None)
+            self._list_panel.list.SetToolTip(None)
             return
         row = self._visible_candidates[index]
         statement = str(row.get("statement", "")).strip()
         title = str(row.get("title", "")).strip()
         tooltip = statement or title
-        self._checklist.SetToolTip(tooltip or None)
+        self._list_panel.list.SetToolTip(tooltip or None)
 
     def _build_source_options(self) -> None:
         docs: dict[str, tuple[str, int]] = {}
@@ -278,35 +257,53 @@ class RequirementLinkPickerDialog(wx.Dialog):
             return True
         return prefix == key
 
-    def _apply_filter(self, query: str) -> None:
-        remembered = set(self.selected_rids)
-        text = query.strip().lower()
+    def _on_filter_button(self, _event: wx.CommandEvent) -> None:
+        for req in self._list_panel.model.get_visible():
+            rid = str(getattr(req, "rid", "")).strip().upper()
+            if rid:
+                self._selected_visible_rids.add(rid)
+
+    def _on_item_selected(self, event: wx.ListEvent) -> None:
+        index = event.GetIndex()
+        visible = self._list_panel.model.get_visible()
+        if 0 <= index < len(visible):
+            rid = str(getattr(visible[index], "rid", "")).strip().upper()
+            if rid:
+                self._selected_visible_rids.add(rid)
+        event.Skip()
+
+    def _on_item_deselected(self, event: wx.ListEvent) -> None:
+        index = event.GetIndex()
+        visible = self._list_panel.model.get_visible()
+        if 0 <= index < len(visible):
+            rid = str(getattr(visible[index], "rid", "")).strip().upper()
+            if rid:
+                self._selected_visible_rids.discard(rid)
+        event.Skip()
+
+    def _apply_filter(self) -> None:
         filtered_by_source = [
             row for row in self._all_candidates if self._matches_source_filter(row, self._source_filter_key)
         ]
-        if text:
-            self._visible_candidates = [
-                row
-                for row in filtered_by_source
-                if text in row["rid"].lower()
-                or text in row["title"].lower()
-                or text in row["document"].lower()
-            ]
-        else:
-            self._visible_candidates = list(filtered_by_source)
-        self._checklist.Clear()
-        self._checklist_hover_index = None
-        self._checklist.SetToolTip(None)
-        if not self._visible_candidates:
-            self._checklist.Append(_("No requirements available"))
-            self._checklist.Enable(False)
-            return
-        self._checklist.Enable(True)
-        for index, row in enumerate(self._visible_candidates):
-            label = f"{row['rid']} — {row['title']}" if row["title"] else row["rid"]
-            self._checklist.Append(label)
-            if row["rid"] in remembered or row["rid"] in self._selected_rids:
-                self._checklist.Check(index, True)
+        self._visible_candidates = list(filtered_by_source)
+        requirements = []
+        for idx, row in enumerate(self._visible_candidates, start=1):
+            requirements.append(
+                Requirement.from_mapping(
+                    {"id": idx, "title": str(row.get("title", "")), "statement": str(row.get("statement", ""))},
+                    doc_prefix=str(row.get("prefix", "")),
+                    rid=row["rid"],
+                )
+            )
+        self._list_panel.set_requirements(requirements)
+        self._restore_selection()
+
+    def _restore_selection(self) -> None:
+        selected = self._selected_visible_rids | self._selected_rids
+        visible = self._list_panel.model.get_visible()
+        for idx, req in enumerate(visible):
+            rid = str(getattr(req, "rid", "")).strip().upper()
+            self._list_panel.list.Select(idx, rid in selected)
 
 
 class EditorPanel(wx.Panel):

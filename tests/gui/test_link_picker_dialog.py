@@ -50,7 +50,8 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         assert option_labels == ["HLR: High", "SYS: System"]
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
-        assert dialog._checklist.GetString(0) == "HLR1 — High"
+        assert dialog._list_panel.list.GetItemCount() == 1
+        assert dialog._list_panel.list.GetItem(0, 1).GetText() == "High"
     finally:
         dialog.Destroy()
         frame.Destroy()
@@ -86,8 +87,8 @@ def test_link_picker_shows_requirement_text_tooltip(wx_app):
     ]
     dialog = RequirementLinkPickerDialog(frame, candidates, current_prefix="SYS")
     try:
-        dialog._apply_checklist_tooltip(0)
-        tooltip_obj = dialog._checklist.GetToolTip()
+        dialog._apply_list_tooltip(0)
+        tooltip_obj = dialog._list_panel.list.GetToolTip()
         assert tooltip_obj is not None
         assert tooltip_obj.GetTip() == "Полный текст высокоуровневого требования"
     finally:

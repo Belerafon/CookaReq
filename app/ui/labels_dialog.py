@@ -11,10 +11,13 @@ from ..services.requirements import LabelDef, label_color
 from ..i18n import _
 
 
+GROUP_LEVEL_CHOICES: list[tuple[int, str]] = [(0, _("None")), (1, "1"), (2, "2"), (3, "3")]
+
+
 class _LabelEditDialog(wx.Dialog):
     """Small dialog to edit label key and title."""
 
-    def __init__(self, parent: wx.Window, key: str, title: str):
+    def __init__(self, parent: wx.Window, key: str, title: str, group_level: int = 0):
         super().__init__(parent, title=_("Edit label"))
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(wx.StaticText(self, label=_("Key")), 0, wx.ALL, 5)
@@ -23,13 +26,20 @@ class _LabelEditDialog(wx.Dialog):
         sizer.Add(wx.StaticText(self, label=_("Title")), 0, wx.ALL, 5)
         self.title_ctrl = wx.TextCtrl(self, value=title)
         sizer.Add(self.title_ctrl, 0, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(wx.StaticText(self, label=_("Grouping level")), 0, wx.ALL, 5)
+        self.group_level_choice = wx.Choice(self, choices=[label for _value, label in GROUP_LEVEL_CHOICES])
+        selected = next((i for i, (value, _label) in enumerate(GROUP_LEVEL_CHOICES) if value == group_level), 0)
+        self.group_level_choice.SetSelection(selected)
+        sizer.Add(self.group_level_choice, 0, wx.EXPAND | wx.ALL, 5)
         btn_sizer = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         if btn_sizer:
             sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
         self.SetSizerAndFit(sizer)
 
-    def get_values(self) -> tuple[str, str]:
-        return self.key_ctrl.GetValue().strip(), self.title_ctrl.GetValue().strip()
+    def get_values(self) -> tuple[str, str, int]:
+        selection = self.group_level_choice.GetSelection()
+        level = GROUP_LEVEL_CHOICES[selection][0] if selection >= 0 else 0
+        return self.key_ctrl.GetValue().strip(), self.title_ctrl.GetValue().strip(), level
 
 
 class LabelsDialog(wx.Dialog):
@@ -51,7 +61,7 @@ class LabelsDialog(wx.Dialog):
         super().__init__(parent, title=self._base_title, style=style)
         # copy labels to avoid modifying caller until OK
         self._labels: list[LabelDef] = [
-            LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels
+            LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in labels
         ]
         self._original_key_lookup: dict[str, str] = {
             lbl.key: lbl.key for lbl in self._labels
@@ -91,7 +101,8 @@ class LabelsDialog(wx.Dialog):
         self.list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
         self.list.InsertColumn(0, _("Key"))
         self.list.InsertColumn(1, _("Title"))
-        self.list.InsertColumn(2, _("Count"), format=wx.LIST_FORMAT_RIGHT)
+        self.list.InsertColumn(2, _("Grouping level"))
+        self.list.InsertColumn(3, _("Count"), format=wx.LIST_FORMAT_RIGHT)
 
         # image list to display colored rectangles instead of hex codes
         self._img_list = wx.ImageList(16, 16)
@@ -188,7 +199,8 @@ class LabelsDialog(wx.Dialog):
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
-            self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
+            self.list.SetItem(idx, 3, str(self._label_usage_count(lbl.key)))
             img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
         self._resize_columns()
@@ -243,7 +255,7 @@ class LabelsDialog(wx.Dialog):
     def _replace_state(self, labels: list[LabelDef], usage_counts: dict[str, int]) -> None:
         """Replace dialog state with labels loaded for another document."""
 
-        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in labels]
         self._original_key_lookup = {lbl.key: lbl.key for lbl in self._labels}
         self._key_changes.clear()
         self._removed_labels.clear()
@@ -358,18 +370,18 @@ class LabelsDialog(wx.Dialog):
         return result == wx.ID_YES
 
     def _on_add_label(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
-        dlg = _LabelEditDialog(self, "", "")
+        dlg = _LabelEditDialog(self, "", "", 0)
         try:
             if dlg.ShowModal() != wx.ID_OK:
                 return
-            new_key, new_title = dlg.get_values()
+            new_key, new_title, group_level = dlg.get_values()
             if not new_key:
                 wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
                 return
             if any(label.key.casefold() == new_key.casefold() for label in self._labels):
                 wx.MessageBox(_("Label already exists"), _("Error"), wx.ICON_ERROR)
                 return
-            definition = LabelDef(new_key, new_title or new_key, None)
+            definition = LabelDef(new_key, new_title or new_key, None, group_level)
             self._labels.append(definition)
             self._original_key_lookup.setdefault(new_key, new_key)
             self._populate()
@@ -421,7 +433,7 @@ class LabelsDialog(wx.Dialog):
 
     def get_labels(self) -> list[LabelDef]:
         """Return updated labels."""
-        return [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        return [LabelDef(lbl.key, lbl.title, lbl.color, lbl.group_level) for lbl in self._labels]
 
     def get_key_changes(self) -> dict[str, tuple[str, bool]]:
         """Return mapping of original keys to rename decisions."""
@@ -438,12 +450,14 @@ class LabelsDialog(wx.Dialog):
     def _resize_columns(self) -> None:
         width = self.list.GetClientSize().width
         if width > 0:
-            count_width = min(self.FromDIP(70), max(self.FromDIP(40), width // 5))
-            remaining = max(width - count_width - 6, 0)
+            count_width = min(self.FromDIP(70), max(self.FromDIP(40), width // 6))
+            grouping_width = min(self.FromDIP(160), max(self.FromDIP(120), width // 4))
+            remaining = max(width - count_width - grouping_width - 6, 0)
             first = int(remaining * 0.4)
             self.list.SetColumnWidth(0, first)
             self.list.SetColumnWidth(1, max(remaining - first, 0))
-            self.list.SetColumnWidth(2, count_width)
+            self.list.SetColumnWidth(2, grouping_width)
+            self.list.SetColumnWidth(3, count_width)
 
     def _on_list_size(self, _event: wx.Event) -> None:  # pragma: no cover - GUI event
         self._resize_columns()
@@ -458,11 +472,11 @@ class LabelsDialog(wx.Dialog):
         lbl = self._labels[idx]
         old_key = lbl.key
         original_key = self._get_original_key(old_key)
-        dlg = _LabelEditDialog(self, lbl.key, lbl.title)
+        dlg = _LabelEditDialog(self, lbl.key, lbl.title, lbl.group_level)
         try:
             if dlg.ShowModal() != wx.ID_OK:
                 return
-            new_key, new_title = dlg.get_values()
+            new_key, new_title, group_level = dlg.get_values()
             if not new_key:
                 wx.MessageBox(_("Label key cannot be empty"), _("Error"), wx.ICON_ERROR)
                 return
@@ -482,8 +496,10 @@ class LabelsDialog(wx.Dialog):
                 decision = False
             lbl.key = new_key
             lbl.title = new_title or new_key
+            lbl.group_level = group_level
             self.list.SetItem(idx, 0, lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
             if new_key != old_key:
                 self._original_key_lookup.pop(old_key, None)
                 self._original_key_lookup[new_key] = original_key
@@ -495,7 +511,8 @@ class LabelsDialog(wx.Dialog):
             else:
                 if original_key in self._key_changes:
                     self._key_changes.pop(original_key, None)
-            self.list.SetItem(idx, 2, str(self._label_usage_count(lbl.key)))
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
+            self.list.SetItem(idx, 3, str(self._label_usage_count(lbl.key)))
             self._update_dirty_state()
         finally:
             dlg.Destroy()

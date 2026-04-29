@@ -786,7 +786,7 @@ class RequirementsService:
         color = label.color.strip() if isinstance(label.color, str) else None
         if color == "":
             color = None
-        return LabelDef(key=key, title=title, color=color)
+        return LabelDef(key=key, title=title, color=color, group_level=0)
 
     def _normalize_requirement_labels(
         self,
@@ -855,7 +855,7 @@ class RequirementsService:
                 else:
                     key = definition.key
 
-                clone = LabelDef(key, definition.title, definition.color)
+                clone = LabelDef(key, definition.title, definition.color, getattr(definition, "group_level", 0))
                 if key not in updated:
                     order.append(key)
                 updated[key] = clone
@@ -900,7 +900,7 @@ class RequirementsService:
             normalized.append(sanitized)
 
         document = self.get_document(prefix)
-        document.labels.defs = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in normalized]
+        document.labels.defs = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in normalized]
         self.save_document(document)
 
         propagate_renames: dict[str, str] = {}
@@ -979,8 +979,8 @@ class RequirementsService:
         """Append a new label definition to ``prefix`` document."""
 
         document = self.get_document(prefix)
-        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
-        new_label = LabelDef(key=key, title=title or key, color=color)
+        original = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in document.labels.defs]
+        new_label = LabelDef(key=key, title=title or key, color=color, group_level=0)
         updated = [*original, new_label]
         normalized = self.update_document_labels(
             prefix,
@@ -1004,7 +1004,7 @@ class RequirementsService:
         """Update ``key`` label definition for ``prefix`` document."""
 
         document = self.get_document(prefix)
-        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
+        original = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in document.labels.defs]
         updated: list[LabelDef] = []
         target: LabelDef | None = None
         for definition in document.labels.defs:
@@ -1016,7 +1016,7 @@ class RequirementsService:
                 )
                 updated.append(target)
             else:
-                updated.append(LabelDef(definition.key, definition.title, definition.color))
+                updated.append(LabelDef(definition.key, definition.title, definition.color, getattr(definition, "group_level", 0)))
 
         if target is None:
             raise ValidationError(f"label {key} does not exist")
@@ -1044,9 +1044,9 @@ class RequirementsService:
         """Remove label ``key`` from ``prefix`` metadata."""
 
         document = self.get_document(prefix)
-        original = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in document.labels.defs]
+        original = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in document.labels.defs]
         updated = [
-            LabelDef(definition.key, definition.title, definition.color)
+            LabelDef(definition.key, definition.title, definition.color, getattr(definition, "group_level", 0))
             for definition in document.labels.defs
             if definition.key != key
         ]

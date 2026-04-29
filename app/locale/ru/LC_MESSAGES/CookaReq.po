@@ -3562,3 +3562,9 @@ msgstr "по убыванию"
 
 msgid "n/a"
 msgstr "н/д"
+
+msgid "Grouping level"
+msgstr "Уровень группировки"
+
+msgid "None"
+msgstr "Нет"

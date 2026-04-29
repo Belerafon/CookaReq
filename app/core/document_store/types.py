@@ -51,6 +51,7 @@ class LabelDef:
     key: str
     title: str
     color: str | None = None
+    group_level: int = 0
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> LabelDef:
@@ -64,11 +65,20 @@ class LabelDef:
             raise ValidationError(f"label definition missing {exc.args[0]}") from exc
         color_raw = data.get("color")
         color = None if color_raw in (None, "") else str(color_raw)
-        return cls(key=str(key), title=str(title), color=color)
+        group_level_raw = data.get("groupLevel", 0)
+        try:
+            group_level = int(group_level_raw)
+        except (TypeError, ValueError):
+            group_level = 0
+        if group_level not in (0, 1, 2, 3):
+            group_level = 0
+        return cls(key=str(key), title=str(title), color=color, group_level=group_level)
 
     def to_mapping(self) -> dict[str, Any]:
         """Serialise the label definition into a JSON-friendly mapping."""
-        return asdict(self)
+        payload = asdict(self)
+        payload["groupLevel"] = payload.pop("group_level", 0)
+        return payload
 
 
 @dataclass(slots=True)

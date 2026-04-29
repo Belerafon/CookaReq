@@ -30,6 +30,7 @@ class RequirementModel:
         self._sort_field: str | None = None
         self._sort_ascending: bool = True
         self._active_doc_prefix: str | None = None
+        self._label_group_levels: dict[str, int] = {}
 
     # data management -------------------------------------------------
     def set_requirements(self, requirements: list[Requirement]) -> None:
@@ -46,6 +47,20 @@ class RequirementModel:
         """Set default document prefix used for ``get_by_id`` lookups."""
 
         self._active_doc_prefix = prefix
+
+    def set_label_group_levels(self, labels: Sequence[tuple[str, int]]) -> None:
+        """Set grouping levels for document labels keyed by label name."""
+        normalized: dict[str, int] = {}
+        for key, level in labels:
+            try:
+                parsed = int(level)
+            except (TypeError, ValueError):
+                parsed = 0
+            if parsed not in (1, 2, 3):
+                parsed = 0
+            normalized[str(key)] = parsed
+        self._label_group_levels = normalized
+        self._apply_sort()
 
     def add(self, requirement: Requirement) -> None:
         """Append ``requirement`` to the model."""
@@ -256,7 +271,19 @@ class RequirementModel:
             if self._sort_field == "source":
                 return natural_sort_key(value)
             if self._sort_field == "labels" and isinstance(value, list):
-                return "|".join(value)
+                by_level: dict[int, list[str]] = {1: [], 2: [], 3: []}
+                for label in value:
+                    level = self._label_group_levels.get(str(label), 0)
+                    if level in by_level:
+                        by_level[level].append(str(label))
+                key_parts: list[tuple[int, str]] = []
+                for level in (1, 2, 3):
+                    candidates = sorted(by_level[level], key=str.casefold)
+                    if candidates:
+                        key_parts.append((0, candidates[0]))
+                    else:
+                        key_parts.append((1, ""))
+                return tuple(key_parts)
             if isinstance(value, list):
                 return "|".join(str(v) for v in value)
             if is_dataclass(value):

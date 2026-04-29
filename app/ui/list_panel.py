@@ -792,8 +792,11 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
 
     def update_labels_list(self, labels: list[LabelDef], allow_freeform: bool) -> None:
         """Update available labels and whether custom labels are allowed."""
-        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in labels]
+        self._labels = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in labels]
         self._labels_allow_freeform = bool(allow_freeform)
+        self.model.set_label_group_levels(
+            [(lbl.key, getattr(lbl, "group_level", 0)) for lbl in labels]
+        )
 
     def _on_filter(self, event):  # pragma: no cover - simple event binding
         dlg = FilterDialog(self, labels=self._labels, values=self.current_filters)
@@ -1509,8 +1512,8 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
         if not requirements:
             return
 
-        available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
-        inherited_available = [LabelDef(lbl.key, lbl.title, lbl.color) for lbl in self._labels]
+        available = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in self._labels]
+        inherited_available = [LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in self._labels]
         local_sources: dict[str, str] = {}
         inherited_sources: dict[str, str] = {}
         if self._docs_controller and self._current_doc_prefix:
@@ -1519,7 +1522,7 @@ class ListPanel(wx.Panel, ColumnSorterMixin):
                 include_inherited=True,
             )
             inherited_available = [
-                LabelDef(lbl.key, lbl.title, lbl.color) for lbl in inherited_defs
+                LabelDef(lbl.key, lbl.title, lbl.color, getattr(lbl, "group_level", 0)) for lbl in inherited_defs
             ]
             service = getattr(self._docs_controller, "service", None)
             if service is not None:

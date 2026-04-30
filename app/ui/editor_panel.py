@@ -388,13 +388,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._visible_candidates = list(filtered_by_source)
         requirements = []
         for idx, row in enumerate(self._visible_candidates, start=1):
+            rid_value = str(row.get("rid", "")).strip()
+            try:
+                _prefix, requirement_id = parse_rid(rid_value)
+            except ValueError:
+                requirement_id = idx
             labels = row.get("labels")
             if not isinstance(labels, list):
                 labels = []
             requirements.append(
                 Requirement.from_mapping(
                     {
-                        "id": idx,
+                        "id": requirement_id,
                         "title": str(row.get("title", "")),
                         "statement": str(row.get("statement", "")),
                         "status": str(row.get("status", Status.DRAFT.value)),
@@ -406,7 +411,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
                         "verification": row.get("verification", Verification.NOT_DEFINED.value),
                     },
                     doc_prefix=str(row.get("prefix", "")),
-                    rid=row["rid"],
+                    rid=rid_value,
                 )
             )
         self._list_panel.set_requirements(requirements)

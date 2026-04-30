@@ -166,3 +166,26 @@ def test_link_picker_pins_physical_first_column_when_checkboxes_enabled(wx_app, 
     finally:
         dialog.Destroy()
         frame.Destroy()
+
+
+def test_link_picker_uses_requirement_id_from_rid_not_row_index(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "SYS42", "title": "Expected title", "document": "System", "prefix": "SYS", "source": "Spec"},
+        {"rid": "SYS7", "title": "Other title", "document": "System", "prefix": "SYS", "source": "Spec"},
+    ]
+    dialog = RequirementLinkPickerDialog(
+        frame,
+        candidates,
+        list_columns=["id", "source", "status"],
+        current_prefix="SYS",
+    )
+    try:
+        assert dialog._list_panel.list.GetItemCount() == 2
+        first_rid = dialog._list_panel.model.get_visible()[0].rid
+        assert first_rid == "SYS42"
+        assert dialog._list_panel.list.GetItem(0, 1).GetText() == "42"
+        assert dialog._list_panel.list.GetItem(0, 0).GetText() == "Expected title"
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

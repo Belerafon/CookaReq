@@ -1,6 +1,8 @@
 import pytest
 import wx
+from contextlib import suppress
 
+from app.config import ConfigManager
 from app.ui.editor_panel import RequirementLinkPickerDialog
 
 pytestmark = pytest.mark.gui
@@ -51,7 +53,7 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
         assert dialog._list_panel.list.GetItemCount() == 1
-        assert dialog._list_panel.list.GetItem(0, 1).GetText() == "High"
+        assert dialog._list_panel.list.GetItem(0, 1).GetText().endswith("High")
     finally:
         dialog.Destroy()
         frame.Destroy()
@@ -91,6 +93,141 @@ def test_link_picker_shows_requirement_text_tooltip(wx_app):
         tooltip_obj = dialog._list_panel.list.GetToolTip()
         assert tooltip_obj is not None
         assert tooltip_obj.GetTip() == "Полный текст высокоуровневого требования"
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_reuses_main_list_layout_config(wx_app, tmp_path):
+    config = ConfigManager(path=tmp_path / "cfg.json")
+    config.set_columns(["labels", "id", "source", "status"])
+    config.set_column_width(0, 210)
+    config.set_column_width(1, 430)
+    config.set_column_width(2, 120)
+    config.set_column_width(3, 180)
+    config.set_column_width(4, 150)
+    config.set_column_order(["labels", "title", "status", "id", "source"])
+
+    frame = wx.Frame(None)
+    frame.config = config  # type: ignore[attr-defined]
+    candidates = [{"rid": "SYS1", "title": "Title", "source": "Spec", "status": "draft", "document": "System", "prefix": "SYS", "labels": ["L1"]}]
+
+    dialog = RequirementLinkPickerDialog(
+        frame,
+        candidates,
+        selected_rids={"SYS1"},
+        list_columns=["labels", "id", "source", "status"],
+    )
+    try:
+        assert dialog._list_panel._field_order == ["labels", "title", "id", "source", "status"]
+        assert dialog._list_panel.list.GetColumnWidth(0) == 210
+        assert dialog._list_panel.list.GetColumnWidth(1) == 430
+        assert dialog._list_panel.list.GetColumnWidth(2) == 120
+        assert dialog._list_panel.list.GetColumnWidth(3) == 180
+        assert dialog._list_panel.list.GetColumnWidth(4) == 150
+        assert dialog._list_panel.list.GetItemCount() == 1
+        assert dialog._list_panel.list.GetItem(0, 0).GetText() == ""
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_marks_preselected_items_with_checkboxes(wx_app):
+    frame = wx.Frame(None)
+    candidates = [{"rid": "SYS1", "title": "Title", "document": "System", "prefix": "SYS"}]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"})
+    try:
+        assert dialog._list_panel.list.GetItemCount() == 1
+        assert dialog._checkboxes_available is False
+        assert dialog._list_panel.list.GetItem(0, 1).GetText().startswith("☑ ")
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_keeps_main_column_order_when_checkbox_column_would_shift(wx_app, tmp_path):
+    config = ConfigManager(path=tmp_path / "cfg-order.json")
+    config.set_columns(["labels", "id", "source", "status"])
+    config.set_column_order(["title", "status", "id", "source", "labels"])
+
+    frame = wx.Frame(None)
+    frame.config = config  # type: ignore[attr-defined]
+    candidates = [{"rid": "SYS1", "title": "Title", "document": "System", "prefix": "SYS", "labels": ["L1"]}]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"})
+    try:
+        get_order = getattr(dialog._list_panel.list, "GetColumnsOrder", None)
+        if callable(get_order):
+            with suppress(NotImplementedError):
+                order = list(dialog._list_panel.list.GetColumnsOrder())
+                assert order == [1, 4, 2, 3, 0]
+                assert dialog._checkboxes_available is False
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_uses_requirement_id_from_rid_not_row_index(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "SYS42", "title": "Expected title", "document": "System", "prefix": "SYS", "source": "Spec"},
+        {"rid": "SYS7", "title": "Other title", "document": "System", "prefix": "SYS", "source": "Spec"},
+    ]
+    dialog = RequirementLinkPickerDialog(
+        frame,
+        candidates,
+        list_columns=["id", "source", "status"],
+        current_prefix="SYS",
+    )
+    try:
+        assert dialog._list_panel.list.GetItemCount() == 2
+        first_rid = dialog._list_panel.model.get_visible()[0].rid
+        assert first_rid == "SYS42"
+        assert dialog._list_panel.list.GetItem(0, 1).GetText() == "42"
+        assert dialog._list_panel.list.GetItem(0, 0).GetText().endswith("Expected title")
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_scrolls_to_selected_item_center_anchor(wx_app, monkeypatch):
+    frame = wx.Frame(None)
+    candidates = [{"rid": f"SYS{idx}", "title": f"Title {idx}", "document": "System", "prefix": "SYS"} for idx in range(1, 40)]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS30"}, current_prefix="SYS")
+    try:
+        calls: list[int] = []
+        monkeypatch.setattr(dialog._list_panel.list, "GetCountPerPage", lambda: 10)
+        monkeypatch.setattr(dialog._list_panel.list, "EnsureVisible", lambda index: calls.append(index))
+        dialog._scroll_selection_into_view(29)
+        assert calls == [24, 29]
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+class _ListEvt:
+    def __init__(self, index: int):
+        self._index = index
+
+    def GetIndex(self) -> int:
+        return self._index
+
+    def Skip(self) -> None:
+        return None
+
+
+def test_link_picker_marker_mode_toggles_multiple_rows(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "SYS1", "title": "One", "document": "System", "prefix": "SYS"},
+        {"rid": "SYS2", "title": "Two", "document": "System", "prefix": "SYS"},
+    ]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"}, current_prefix="SYS")
+    try:
+        assert "SYS1" in dialog.selected_rids
+        dialog._on_item_selected(_ListEvt(1))  # toggle SYS2 on
+        assert set(dialog.selected_rids) == {"SYS1", "SYS2"}
+        dialog._on_item_selected(_ListEvt(0))  # toggle SYS1 off
+        assert set(dialog.selected_rids) == {"SYS2"}
     finally:
         dialog.Destroy()
         frame.Destroy()

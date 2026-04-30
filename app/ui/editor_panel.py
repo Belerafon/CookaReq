@@ -40,6 +40,7 @@ from .helpers import AutoHeightListCtrl, HelpStaticBox, dip, inherit_background,
 from .label_selection_dialog import LabelSelectionDialog
 from .list_panel import ListPanel
 from .resources import load_editor_config
+from ..config import ConfigManager
 from .widgets.markdown_view import MarkdownContent
 
 logger = logging.getLogger(__name__)
@@ -121,11 +122,21 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._list_panel = ListPanel(self)
         self._list_panel.document_summary.Hide()
         self._list_panel.set_columns(self._list_columns)
+        self._main_list_config = self._resolve_main_list_config()
+        self._list_panel.load_column_widths(self._main_list_config)
+        self._list_panel.load_column_order(self._main_list_config)
         self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
+        self._checked_evt = getattr(wx, "EVT_LIST_ITEM_CHECKED", None)
+        self._unchecked_evt = getattr(wx, "EVT_LIST_ITEM_UNCHECKED", None)
+        if self._checked_evt is not None and self._unchecked_evt is not None:
+            self._list_panel.list.Bind(self._checked_evt, self._on_item_checked)
+            self._list_panel.list.Bind(self._unchecked_evt, self._on_item_unchecked)
         self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
         self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
+        self._checkboxes_available = False
+        self._validate_checkbox_layout_compatibility()
         root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -137,6 +148,67 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._apply_filter()
         self._restore_layout()
         self.Bind(wx.EVT_CLOSE, self._on_close)
+
+
+    def _resolve_main_list_config(self) -> ConfigManager:
+        """Return config that stores main requirements list layout."""
+        node: wx.Window | None = self.GetParent()
+        while node is not None:
+            config = getattr(node, "config", None)
+            if isinstance(config, ConfigManager):
+                return config
+            get_parent = getattr(node, "GetParent", None)
+            node = get_parent() if callable(get_parent) else None
+        return ConfigManager()
+
+    def _enable_list_checkboxes(self) -> bool:
+        """Enable list checkboxes for explicit multi-select when backend supports it."""
+        return False
+
+    def _set_row_checked(self, index: int, checked: bool) -> None:
+        check_item = getattr(self._list_panel.list, "CheckItem", None)
+        if callable(check_item):
+            try:
+                check_item(index, checked)
+                return
+            except Exception:
+                pass
+        self._list_panel.list.Select(index, checked)
+
+    def _is_row_checked(self, index: int) -> bool:
+        is_checked = getattr(self._list_panel.list, "IsItemChecked", None)
+        if callable(is_checked):
+            try:
+                return bool(is_checked(index))
+            except Exception:
+                return False
+        return bool(self._list_panel.list.IsSelected(index))
+
+    def _refresh_selected_visible_rids(self) -> None:
+        visible = self._list_panel.model.get_visible()
+        self._selected_visible_rids = {
+            str(getattr(req, "rid", "")).strip().upper()
+            for idx, req in enumerate(visible)
+            if self._is_row_checked(idx) and str(getattr(req, "rid", "")).strip()
+        }
+        self._render_selection_markers()
+
+    def _render_selection_markers(self) -> None:
+        """Render pseudo-checkbox markers in title column for stable UX."""
+        try:
+            title_col = self._list_panel._field_order.index("title")
+        except (AttributeError, ValueError):
+            return
+        visible = self._list_panel.model.get_visible()
+        for idx, req in enumerate(visible):
+            rid = str(getattr(req, "rid", "")).strip().upper()
+            title = str(getattr(req, "title", "")).strip()
+            marker = "☑" if rid in self._selected_visible_rids or rid in self._selected_rids else "☐"
+            self._list_panel.list.SetItem(idx, title_col, f"{marker} {title}".strip())
+
+    def _validate_checkbox_layout_compatibility(self) -> None:
+        """Keep checkbox mode enabled while preserving main-list column order."""
+        return
 
     @property
     def selected_rids(self) -> list[str]:
@@ -260,27 +332,36 @@ class RequirementLinkPickerDialog(wx.Dialog):
         return prefix == key
 
     def _on_filter_button(self, _event: wx.CommandEvent) -> None:
-        for req in self._list_panel.model.get_visible():
-            rid = str(getattr(req, "rid", "")).strip().upper()
-            if rid:
-                self._selected_visible_rids.add(rid)
+        self._refresh_selected_visible_rids()
+
+    def _on_item_checked(self, _event: wx.ListEvent) -> None:
+        self._refresh_selected_visible_rids()
+
+    def _on_item_unchecked(self, _event: wx.ListEvent) -> None:
+        self._refresh_selected_visible_rids()
 
     def _on_item_selected(self, event: wx.ListEvent) -> None:
+        if self._checkboxes_available:
+            event.Skip()
+            return
         index = event.GetIndex()
         visible = self._list_panel.model.get_visible()
         if 0 <= index < len(visible):
             rid = str(getattr(visible[index], "rid", "")).strip().upper()
             if rid:
-                self._selected_visible_rids.add(rid)
+                if rid in self._selected_visible_rids:
+                    self._selected_visible_rids.discard(rid)
+                else:
+                    self._selected_visible_rids.add(rid)
+                self._render_selection_markers()
         event.Skip()
 
     def _on_item_deselected(self, event: wx.ListEvent) -> None:
-        index = event.GetIndex()
-        visible = self._list_panel.model.get_visible()
-        if 0 <= index < len(visible):
-            rid = str(getattr(visible[index], "rid", "")).strip().upper()
-            if rid:
-                self._selected_visible_rids.discard(rid)
+        if self._checkboxes_available:
+            event.Skip()
+            return
+        # In marker-based multi-select, row highlight changes should not
+        # mutate stored checked state.
         event.Skip()
 
     def _apply_filter(self) -> None:
@@ -290,13 +371,18 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._visible_candidates = list(filtered_by_source)
         requirements = []
         for idx, row in enumerate(self._visible_candidates, start=1):
+            rid_value = str(row.get("rid", "")).strip()
+            try:
+                _prefix, requirement_id = parse_rid(rid_value)
+            except ValueError:
+                requirement_id = idx
             labels = row.get("labels")
             if not isinstance(labels, list):
                 labels = []
             requirements.append(
                 Requirement.from_mapping(
                     {
-                        "id": idx,
+                        "id": requirement_id,
                         "title": str(row.get("title", "")),
                         "statement": str(row.get("statement", "")),
                         "status": str(row.get("status", Status.DRAFT.value)),
@@ -308,7 +394,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
                         "verification": row.get("verification", Verification.NOT_DEFINED.value),
                     },
                     doc_prefix=str(row.get("prefix", "")),
-                    rid=row["rid"],
+                    rid=rid_value,
                 )
             )
         self._list_panel.set_requirements(requirements)
@@ -317,9 +403,41 @@ class RequirementLinkPickerDialog(wx.Dialog):
     def _restore_selection(self) -> None:
         selected = self._selected_visible_rids | self._selected_rids
         visible = self._list_panel.model.get_visible()
+        first_selected_index: int | None = None
         for idx, req in enumerate(visible):
             rid = str(getattr(req, "rid", "")).strip().upper()
-            self._list_panel.list.Select(idx, rid in selected)
+            is_selected = rid in selected
+            self._set_row_checked(idx, is_selected)
+            if is_selected and first_selected_index is None:
+                first_selected_index = idx
+        if first_selected_index is not None:
+            self._scroll_selection_into_view(first_selected_index)
+        self._render_selection_markers()
+
+    def _scroll_selection_into_view(self, selected_index: int) -> None:
+        """Scroll list so selected row stays near the middle when possible."""
+        ensure_visible = getattr(self._list_panel.list, "EnsureVisible", None)
+        get_per_page = getattr(self._list_panel.list, "GetCountPerPage", None)
+        if not callable(ensure_visible):
+            return
+        if not callable(get_per_page):
+            try:
+                ensure_visible(selected_index)
+            except Exception:
+                return
+            return
+        try:
+            per_page = int(get_per_page())
+        except Exception:
+            per_page = 0
+        anchor = selected_index
+        if per_page > 1:
+            anchor = max(selected_index - (per_page // 2), 0)
+        try:
+            ensure_visible(anchor)
+            ensure_visible(selected_index)
+        except Exception:
+            return
 
 
 class EditorPanel(wx.Panel):

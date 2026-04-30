@@ -148,7 +148,7 @@ def test_link_picker_marks_preselected_items_with_checkboxes(wx_app):
         frame.Destroy()
 
 
-def test_link_picker_pins_physical_first_column_when_checkboxes_enabled(wx_app, tmp_path):
+def test_link_picker_keeps_main_column_order_when_checkbox_column_would_shift(wx_app, tmp_path):
     config = ConfigManager(path=tmp_path / "cfg-order.json")
     config.set_columns(["labels", "id", "source", "status"])
     config.set_column_order(["title", "status", "id", "source", "labels"])
@@ -162,7 +162,8 @@ def test_link_picker_pins_physical_first_column_when_checkboxes_enabled(wx_app, 
         if callable(get_order):
             with suppress(NotImplementedError):
                 order = list(dialog._list_panel.list.GetColumnsOrder())
-                assert order[0] == 0
+                assert order == [1, 4, 2, 3, 0]
+                assert dialog._checkboxes_available is False
     finally:
         dialog.Destroy()
         frame.Destroy()

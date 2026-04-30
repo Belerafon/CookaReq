@@ -128,15 +128,15 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._list_panel.filter_btn.Bind(wx.EVT_BUTTON, self._on_filter_button)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_item_selected)
         self._list_panel.list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_item_deselected)
-        checked_evt = getattr(wx, "EVT_LIST_ITEM_CHECKED", None)
-        unchecked_evt = getattr(wx, "EVT_LIST_ITEM_UNCHECKED", None)
-        if checked_evt is not None and unchecked_evt is not None:
-            self._list_panel.list.Bind(checked_evt, self._on_item_checked)
-            self._list_panel.list.Bind(unchecked_evt, self._on_item_unchecked)
+        self._checked_evt = getattr(wx, "EVT_LIST_ITEM_CHECKED", None)
+        self._unchecked_evt = getattr(wx, "EVT_LIST_ITEM_UNCHECKED", None)
+        if self._checked_evt is not None and self._unchecked_evt is not None:
+            self._list_panel.list.Bind(self._checked_evt, self._on_item_checked)
+            self._list_panel.list.Bind(self._unchecked_evt, self._on_item_unchecked)
         self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
         self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
         self._checkboxes_available = self._enable_list_checkboxes()
-        self._normalize_column_order_for_checkboxes()
+        self._validate_checkbox_layout_compatibility()
         root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -199,21 +199,19 @@ class RequirementLinkPickerDialog(wx.Dialog):
             if self._is_row_checked(idx) and str(getattr(req, "rid", "")).strip()
         }
 
-    def _normalize_column_order_for_checkboxes(self) -> None:
-        """Keep checkbox state icon in the first visible column.
+    def _validate_checkbox_layout_compatibility(self) -> None:
+        """Disable native checkboxes when they would break main-list column order.
 
-        Native ``wx.ListCtrl`` checkboxes are always rendered in the first
-        physical column (index 0), not in arbitrary visual columns after
-        ``SetColumnsOrder``. If column order moves physical column 0 to another
-        visual position, checkboxes appear "inside" that moved column. To keep
-        UX predictable in the link picker, we pin physical column 0 to the
-        first visible position whenever checkboxes are enabled.
+        In ``wx.ListCtrl`` native checkboxes are always drawn in physical column
+        0. When column order moves this column away from first visual position,
+        checkboxes appear in the middle of the table and diverge from main-list
+        layout. In this case we keep exact column order and fallback to row
+        selection instead of forcing a reordered layout.
         """
         if not self._checkboxes_available:
             return
         get_order = getattr(self._list_panel.list, "GetColumnsOrder", None)
-        set_order = getattr(self._list_panel.list, "SetColumnsOrder", None)
-        if not callable(get_order) or not callable(set_order):
+        if not callable(get_order):
             return
         try:
             order = list(get_order())
@@ -221,11 +219,14 @@ class RequirementLinkPickerDialog(wx.Dialog):
             return
         if not order or order[0] == 0:
             return
-        normalized = [0, *[idx for idx in order if idx != 0]]
-        try:
-            set_order(normalized)
-        except Exception:
-            return
+        disable = getattr(self._list_panel.list, "EnableCheckBoxes", None)
+        if callable(disable):
+            try:
+                disable(False)
+            except Exception:
+                pass
+        self._checkboxes_available = False
+        self._refresh_selected_visible_rids()
 
     @property
     def selected_rids(self) -> list[str]:

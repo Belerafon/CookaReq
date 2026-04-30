@@ -136,6 +136,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
         self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
         self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
         self._checkboxes_available = self._enable_list_checkboxes()
+        self._normalize_column_order_for_checkboxes()
         root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
         buttons = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -197,6 +198,34 @@ class RequirementLinkPickerDialog(wx.Dialog):
             for idx, req in enumerate(visible)
             if self._is_row_checked(idx) and str(getattr(req, "rid", "")).strip()
         }
+
+    def _normalize_column_order_for_checkboxes(self) -> None:
+        """Keep checkbox state icon in the first visible column.
+
+        Native ``wx.ListCtrl`` checkboxes are always rendered in the first
+        physical column (index 0), not in arbitrary visual columns after
+        ``SetColumnsOrder``. If column order moves physical column 0 to another
+        visual position, checkboxes appear "inside" that moved column. To keep
+        UX predictable in the link picker, we pin physical column 0 to the
+        first visible position whenever checkboxes are enabled.
+        """
+        if not self._checkboxes_available:
+            return
+        get_order = getattr(self._list_panel.list, "GetColumnsOrder", None)
+        set_order = getattr(self._list_panel.list, "SetColumnsOrder", None)
+        if not callable(get_order) or not callable(set_order):
+            return
+        try:
+            order = list(get_order())
+        except Exception:
+            return
+        if not order or order[0] == 0:
+            return
+        normalized = [0, *[idx for idx in order if idx != 0]]
+        try:
+            set_order(normalized)
+        except Exception:
+            return
 
     @property
     def selected_rids(self) -> list[str]:

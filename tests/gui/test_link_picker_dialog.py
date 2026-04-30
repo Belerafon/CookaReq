@@ -1,5 +1,6 @@
 import pytest
 import wx
+from contextlib import suppress
 
 from app.config import ConfigManager
 from app.ui.editor_panel import RequirementLinkPickerDialog
@@ -142,6 +143,26 @@ def test_link_picker_marks_preselected_items_with_checkboxes(wx_app):
             assert dialog._list_panel.list.IsItemChecked(0)
         else:
             assert dialog._list_panel.list.IsSelected(0)
+    finally:
+        dialog.Destroy()
+        frame.Destroy()
+
+
+def test_link_picker_pins_physical_first_column_when_checkboxes_enabled(wx_app, tmp_path):
+    config = ConfigManager(path=tmp_path / "cfg-order.json")
+    config.set_columns(["labels", "id", "source", "status"])
+    config.set_column_order(["title", "status", "id", "source", "labels"])
+
+    frame = wx.Frame(None)
+    frame.config = config  # type: ignore[attr-defined]
+    candidates = [{"rid": "SYS1", "title": "Title", "document": "System", "prefix": "SYS", "labels": ["L1"]}]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"})
+    try:
+        get_order = getattr(dialog._list_panel.list, "GetColumnsOrder", None)
+        if callable(get_order):
+            with suppress(NotImplementedError):
+                order = list(dialog._list_panel.list.GetColumnsOrder())
+                assert order[0] == 0
     finally:
         dialog.Destroy()
         frame.Destroy()

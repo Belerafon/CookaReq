@@ -163,7 +163,7 @@ def test_link_picker_keeps_main_column_order_when_checkbox_column_would_shift(wx
             with suppress(NotImplementedError):
                 order = list(dialog._list_panel.list.GetColumnsOrder())
                 assert order == [1, 4, 2, 3, 0]
-                assert dialog._checkboxes_available is False
+                assert dialog._checkboxes_available is True
     finally:
         dialog.Destroy()
         frame.Destroy()

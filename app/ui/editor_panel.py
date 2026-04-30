@@ -200,33 +200,8 @@ class RequirementLinkPickerDialog(wx.Dialog):
         }
 
     def _validate_checkbox_layout_compatibility(self) -> None:
-        """Disable native checkboxes when they would break main-list column order.
-
-        In ``wx.ListCtrl`` native checkboxes are always drawn in physical column
-        0. When column order moves this column away from first visual position,
-        checkboxes appear in the middle of the table and diverge from main-list
-        layout. In this case we keep exact column order and fallback to row
-        selection instead of forcing a reordered layout.
-        """
-        if not self._checkboxes_available:
-            return
-        get_order = getattr(self._list_panel.list, "GetColumnsOrder", None)
-        if not callable(get_order):
-            return
-        try:
-            order = list(get_order())
-        except Exception:
-            return
-        if not order or order[0] == 0:
-            return
-        disable = getattr(self._list_panel.list, "EnableCheckBoxes", None)
-        if callable(disable):
-            try:
-                disable(False)
-            except Exception:
-                pass
-        self._checkboxes_available = False
-        self._refresh_selected_visible_rids()
+        """Keep checkbox mode enabled while preserving main-list column order."""
+        return
 
     @property
     def selected_rids(self) -> list[str]:

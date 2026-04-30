@@ -421,9 +421,40 @@ class RequirementLinkPickerDialog(wx.Dialog):
     def _restore_selection(self) -> None:
         selected = self._selected_visible_rids | self._selected_rids
         visible = self._list_panel.model.get_visible()
+        first_selected_index: int | None = None
         for idx, req in enumerate(visible):
             rid = str(getattr(req, "rid", "")).strip().upper()
-            self._set_row_checked(idx, rid in selected)
+            is_selected = rid in selected
+            self._set_row_checked(idx, is_selected)
+            if is_selected and first_selected_index is None:
+                first_selected_index = idx
+        if first_selected_index is not None:
+            self._scroll_selection_into_view(first_selected_index)
+
+    def _scroll_selection_into_view(self, selected_index: int) -> None:
+        """Scroll list so selected row stays near the middle when possible."""
+        ensure_visible = getattr(self._list_panel.list, "EnsureVisible", None)
+        get_per_page = getattr(self._list_panel.list, "GetCountPerPage", None)
+        if not callable(ensure_visible):
+            return
+        if not callable(get_per_page):
+            try:
+                ensure_visible(selected_index)
+            except Exception:
+                return
+            return
+        try:
+            per_page = int(get_per_page())
+        except Exception:
+            per_page = 0
+        anchor = selected_index
+        if per_page > 1:
+            anchor = max(selected_index - (per_page // 2), 0)
+        try:
+            ensure_visible(anchor)
+            ensure_visible(selected_index)
+        except Exception:
+            return
 
 
 class EditorPanel(wx.Panel):

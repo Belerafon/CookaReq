@@ -190,3 +190,18 @@ def test_link_picker_uses_requirement_id_from_rid_not_row_index(wx_app):
     finally:
         dialog.Destroy()
         frame.Destroy()
+
+
+def test_link_picker_scrolls_to_selected_item_center_anchor(wx_app, monkeypatch):
+    frame = wx.Frame(None)
+    candidates = [{"rid": f"SYS{idx}", "title": f"Title {idx}", "document": "System", "prefix": "SYS"} for idx in range(1, 40)]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS30"}, current_prefix="SYS")
+    try:
+        calls: list[int] = []
+        monkeypatch.setattr(dialog._list_panel.list, "GetCountPerPage", lambda: 10)
+        monkeypatch.setattr(dialog._list_panel.list, "EnsureVisible", lambda index: calls.append(index))
+        dialog._scroll_selection_into_view(29)
+        assert calls == [24, 29]
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

@@ -349,7 +349,10 @@ class RequirementLinkPickerDialog(wx.Dialog):
         if 0 <= index < len(visible):
             rid = str(getattr(visible[index], "rid", "")).strip().upper()
             if rid:
-                self._selected_visible_rids.add(rid)
+                if rid in self._selected_visible_rids:
+                    self._selected_visible_rids.discard(rid)
+                else:
+                    self._selected_visible_rids.add(rid)
                 self._render_selection_markers()
         event.Skip()
 
@@ -357,13 +360,8 @@ class RequirementLinkPickerDialog(wx.Dialog):
         if self._checkboxes_available:
             event.Skip()
             return
-        index = event.GetIndex()
-        visible = self._list_panel.model.get_visible()
-        if 0 <= index < len(visible):
-            rid = str(getattr(visible[index], "rid", "")).strip().upper()
-            if rid:
-                self._selected_visible_rids.discard(rid)
-                self._render_selection_markers()
+        # In marker-based multi-select, row highlight changes should not
+        # mutate stored checked state.
         event.Skip()
 
     def _apply_filter(self) -> None:

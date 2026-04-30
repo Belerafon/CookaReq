@@ -202,3 +202,32 @@ def test_link_picker_scrolls_to_selected_item_center_anchor(wx_app, monkeypatch)
     finally:
         dialog.Destroy()
         frame.Destroy()
+
+
+class _ListEvt:
+    def __init__(self, index: int):
+        self._index = index
+
+    def GetIndex(self) -> int:
+        return self._index
+
+    def Skip(self) -> None:
+        return None
+
+
+def test_link_picker_marker_mode_toggles_multiple_rows(wx_app):
+    frame = wx.Frame(None)
+    candidates = [
+        {"rid": "SYS1", "title": "One", "document": "System", "prefix": "SYS"},
+        {"rid": "SYS2", "title": "Two", "document": "System", "prefix": "SYS"},
+    ]
+    dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"}, current_prefix="SYS")
+    try:
+        assert "SYS1" in dialog.selected_rids
+        dialog._on_item_selected(_ListEvt(1))  # toggle SYS2 on
+        assert set(dialog.selected_rids) == {"SYS1", "SYS2"}
+        dialog._on_item_selected(_ListEvt(0))  # toggle SYS1 off
+        assert set(dialog.selected_rids) == {"SYS2"}
+    finally:
+        dialog.Destroy()
+        frame.Destroy()

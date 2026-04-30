@@ -135,7 +135,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
             self._list_panel.list.Bind(self._unchecked_evt, self._on_item_unchecked)
         self._list_panel.list.Bind(wx.EVT_MOTION, self._on_list_motion)
         self._list_panel.list.Bind(wx.EVT_LEAVE_WINDOW, self._on_list_leave)
-        self._checkboxes_available = self._enable_list_checkboxes()
+        self._checkboxes_available = False
         self._validate_checkbox_layout_compatibility()
         root.Add(self._list_panel, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, dip(self, 10))
 
@@ -163,14 +163,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
 
     def _enable_list_checkboxes(self) -> bool:
         """Enable list checkboxes for explicit multi-select when backend supports it."""
-        enable = getattr(self._list_panel.list, "EnableCheckBoxes", None)
-        if not callable(enable):
-            return False
-        try:
-            enable(True)
-        except Exception:
-            return False
-        return True
+        return False
 
     def _set_row_checked(self, index: int, checked: bool) -> None:
         check_item = getattr(self._list_panel.list, "CheckItem", None)
@@ -198,6 +191,20 @@ class RequirementLinkPickerDialog(wx.Dialog):
             for idx, req in enumerate(visible)
             if self._is_row_checked(idx) and str(getattr(req, "rid", "")).strip()
         }
+        self._render_selection_markers()
+
+    def _render_selection_markers(self) -> None:
+        """Render pseudo-checkbox markers in title column for stable UX."""
+        try:
+            title_col = self._list_panel._field_order.index("title")
+        except (AttributeError, ValueError):
+            return
+        visible = self._list_panel.model.get_visible()
+        for idx, req in enumerate(visible):
+            rid = str(getattr(req, "rid", "")).strip().upper()
+            title = str(getattr(req, "title", "")).strip()
+            marker = "☑" if rid in self._selected_visible_rids or rid in self._selected_rids else "☐"
+            self._list_panel.list.SetItem(idx, title_col, f"{marker} {title}".strip())
 
     def _validate_checkbox_layout_compatibility(self) -> None:
         """Keep checkbox mode enabled while preserving main-list column order."""
@@ -343,6 +350,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
             rid = str(getattr(visible[index], "rid", "")).strip().upper()
             if rid:
                 self._selected_visible_rids.add(rid)
+                self._render_selection_markers()
         event.Skip()
 
     def _on_item_deselected(self, event: wx.ListEvent) -> None:
@@ -355,6 +363,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
             rid = str(getattr(visible[index], "rid", "")).strip().upper()
             if rid:
                 self._selected_visible_rids.discard(rid)
+                self._render_selection_markers()
         event.Skip()
 
     def _apply_filter(self) -> None:
@@ -405,6 +414,7 @@ class RequirementLinkPickerDialog(wx.Dialog):
                 first_selected_index = idx
         if first_selected_index is not None:
             self._scroll_selection_into_view(first_selected_index)
+        self._render_selection_markers()
 
     def _scroll_selection_into_view(self, selected_index: int) -> None:
         """Scroll list so selected row stays near the middle when possible."""

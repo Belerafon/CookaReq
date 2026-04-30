@@ -53,7 +53,7 @@ def test_link_picker_defaults_to_high_level_scope(wx_app):
         visible = [row["rid"] for row in dialog._visible_candidates]
         assert visible == ["HLR1"]
         assert dialog._list_panel.list.GetItemCount() == 1
-        assert dialog._list_panel.list.GetItem(0, 1).GetText() == "High"
+        assert dialog._list_panel.list.GetItem(0, 1).GetText().endswith("High")
     finally:
         dialog.Destroy()
         frame.Destroy()
@@ -138,11 +138,8 @@ def test_link_picker_marks_preselected_items_with_checkboxes(wx_app):
     dialog = RequirementLinkPickerDialog(frame, candidates, selected_rids={"SYS1"})
     try:
         assert dialog._list_panel.list.GetItemCount() == 1
-        is_checked = getattr(dialog._list_panel.list, "IsItemChecked", None)
-        if callable(is_checked):
-            assert dialog._list_panel.list.IsItemChecked(0)
-        else:
-            assert dialog._list_panel.list.IsSelected(0)
+        assert dialog._checkboxes_available is False
+        assert dialog._list_panel.list.GetItem(0, 1).GetText().startswith("☑ ")
     finally:
         dialog.Destroy()
         frame.Destroy()
@@ -163,7 +160,7 @@ def test_link_picker_keeps_main_column_order_when_checkbox_column_would_shift(wx
             with suppress(NotImplementedError):
                 order = list(dialog._list_panel.list.GetColumnsOrder())
                 assert order == [1, 4, 2, 3, 0]
-                assert dialog._checkboxes_available is True
+                assert dialog._checkboxes_available is False
     finally:
         dialog.Destroy()
         frame.Destroy()
@@ -186,7 +183,7 @@ def test_link_picker_uses_requirement_id_from_rid_not_row_index(wx_app):
         first_rid = dialog._list_panel.model.get_visible()[0].rid
         assert first_rid == "SYS42"
         assert dialog._list_panel.list.GetItem(0, 1).GetText() == "42"
-        assert dialog._list_panel.list.GetItem(0, 0).GetText() == "Expected title"
+        assert dialog._list_panel.list.GetItem(0, 0).GetText().endswith("Expected title")
     finally:
         dialog.Destroy()
         frame.Destroy()

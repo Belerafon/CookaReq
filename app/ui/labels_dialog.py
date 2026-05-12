@@ -11,7 +11,7 @@ from ..services.requirements import LabelDef, label_color
 from ..i18n import _
 
 
-GROUP_LEVEL_CHOICES: list[tuple[int, str]] = [(0, _("None")), (1, "1"), (2, "2"), (3, "3")]
+GROUP_LEVEL_CHOICES: list[tuple[int, str]] = [(0, _("No grouping")), (1, "1"), (2, "2"), (3, "3")]
 
 
 class _LabelEditDialog(wx.Dialog):
@@ -199,7 +199,7 @@ class LabelsDialog(wx.Dialog):
         for lbl in self._labels:
             idx = self.list.InsertItem(self.list.GetItemCount(), lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
-            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("No grouping"))
             self.list.SetItem(idx, 3, str(self._label_usage_count(lbl.key)))
             img_idx = self._get_icon_index(label_color(lbl))
             self.list.SetItemColumnImage(idx, 0, img_idx)
@@ -499,7 +499,7 @@ class LabelsDialog(wx.Dialog):
             lbl.group_level = group_level
             self.list.SetItem(idx, 0, lbl.key)
             self.list.SetItem(idx, 1, lbl.title)
-            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("No grouping"))
             if new_key != old_key:
                 self._original_key_lookup.pop(old_key, None)
                 self._original_key_lookup[new_key] = original_key
@@ -511,7 +511,7 @@ class LabelsDialog(wx.Dialog):
             else:
                 if original_key in self._key_changes:
                     self._key_changes.pop(original_key, None)
-            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("None"))
+            self.list.SetItem(idx, 2, str(lbl.group_level) if lbl.group_level else _("No grouping"))
             self.list.SetItem(idx, 3, str(self._label_usage_count(lbl.key)))
             self._update_dirty_state()
         finally:

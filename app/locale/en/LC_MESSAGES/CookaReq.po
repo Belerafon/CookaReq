@@ -3546,5 +3546,5 @@ msgstr "n/a"
 msgid "Grouping level"
 msgstr "Grouping level"
 
-msgid "None"
-msgstr "None"
+msgid "No grouping"
+msgstr "No grouping"

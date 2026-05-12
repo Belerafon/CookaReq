@@ -3566,5 +3566,5 @@ msgstr "н/д"
 msgid "Grouping level"
 msgstr "Уровень группировки"
 
-msgid "None"
-msgstr "Нет"
+msgid "No grouping"
+msgstr "Без группировки"

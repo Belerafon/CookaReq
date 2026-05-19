@@ -8,10 +8,11 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Any, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 import re
 
-import wx
+if TYPE_CHECKING:
+    import wx
 
 from .columns import default_column_width, sanitize_columns
 from .settings import AppSettings, LLMSettings, MCPSettings, UISettings
@@ -775,6 +776,8 @@ class ConfigManager:
     def _client_display_areas() -> list[wx.Rect]:
         """Return client rectangles for all detected monitors."""
 
+        import wx
+
         areas: list[wx.Rect] = []
         try:
             display_count = wx.Display.GetCount()
@@ -803,6 +806,8 @@ class ConfigManager:
         max_size: tuple[int, int],
     ) -> tuple[wx.Size, tuple[int, int] | None]:
         """Clamp window rectangle to keep it visible on available displays."""
+
+        import wx
 
         min_width, min_height = min_size
         max_width, max_height = max_size
@@ -921,6 +926,8 @@ class ConfigManager:
         editor_splitter: wx.SplitterWindow | None = None,
     ) -> None:
         """Restore persisted window geometry and splitter positions."""
+
+        import wx
         size, position = self._normalise_window_geometry(
             self.get_value("win_w"),
             self.get_value("win_h"),
@@ -994,6 +1001,8 @@ class ConfigManager:
         agent_history_sash: int | None = None,
     ) -> None:
         """Persist current window geometry, splitter positions and column layout."""
+
+        import wx
         w, h = frame.GetSize()
         x, y = frame.GetPosition()
         self.set_value("win_w", int(w))
@@ -1041,6 +1050,8 @@ class ConfigManager:
     def restore_detached_editor_geometry(self, frame: wx.Frame) -> None:
         """Restore persisted geometry for the detached requirement editor."""
 
+        import wx
+
         size, position = self._normalise_window_geometry(
             self.get_value("det_editor_w"),
             self.get_value("det_editor_h"),
@@ -1059,6 +1070,8 @@ class ConfigManager:
 
     def save_detached_editor_geometry(self, frame: wx.Frame) -> None:
         """Persist geometry for the detached requirement editor."""
+
+        import wx
 
         w, h = frame.GetSize()
         x, y = frame.GetPosition()
@@ -1090,6 +1103,8 @@ class ConfigManager:
     def restore_shared_artifacts_dialog_geometry(self, dialog: wx.Dialog) -> None:
         """Restore persisted geometry for the shared artifacts dialog."""
 
+        import wx
+
         size, position = self._normalise_window_geometry(
             self.get_value("shared_artifacts_w", default=1120),
             self.get_value("shared_artifacts_h", default=680),
@@ -1108,6 +1123,8 @@ class ConfigManager:
 
     def save_shared_artifacts_dialog_geometry(self, dialog: wx.Dialog) -> None:
         """Persist geometry and maximized state for the shared artifacts dialog."""
+
+        import wx
 
         width, height = dialog.GetSize()
         x, y = dialog.GetPosition()

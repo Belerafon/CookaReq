@@ -5,7 +5,6 @@ from collections.abc import Callable
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
-from .config import ConfigManager
 from .confirm import (
     ConfirmDecision,
     RequirementUpdatePrompt,
@@ -15,13 +14,19 @@ from .confirm import (
 from .mcp.controller import MCPController
 from .services.requirements import RequirementsService
 from .settings import AppSettings
-from .ui.requirement_model import RequirementModel
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from .agent import LocalAgent
+    from .config import ConfigManager
+    from .ui.requirement_model import RequirementModel
 
 ConfirmCallback = Callable[[str], bool]
 RequirementUpdateConfirmCallback = Callable[[RequirementUpdatePrompt], ConfirmDecision]
+
+def _default_requirement_model_factory() -> "RequirementModel":
+    from .ui.requirement_model import RequirementModel
+
+    return RequirementModel()
 
 
 class RequirementsServiceFactory(Protocol):
@@ -64,17 +69,21 @@ class ApplicationContext:
         app_name: str = "CookaReq",
         confirm_callback: ConfirmCallback,
         requirement_update_confirm_callback: RequirementUpdateConfirmCallback,
-        config_factory: Callable[[str], ConfigManager] | None = None,
-        requirement_model_factory: Callable[[], RequirementModel] | None = None,
+        config_factory: Callable[[str], "ConfigManager"] | None = None,
+        requirement_model_factory: Callable[[], "RequirementModel"] | None = None,
         requirements_service_cls: type[RequirementsService] = RequirementsService,
         local_agent_cls: type[LocalAgent] | None = None,
         mcp_controller_cls: type[MCPController] = MCPController,
     ) -> None:
         """Initialise the dependency container shared across frontends."""
         self._app_name = app_name
-        self._config_factory = config_factory or (lambda name: ConfigManager(name))
+        if config_factory is None:
+            from .config import ConfigManager
+
+            config_factory = lambda name: ConfigManager(name)
+        self._config_factory = config_factory
         self._requirement_model_factory = (
-            requirement_model_factory or RequirementModel
+            requirement_model_factory or _default_requirement_model_factory
         )
         self._requirements_service_cls = requirements_service_cls
         self._local_agent_cls = local_agent_cls

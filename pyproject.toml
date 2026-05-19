@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = [{ name = "Maksim Lashkevich & Codex" }]
 license = { file = "LICENSE" }
 dependencies = [
-    "wxPython",
     "jsonschema",
     "charset-normalizer",
     "fastapi",
@@ -19,6 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gui = [
+    "wxPython",
+]
 dev = [
     "pytest",
     "pytest-xvfb",

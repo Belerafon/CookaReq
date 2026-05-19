@@ -30,6 +30,11 @@ For the agent chat transcript ordering refactor (single canonical timeline
 pipeline, fallback cleanup, and regression coverage strategy), see
 `docs/AGENT_TIMELINE_STABILIZATION_PLAN.md`.
 
+
+## Packaging profile
+
+`wxPython` is declared as an optional `gui` extra in `pyproject.toml`, so CLI/server usage can install base dependencies without GUI toolkit payload. Install GUI runtime with `pip install cookareq[gui]`.
+
 ## Core domain: requirements and traceability
 
 * **On-disk layout** — each document lives under `requirements/<PREFIX>/`.
@@ -172,6 +177,7 @@ pipeline, fallback cleanup, and regression coverage strategy), see
 
 ## Application services and configuration context
 
+* **Bootstrap boundaries** — `ApplicationContext` now lazily imports GUI-bound pieces (`ConfigManager`, `RequirementModel`) only when they are actually requested. CLI startup (`python3 -m app.cli`) therefore avoids importing `wx` and can run in headless/minimal environments while still sharing the same composition root.
 * **`RequirementsService`** — wraps the document store with caching, consistent
   path resolution and domain-specific errors (`DocumentNotFoundError`,
   `ValidationError`). Both the GUI and automation flows consume this service

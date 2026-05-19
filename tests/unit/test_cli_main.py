@@ -57,3 +57,12 @@ def test_cli_main_runs_startup_dependency_check(monkeypatch):
 
     assert cli_main.main(["doc", "list", "."]) == 0
     assert calls[:2] == ["logging", "deps"]
+
+
+def test_importing_cli_main_does_not_import_wx() -> None:
+    import importlib
+
+    module = importlib.import_module("app.cli.main")
+
+    assert module is not None
+    assert "wx" not in sys.modules

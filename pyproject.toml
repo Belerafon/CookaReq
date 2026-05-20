@@ -16,6 +16,7 @@ dependencies = [
     "bleach",
     "polib",
     "reportlab",
+    "python-docx",
     "matplotlib",
     "latex2mathml",
     "mathml2omml",

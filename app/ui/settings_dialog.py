@@ -44,6 +44,10 @@ GENERAL_HELP: dict[str, str] = {
         "Language for menus and dialogs.\n"
         "Changes apply after restarting CookaReq.",
     ),
+    "font_size": _help_msg(
+        "Global font size for the application interface.\n"
+        "Applied to all windows and panels after pressing OK.",
+    ),
     "settings_path": _help_msg(
         "Path to the persistent CookaReq settings file on this machine.\n"
         "Use it to inspect backups, troubleshoot startup issues, or share diagnostics.",
@@ -234,6 +238,7 @@ class SettingsDialog(wx.Dialog):
         open_last: bool,
         remember_sort: bool,
         language: str,
+        font_size: int,
         settings_path: str = "",
         base_url: str,
         model: str,
@@ -291,6 +296,7 @@ class SettingsDialog(wx.Dialog):
         self._remember_sort.SetValue(remember_sort)
         self._language_choice = wx.Choice(general, choices=choices)
         self._language_choice.SetSelection(idx)
+        self._font_size = wx.SpinCtrl(general, min=8, max=32, initial=font_size)
         self._settings_path = wx.TextCtrl(
             general,
             value=settings_path,
@@ -348,6 +354,25 @@ class SettingsDialog(wx.Dialog):
             5,
         )
         gen_sizer.Add(lang_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        font_size_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        font_size_sizer.Add(
+            wx.StaticText(general, label=_("Font size")),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            5,
+        )
+        font_size_sizer.Add(self._font_size, 1, wx.ALIGN_CENTER_VERTICAL)
+        font_size_sizer.Add(
+            make_help_button(
+                general,
+                _(GENERAL_HELP["font_size"]),
+                dialog_parent=self,
+            ),
+            0,
+            wx.ALIGN_CENTER_VERTICAL | wx.LEFT,
+            5,
+        )
+        gen_sizer.Add(font_size_sizer, 0, wx.ALL | wx.EXPAND, 5)
         settings_path_sz = wx.BoxSizer(wx.HORIZONTAL)
         settings_path_sz.Add(
             wx.StaticText(general, label=_("Settings file")),
@@ -1238,6 +1263,7 @@ class SettingsDialog(wx.Dialog):
         bool,
         bool,
         str,
+        int,
         str,
         str,
         str,
@@ -1263,6 +1289,7 @@ class SettingsDialog(wx.Dialog):
             self._open_last.GetValue(),
             self._remember_sort.GetValue(),
             lang_code,
+            self._font_size.GetValue(),
             self._base_url.GetValue(),
             self._model.GetValue(),
             self._selected_message_format(),

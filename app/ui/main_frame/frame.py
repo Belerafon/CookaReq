@@ -84,6 +84,7 @@ class MainFrame(
         self.auto_open_last = self.config.get_auto_open_last()
         self.remember_sort = self.config.get_remember_sort()
         self.language = self.config.get_language()
+        self.font_size = self.config.get_font_size()
         self.sort_column, self.sort_ascending = self.config.get_sort_settings()
         self.llm_settings = self.config.get_llm_settings()
         self.mcp_settings = self.config.get_mcp_settings()
@@ -93,6 +94,7 @@ class MainFrame(
         self._shutdown_in_progress = False
 
         super().__init__(parent=parent, title=self._base_title)
+        self._apply_ui_font_size()
 
         self._init_icons()
         self.navigation = self._create_navigation()
@@ -145,6 +147,27 @@ class MainFrame(
         ) as icon_path:
             icons = wx.IconBundle(str(icon_path), wx.BITMAP_TYPE_ANY)
             self.SetIcons(icons)
+
+    def _apply_ui_font_size(self) -> None:
+        """Apply configured font size to this frame and current widget tree."""
+        base_font = self.GetFont()
+        if not base_font.IsOk():
+            return
+        if base_font.GetPointSize() == self.font_size:
+            return
+        updated_font = wx.Font(base_font)
+        updated_font.SetPointSize(self.font_size)
+        self.SetFont(updated_font)
+        stack: list[wx.Window] = [self]
+        while stack:
+            window = stack.pop()
+            try:
+                window.SetFont(updated_font)
+            except Exception:
+                continue
+            stack.extend(list(window.GetChildren()))
+        self.SendSizeEvent()
+        self.Layout()
 
     def _create_navigation(self) -> Navigation:
         """Build the navigation menus and toolbars."""

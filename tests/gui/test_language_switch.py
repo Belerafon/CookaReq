@@ -41,6 +41,7 @@ def test_switch_to_russian_updates_ui(monkeypatch, wx_app, tmp_path, gui_context
                 frame.auto_open_last,
                 frame.remember_sort,
                 "ru",
+                frame.font_size,
                 frame.llm_settings.base_url,
                 frame.llm_settings.model,
                 getattr(
@@ -103,6 +104,7 @@ def test_open_settings_raises_on_value_mismatch(
                 frame.auto_open_last,
                 frame.remember_sort,
                 frame.language,
+                frame.font_size,
                 frame.llm_settings.base_url,
                 frame.llm_settings.model,
                 getattr(

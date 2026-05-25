@@ -91,6 +91,7 @@ FIELD_BINDINGS: dict[str, FieldBinding] = {
     "auto_open_last": FieldBinding("ui", "auto_open_last"),
     "remember_sort": FieldBinding("ui", "remember_sort"),
     "language": FieldBinding("ui", "language"),
+    "font_size": FieldBinding("ui", "font_size"),
     "mcp_auto_start": FieldBinding("mcp", "auto_start"),
     "mcp_host": FieldBinding("mcp", "host"),
     "mcp_port": FieldBinding("mcp", "port"),
@@ -641,6 +642,15 @@ class ConfigManager:
     def set_language(self, language: str | None) -> None:
         """Persist UI *language* preference and flush."""
         self.set_value("language", language)
+        self.flush()
+
+    def get_font_size(self) -> int:
+        """Return configured UI font size in points."""
+        return int(self.get_value("font_size", default=10))
+
+    def set_font_size(self, font_size: int) -> None:
+        """Persist selected UI font size and flush."""
+        self.set_value("font_size", int(font_size))
         self.flush()
 
     # ------------------------------------------------------------------

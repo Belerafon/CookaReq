@@ -122,6 +122,8 @@ python3 -m app.cli check --llm --mcp
 
 Every command validates inputs before mutating files and reuses the same schema as the GUI, including label validation, revision requirements, and MCP authentication checks.
 
+For `item add`/`item edit`, `--context-docs` must be a JSON array of strings with **relative** paths inside the current document directory (for example `SYS/...`). Absolute paths, `..`, and any path escape outside of the document root are rejected. Each referenced path must already exist and point to a regular file.
+
 ## Local agent and MCP integration
 
 `app.agent.local_agent.LocalAgent` wraps the `LLMClient` and `MCPClient` to execute tool calls in response to LLM prompts. The GUI exposes it via the **Command** dialog/agent panel, while the CLI offers health checks through `python3 -m app.cli check`.

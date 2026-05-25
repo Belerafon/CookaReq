@@ -633,6 +633,10 @@ def test_item_add_accepts_context_docs(tmp_path, capsys, cli_context):
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
 
+    (tmp_path / "SYS" / "related" / "math").mkdir(parents=True)
+    (tmp_path / "SYS" / "related" / "math" / "overview.md").write_text("overview", encoding="utf-8")
+    (tmp_path / "SYS" / "related" / "math" / "details.md").write_text("details", encoding="utf-8")
+
     add_args = argparse.Namespace(
         directory=str(tmp_path),
         prefix="SYS",
@@ -653,6 +657,10 @@ def test_item_add_accepts_context_docs(tmp_path, capsys, cli_context):
 def test_item_edit_updates_context_docs(tmp_path, capsys, cli_context):
     doc = Document(prefix="SYS", title="System")
     save_document(tmp_path / "SYS", doc)
+
+    (tmp_path / "SYS" / "related").mkdir(parents=True)
+    (tmp_path / "SYS" / "related" / "one.md").write_text("one", encoding="utf-8")
+    (tmp_path / "SYS" / "related" / "two.md").write_text("two", encoding="utf-8")
 
     add_args = argparse.Namespace(
         directory=str(tmp_path),
@@ -675,3 +683,62 @@ def test_item_edit_updates_context_docs(tmp_path, capsys, cli_context):
     path = item_path(tmp_path / "SYS", doc, 1)
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["context_docs"] == ["related/two.md"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("context_docs", "expected"),
+    [
+        ('["/tmp/outside.md"]', "absolute paths"),
+        ('["../outside.md"]', "parent directory"),
+        ('["related/missing.md"]', "does not exist"),
+    ],
+)
+def test_item_add_rejects_invalid_context_docs(tmp_path, capsys, cli_context, context_docs, expected):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    (tmp_path / "SYS" / "related").mkdir(parents=True)
+    (tmp_path / "SYS" / "related" / "ok.md").write_text("ok", encoding="utf-8")
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Login",
+        statement="Initial",
+        context_docs=context_docs,
+    )
+    exit_code = commands.cmd_item_add(add_args, cli_context)
+
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    assert "invalid context_docs path" in out
+    assert expected in out
+
+
+@pytest.mark.unit
+def test_item_edit_rejects_context_doc_directory(tmp_path, capsys, cli_context):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+    (tmp_path / "SYS" / "related").mkdir(parents=True)
+    (tmp_path / "SYS" / "related" / "one.md").write_text("one", encoding="utf-8")
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Login",
+        statement="Initial",
+        context_docs='["related/one.md"]',
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        context_docs='["related"]',
+    )
+    exit_code = commands.cmd_item_edit(edit_args, cli_context)
+
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    assert "invalid context_docs path 'related': not a file" in out

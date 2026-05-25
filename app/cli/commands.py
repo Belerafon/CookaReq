@@ -9,7 +9,7 @@ import json
 import sys
 from copy import deepcopy
 from dataclasses import MISSING, asdict, dataclass, field, fields
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, TextIO
 from collections.abc import Callable, Mapping
 
@@ -519,6 +519,55 @@ def _resolve_context_docs(
     return [str(item) for item in deepcopy(base_value) if str(item).strip()]
 
 
+
+
+def _validate_context_doc_paths(*, context_docs: list[str], document_root: Path) -> list[str]:
+    """Validate context-doc paths as existing files under ``document_root``."""
+    validated: list[str] = []
+    for raw_path in context_docs:
+        candidate = str(raw_path).strip()
+        if not candidate:
+            continue
+
+        rel = PurePosixPath(candidate)
+        if rel.is_absolute():
+            raise ValidationError(
+                _("invalid context_docs path '{path}': absolute paths are not allowed").format(
+                    path=candidate
+                )
+            )
+        if any(part == ".." for part in rel.parts):
+            raise ValidationError(
+                _("invalid context_docs path '{path}': parent directory '..' is not allowed").format(
+                    path=candidate
+                )
+            )
+
+        target = (document_root / Path(rel)).resolve()
+        try:
+            target.relative_to(document_root)
+        except ValueError as exc:
+            raise ValidationError(
+                _("invalid context_docs path '{path}': path escapes document root").format(
+                    path=candidate
+                )
+            ) from exc
+
+        if not target.exists():
+            raise ValidationError(
+                _("invalid context_docs path '{path}': file does not exist").format(
+                    path=candidate
+                )
+            )
+        if not target.is_file():
+            raise ValidationError(
+                _("invalid context_docs path '{path}': not a file").format(path=candidate)
+            )
+
+        validated.append(rel.as_posix())
+
+    return validated
+
 def _resolve_revision(
     args: argparse.Namespace, base: Mapping[str, Any]
 ) -> int | None:
@@ -663,6 +712,11 @@ def cmd_item_add(
     service = _service_for(context, args.directory)
     try:
         payload = build_item_payload(args, base)
+        document_root = (Path(args.directory) / args.prefix).resolve()
+        payload["context_docs"] = _validate_context_doc_paths(
+            context_docs=list(payload.get("context_docs", [])),
+            document_root=document_root,
+        )
         req = service.create_requirement(prefix=args.prefix, data=payload)
     except DocumentNotFoundError:
         sys.stdout.write(
@@ -708,6 +762,11 @@ def cmd_item_edit(
 
     try:
         payload = build_item_payload(args, base_payload)
+        document_root = (Path(args.directory) / prefix).resolve()
+        payload["context_docs"] = _validate_context_doc_paths(
+            context_docs=list(payload.get("context_docs", [])),
+            document_root=document_root,
+        )
     except ValidationError as exc:
         sys.stdout.write(_("{msg}\n").format(msg=str(exc)))
         return 1

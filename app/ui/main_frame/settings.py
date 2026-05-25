@@ -31,6 +31,7 @@ class MainFrameSettingsMixin:
             open_last=self.auto_open_last,
             remember_sort=self.remember_sort,
             language=self.language,
+            font_size=self.font_size,
             settings_path=str(self.config.path),
             base_url=self.llm_settings.base_url,
             model=self.llm_settings.model,
@@ -64,6 +65,7 @@ class MainFrameSettingsMixin:
                     "auto_open_last",
                     "remember_sort",
                     "language",
+                    "font_size",
                     "base_url",
                     "model",
                     "message_format",
@@ -96,6 +98,7 @@ class MainFrameSettingsMixin:
                     auto_open_last,
                     remember_sort,
                     language,
+                    font_size,
                     base_url,
                     model,
                     message_format,
@@ -121,6 +124,7 @@ class MainFrameSettingsMixin:
                 self.auto_open_last = auto_open_last
                 self.remember_sort = remember_sort
                 self.language = language
+                self.font_size = font_size
                 previous_mcp = self.mcp_settings
                 self.llm_settings = LLMSettings(
                     base_url=base_url,
@@ -148,6 +152,7 @@ class MainFrameSettingsMixin:
                 self.config.set_auto_open_last(self.auto_open_last)
                 self.config.set_remember_sort(self.remember_sort)
                 self.config.set_language(self.language)
+                self.config.set_font_size(self.font_size)
                 self.config.set_llm_settings(self.llm_settings)
                 self.config.set_mcp_settings(self.mcp_settings)
                 if hasattr(self, "agent_panel"):
@@ -176,6 +181,7 @@ class MainFrameSettingsMixin:
                         self._start_mcp_if_applicable()
                 if language_changed:
                     self._apply_language()
+                self._apply_ui_font_size()
         finally:
             dlg.Destroy()
 

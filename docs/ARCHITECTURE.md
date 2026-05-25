@@ -423,7 +423,9 @@ pipeline, fallback cleanup, and regression coverage strategy), see
 
 * **Settings** — `app/settings.py` defines `AppSettings` with grouped sections
   (`llm`, `mcp`, `ui`). TOML/JSON aliases map onto friendly names like
-  `api_base`.
+  `api_base`. UI settings include a global `font_size` knob that is exposed in
+  the Settings dialog and applied to the main frame/widget tree so all panels
+  follow a consistent text scale.
 * **Logging and telemetry** — `app/log.py` configures rotating logs. Significant
   events are funnelled through `app/telemetry.log_event`, which masks sensitive
   tokens before persistence. Startup also runs `app/runtime_dependencies.py`

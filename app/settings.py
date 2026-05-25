@@ -251,6 +251,7 @@ class UISettings(BaseModel):
     auto_open_last: bool = False
     remember_sort: bool = False
     language: str | None = None
+    font_size: int = Field(default=10, ge=8, le=32)
     sort_column: int = -1
     sort_ascending: bool = True
     log_level: int = Field(default=logging.INFO)

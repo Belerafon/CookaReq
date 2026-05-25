@@ -5,6 +5,7 @@ This file collects instructions and a short overview of the "CookaReq" applicati
 ## General instructions
 
 - Базовый цикл разработки — `pytest --suite core -q`. Все доступные логические наборы описаны в [`tests/README.md`](tests/README.md); краткую сводку печатает `pytest --list-suites`.
+- В контейнерных/CI-сессиях запускайте тесты через проектное виртуальное окружение: `source .venv/bin/activate && python -m pytest ...`. Не используйте `python3 -m pytest` до проверки, что модуль `pytest` установлен именно в системном интерпретаторе.
 - GUI-тесты идут под `pytest-xvfb`, так что они запускаются без $DISPLAY. Если `xvfb` нужно отключить, оборачивайте ручные прогоны в `xvfb-run -a`.
 - Для точечной отладки указывайте конкретный файл: `pytest --suite gui-smoke tests/gui/test_list_panel_gui.py -q`. Без подходящего `--suite` файл будет помечен как "deselected" и не выполнится.
 - Быстрый прогон без GUI: `pytest --suite core -q -m "not gui"`. Полный GUI скоуп: `pytest --suite gui-full -q` (долго) или `pytest --suite gui-smoke -q` (быстрый sanity check, сейчас красный — см. README).

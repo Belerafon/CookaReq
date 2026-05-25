@@ -3568,3 +3568,15 @@ msgstr "Уровень группировки"
 
 msgid "No grouping"
 msgstr "Без группировки"
+
+
+msgid "Font size"
+msgstr "Размер шрифта"
+
+
+msgid ""
+"Global font size for the application interface.\n"
+"Applied to all windows and panels after pressing OK."
+msgstr ""
+"Глобальный размер шрифта для интерфейса приложения.\n"
+"Применяется ко всем окнам и панелям после нажатия OK."

@@ -23,6 +23,7 @@ from app.services.requirements import (
     ValidationError,
     parse_rid,
 )
+from app.core.markdown_utils import normalize_escaped_newlines
 from app.core.model import (
     Link,
     Priority,
@@ -52,6 +53,14 @@ REQ_TYPE_CHOICES = [e.value for e in RequirementType]
 STATUS_CHOICES = [e.value for e in Status]
 PRIORITY_CHOICES = [e.value for e in Priority]
 VERIFICATION_CHOICES = [e.value for e in Verification]
+MULTILINE_TEXT_FIELDS = {
+    "statement",
+    "conditions",
+    "rationale",
+    "assumptions",
+    "notes",
+}
+OPTIONAL_MULTILINE_TEXT_FIELDS = {"acceptance"}
 
 @dataclass
 class Command:
@@ -407,6 +416,16 @@ def _write_trace_matrix_json(out: TextIO, matrix: TraceMatrix) -> None:
     out.write("\n")
 
 
+def _normalize_cli_text_value(name: str, value: Any) -> Any:
+    """Normalize escaped line breaks for CLI-facing multiline text fields."""
+    if (
+        name in MULTILINE_TEXT_FIELDS | OPTIONAL_MULTILINE_TEXT_FIELDS
+        and isinstance(value, str)
+    ):
+        return normalize_escaped_newlines(value)
+    return value
+
+
 def _resolve_text_field(
     args: argparse.Namespace,
     base: Mapping[str, Any],
@@ -416,11 +435,11 @@ def _resolve_text_field(
     sentinel = object()
     arg_value = getattr(args, name, sentinel)
     if arg_value is not sentinel and arg_value not in (None, ""):
-        return str(arg_value)
+        return _normalize_cli_text_value(name, str(arg_value))
     base_value = base.get(name, sentinel)
     if base_value is not sentinel and base_value not in (None, ""):
-        return base_value
-    return default
+        return _normalize_cli_text_value(name, base_value)
+    return _normalize_cli_text_value(name, default)
 
 
 def _resolve_optional_field(
@@ -432,8 +451,8 @@ def _resolve_optional_field(
     sentinel = object()
     arg_value = getattr(args, name, sentinel)
     if arg_value not in (sentinel, None):
-        return arg_value
-    return base.get(name, default)
+        return _normalize_cli_text_value(name, arg_value)
+    return _normalize_cli_text_value(name, base.get(name, default))
 
 
 def _resolve_labels(

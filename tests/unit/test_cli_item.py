@@ -97,6 +97,71 @@ def test_item_edit_updates_fields(tmp_path, capsys, cli_context):
     assert data["id"] == 1
     assert data["revision"] == 2
 
+@pytest.mark.unit
+def test_item_add_normalizes_escaped_newlines_in_multiline_fields(
+    tmp_path, capsys, cli_context
+):
+    doc = Document(
+        prefix="SYS", title="System", labels=DocumentLabels(allow_freeform=True)
+    )
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Multiline",
+        statement=r"Line 1\n\n- item",
+        acceptance=r"Given A\r\nWhen B\rThen C",
+        conditions=r"Condition 1\nCondition 2",
+        rationale=r"Why\nBecause",
+        assumptions=r"Assumption 1\nAssumption 2",
+        notes=r"Note 1\nNote 2",
+        labels=None,
+    )
+
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+    assert rid == "SYS1"
+
+    data = json.loads(item_path(tmp_path / "SYS", doc, 1).read_text(encoding="utf-8"))
+    assert data["statement"] == "Line 1\n\n- item"
+    assert data["acceptance"] == "Given A\nWhen B\nThen C"
+    assert data["conditions"] == "Condition 1\nCondition 2"
+    assert data["rationale"] == "Why\nBecause"
+    assert data["assumptions"] == "Assumption 1\nAssumption 2"
+    assert data["notes"] == "Note 1\nNote 2"
+
+
+@pytest.mark.unit
+def test_item_edit_normalizes_escaped_newlines_in_statement(
+    tmp_path, capsys, cli_context
+):
+    doc = Document(prefix="SYS", title="System")
+    save_document(tmp_path / "SYS", doc)
+
+    add_args = argparse.Namespace(
+        directory=str(tmp_path),
+        prefix="SYS",
+        title="Seed",
+        statement="Initial",
+        labels=None,
+    )
+    commands.cmd_item_add(add_args, cli_context)
+    rid = capsys.readouterr().out.strip()
+
+    edit_args = argparse.Namespace(
+        directory=str(tmp_path),
+        rid=rid,
+        statement=r"Line 1\n\n- item",
+    )
+
+    commands.cmd_item_edit(edit_args, cli_context)
+    assert capsys.readouterr().out.strip() == rid
+
+    data = json.loads(item_path(tmp_path / "SYS", doc, 1).read_text(encoding="utf-8"))
+    assert data["statement"] == "Line 1\n\n- item"
+    assert data["revision"] == 2
+
 
 @pytest.mark.unit
 def test_item_edit_keeps_revision_when_statement_not_changed(tmp_path, capsys, cli_context):

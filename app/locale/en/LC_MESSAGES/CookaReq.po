@@ -3560,3 +3560,41 @@ msgid ""
 msgstr ""
 "Global font size for the application interface.\n"
 "Applied to all windows and panels after pressing OK."
+
+msgid "Remove file link"
+msgstr "Remove file link"
+
+msgid "Show in file manager"
+msgstr "Show in file manager"
+
+msgid "Unable to show file in the file manager."
+msgstr "Unable to show file in the file manager."
+
+msgid "Filter"
+msgstr "Filter"
+
+msgid ""
+"Trace matrix module has invalid Python syntax in your local working copy.\n"
+"Check for unresolved merge/conflict edits and run:\n"
+"python3 -m py_compile app/ui/trace_matrix.py\n"
+"git restore app/ui/trace_matrix.py"
+msgstr ""
+"Trace matrix module has invalid Python syntax in your local working copy.\n"
+"Check for unresolved merge/conflict edits and run:\n"
+"python3 -m py_compile app/ui/trace_matrix.py\n"
+"git restore app/ui/trace_matrix.py"
+
+msgid "invalid context_docs path '{path}': absolute paths are not allowed"
+msgstr "invalid context_docs path '{path}': absolute paths are not allowed"
+
+msgid "invalid context_docs path '{path}': parent directory '..' is not allowed"
+msgstr "invalid context_docs path '{path}': parent directory '..' is not allowed"
+
+msgid "invalid context_docs path '{path}': path escapes document root"
+msgstr "invalid context_docs path '{path}': path escapes document root"
+
+msgid "invalid context_docs path '{path}': file does not exist"
+msgstr "invalid context_docs path '{path}': file does not exist"
+
+msgid "invalid context_docs path '{path}': not a file"
+msgstr "invalid context_docs path '{path}': not a file"

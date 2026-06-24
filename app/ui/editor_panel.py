@@ -32,6 +32,7 @@ from ..core.model import (
     Status,
     Verification,
 )
+from ..util.system_open import open_file, reveal_in_file_manager
 from ..util.time import local_now_str, normalize_timestamp
 from ..i18n import _
 from . import locale
@@ -691,6 +692,14 @@ class EditorPanel(wx.Panel):
             wx.EVT_SIZE,
             lambda evt: (evt.Skip(), self._autosize_attachment_columns()),
         )
+        self.attachments_list.Bind(
+            wx.EVT_LIST_ITEM_RIGHT_CLICK,
+            self._on_attachment_context_menu,
+        )
+        self.attachments_list.Bind(
+            wx.EVT_CONTEXT_MENU,
+            self._on_attachment_context_menu,
+        )
         attachment_row = wx.BoxSizer(wx.HORIZONTAL)
         btn_row = wx.BoxSizer(wx.HORIZONTAL)
         self.add_attachment_btn = wx.Button(a_box, label=_("Add"))
@@ -719,6 +728,14 @@ class EditorPanel(wx.Panel):
         self.context_docs_list.Bind(
             wx.EVT_SIZE,
             lambda evt: (evt.Skip(), self._autosize_context_docs_columns()),
+        )
+        self.context_docs_list.Bind(
+            wx.EVT_LIST_ITEM_RIGHT_CLICK,
+            self._on_context_doc_context_menu,
+        )
+        self.context_docs_list.Bind(
+            wx.EVT_CONTEXT_MENU,
+            self._on_context_doc_context_menu,
         )
         self._context_docs_list = self.context_docs_list
         context_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -2118,8 +2135,119 @@ class EditorPanel(wx.Panel):
 
     def _on_remove_attachment(self, _event: wx.CommandEvent) -> None:
         idx = self.attachments_list.GetFirstSelected()
-        if idx != -1:
-            del self.attachments[idx]
+        self._remove_attachment_by_index(idx)
+
+
+    def _selected_list_index_from_context_event(self, list_ctrl: wx.ListCtrl, event: wx.Event) -> int:
+        """Return the row targeted by a list context-menu event."""
+        get_index = getattr(event, "GetIndex", None)
+        if callable(get_index):
+            try:
+                index = int(get_index())
+            except (TypeError, ValueError):
+                index = wx.NOT_FOUND
+            if index >= 0:
+                return index
+        get_position = getattr(event, "GetPosition", None)
+        if callable(get_position):
+            pos = get_position()
+            try:
+                if pos.x != -1 or pos.y != -1:
+                    local_pos = list_ctrl.ScreenToClient(pos) if isinstance(event, wx.ContextMenuEvent) else pos
+                    hit = list_ctrl.HitTest(local_pos)
+                    index = hit[0] if isinstance(hit, tuple) else hit
+                    if int(index) >= 0:
+                        return int(index)
+            except Exception:
+                pass
+        return list_ctrl.GetFirstSelected()
+
+    def _resolve_requirement_file_path(self, stored_path: str) -> Path | None:
+        """Resolve a requirement-local stored file path to an absolute path."""
+        raw = str(stored_path or "").strip()
+        if not raw:
+            return None
+        candidate = Path(raw)
+        if candidate.is_absolute():
+            return candidate
+        service = self._service
+        prefix = self._effective_prefix()
+        if service is None or not prefix:
+            return None
+        return Path(service.root) / prefix / candidate
+
+    def _show_missing_file_message(self, path: Path | None, title: str) -> None:
+        message = _("File is missing on disk.")
+        if path is not None:
+            message = f"{message}\n{path}"
+        wx.MessageBox(message, title, style=wx.OK | wx.ICON_WARNING)
+
+    def _open_requirement_file(self, path: Path | None, title: str) -> None:
+        if path is None or not path.exists() or not path.is_file():
+            self._show_missing_file_message(path, title)
+            return
+        if not open_file(path):
+            wx.MessageBox(
+                _("Unable to open file with the default application."),
+                _("Error"),
+                style=wx.OK | wx.ICON_ERROR,
+            )
+
+    def _reveal_requirement_file(self, path: Path | None, title: str) -> None:
+        if path is None or not path.exists() or not path.is_file():
+            self._show_missing_file_message(path, title)
+            return
+        if not reveal_in_file_manager(path):
+            wx.MessageBox(
+                _("Unable to show file in the file manager."),
+                _("Error"),
+                style=wx.OK | wx.ICON_ERROR,
+            )
+
+    def _show_file_link_context_menu(
+        self,
+        *,
+        list_ctrl: wx.ListCtrl,
+        index: int,
+        stored_path: str,
+        title: str,
+        remove_label: str,
+        remove_callback: Callable[[int], None],
+    ) -> None:
+        if index < 0:
+            return
+        list_ctrl.Select(index)
+        list_ctrl.Focus(index)
+        path = self._resolve_requirement_file_path(stored_path)
+        menu = wx.Menu()
+        remove_item = menu.Append(wx.ID_ANY, remove_label)
+        open_item = menu.Append(wx.ID_ANY, _("Open"))
+        reveal_item = menu.Append(wx.ID_ANY, _("Show in file manager"))
+        file_available = path is not None and path.exists() and path.is_file()
+        open_item.Enable(file_available)
+        reveal_item.Enable(file_available)
+        menu.Bind(wx.EVT_MENU, lambda _evt, row=index: remove_callback(row), remove_item)
+        menu.Bind(wx.EVT_MENU, lambda _evt, p=path, t=title: self._open_requirement_file(p, t), open_item)
+        menu.Bind(wx.EVT_MENU, lambda _evt, p=path, t=title: self._reveal_requirement_file(p, t), reveal_item)
+        list_ctrl.PopupMenu(menu)
+        menu.Destroy()
+
+    def _on_attachment_context_menu(self, event: wx.Event) -> None:
+        index = self._selected_list_index_from_context_event(self.attachments_list, event)
+        if not (0 <= index < len(self.attachments)):
+            return
+        self._show_file_link_context_menu(
+            list_ctrl=self.attachments_list,
+            index=index,
+            stored_path=self.attachments[index].get("path", ""),
+            title=_("Attachments"),
+            remove_label=_("Remove file link"),
+            remove_callback=self._remove_attachment_by_index,
+        )
+
+    def _remove_attachment_by_index(self, index: int) -> None:
+        if 0 <= index < len(self.attachments):
+            del self.attachments[index]
             self._refresh_attachments()
 
     def _create_icon_button(
@@ -2741,6 +2869,23 @@ class EditorPanel(wx.Panel):
 
     def _on_remove_context_doc(self, _event: wx.Event) -> None:
         idx = self.context_docs_list.GetFirstSelected()
-        if idx >= 0:
-            del self.context_docs[idx]
+        self._remove_context_doc_by_index(idx)
+
+    def _on_context_doc_context_menu(self, event: wx.Event) -> None:
+        list_ctrl = self.context_docs_list
+        index = self._selected_list_index_from_context_event(list_ctrl, event)
+        if not (0 <= index < len(self.context_docs)):
+            return
+        self._show_file_link_context_menu(
+            list_ctrl=list_ctrl,
+            index=index,
+            stored_path=self.context_docs[index],
+            title=_("Context docs"),
+            remove_label=_("Remove file link"),
+            remove_callback=self._remove_context_doc_by_index,
+        )
+
+    def _remove_context_doc_by_index(self, index: int) -> None:
+        if 0 <= index < len(self.context_docs):
+            del self.context_docs[index]
             self._refresh_context_docs()

@@ -411,7 +411,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   `EditorPanel` keeps the requirement form in an explicit two-stage sequence: a
   primary block (ID/title/statement/context/rationale/notes/source/status/labels,
   attachments and a context-docs picker that stores relative Markdown paths under
-  the current document) followed by extended metadata (acceptance, assumptions,
+  the current document). Attachment and context-doc rows share a file-link
+  context menu for removing only the stored link, opening the file through the
+  OS default application, or revealing it in the platform file manager (Windows
+  selects the file, Linux opens its containing directory as a portable fallback).
+  The primary block is followed by extended metadata (acceptance, assumptions,
   ownership/revision links, classification enums and approval date). Requirement
   switching now applies batched autosize/layout updates under a frozen content
   panel, so keyboard navigation through the list no longer triggers a visible

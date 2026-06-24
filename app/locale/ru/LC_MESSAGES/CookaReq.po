@@ -3580,3 +3580,41 @@ msgid ""
 msgstr ""
 "Глобальный размер шрифта для интерфейса приложения.\n"
 "Применяется ко всем окнам и панелям после нажатия OK."
+
+msgid "Remove file link"
+msgstr "Удалить ссылку на файл"
+
+msgid "Show in file manager"
+msgstr "Показать в проводнике"
+
+msgid "Unable to show file in the file manager."
+msgstr "Не удалось показать файл в проводнике."
+
+msgid "Filter"
+msgstr "Фильтр"
+
+msgid ""
+"Trace matrix module has invalid Python syntax in your local working copy.\n"
+"Check for unresolved merge/conflict edits and run:\n"
+"python3 -m py_compile app/ui/trace_matrix.py\n"
+"git restore app/ui/trace_matrix.py"
+msgstr ""
+"В локальной рабочей копии модуль матрицы трассировки содержит недопустимый Python-синтаксис.\n"
+"Проверьте незавершённые правки/конфликты и выполните:\n"
+"python3 -m py_compile app/ui/trace_matrix.py\n"
+"git restore app/ui/trace_matrix.py"
+
+msgid "invalid context_docs path '{path}': absolute paths are not allowed"
+msgstr "недопустимый путь context_docs '{path}': абсолютные пути запрещены"
+
+msgid "invalid context_docs path '{path}': parent directory '..' is not allowed"
+msgstr "недопустимый путь context_docs '{path}': родительская директория '..' запрещена"
+
+msgid "invalid context_docs path '{path}': path escapes document root"
+msgstr "недопустимый путь context_docs '{path}': путь выходит за корень документа"
+
+msgid "invalid context_docs path '{path}': file does not exist"
+msgstr "недопустимый путь context_docs '{path}': файл не существует"
+
+msgid "invalid context_docs path '{path}': not a file"
+msgstr "недопустимый путь context_docs '{path}': это не файл"

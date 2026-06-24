@@ -542,3 +542,36 @@ def test_editor_panel_attachment_and_context_lists_are_compact_and_fill_columns(
         assert not panel.remove_attachment_btn.IsShown()
     finally:
         frame.Destroy()
+
+@pytest.mark.gui_smoke
+def test_editor_panel_context_menu_helpers_remove_file_links(wx_app, tmp_path):
+    pytest.importorskip("wx")
+    import wx
+
+    from app.core.document_store import Document
+    from app.services.requirements import RequirementsService
+    from app.ui.editor_panel import EditorPanel
+
+    frame = wx.Frame(None)
+    try:
+        panel = EditorPanel(frame)
+        service = RequirementsService(tmp_path)
+        service.save_document(Document(prefix="SYS", title="System"))
+        panel.set_service(service)
+        panel.set_document("SYS")
+
+        attachment_file = tmp_path / "SYS" / "assets" / "diagram.png"
+        attachment_file.parent.mkdir(parents=True, exist_ok=True)
+        attachment_file.write_text("data", encoding="utf-8")
+        panel.attachments = [{"id": "att-1", "path": "assets/diagram.png", "note": "ref"}]
+        panel.context_docs = ["related/context.md"]
+
+        assert panel._resolve_requirement_file_path("assets/diagram.png") == attachment_file
+
+        panel._remove_attachment_by_index(0)
+        panel._remove_context_doc_by_index(0)
+
+        assert panel.attachments == []
+        assert panel.context_docs == []
+    finally:
+        frame.Destroy()

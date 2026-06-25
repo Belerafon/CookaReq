@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from ..markdown_utils import validate_markdown
 from ..model import Attachment, Link, Requirement
+from ...util.time import local_now_str
 from ..search import filter_by_labels, filter_by_status, search
 from .types import (
     Document,
@@ -45,7 +46,6 @@ EDITABLE_SINGLE_FIELDS = {
     "rationale",
     "assumptions",
     "notes",
-    "modified_at",
     "approved_at",
 }
 
@@ -60,6 +60,7 @@ READ_ONLY_FIELDS = {
     "revision",
     "doc_prefix",
     "rid",
+    "modified_at",
 }
 
 
@@ -532,6 +533,7 @@ def _update_requirement(
         if statement_changed
         else _current_revision(data.get("revision"))
     )
+    payload["modified_at"] = local_now_str()
     labels = _normalize_labels(payload.get("labels", []))
     err = validate_labels(prefix, labels, docs_map)
     if err:

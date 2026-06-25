@@ -51,6 +51,53 @@ def _base_payload() -> dict[str, str]:
     }
 
 
+def test_update_requirement_field_stamps_modified_at(
+    tmp_path: Path, _document: Document, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docs = load_documents(tmp_path)
+    monkeypatch.setattr(
+        "app.core.document_store.items.local_now_str",
+        lambda: "2026-06-25 12:34:56",
+    )
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={**_base_payload(), "modified_at": "2024-01-01 00:00:00"},
+        docs=docs,
+    )
+
+    updated = update_requirement_field(
+        tmp_path,
+        created.rid,
+        field="owner",
+        value="new owner",
+        docs=docs,
+    )
+
+    assert updated.owner == "new owner"
+    assert updated.modified_at == "2026-06-25 12:34:56"
+
+
+def test_modified_at_is_not_directly_editable(
+    tmp_path: Path, _document: Document
+) -> None:
+    docs = load_documents(tmp_path)
+    created = create_requirement(
+        tmp_path,
+        prefix="SYS",
+        data={**_base_payload(), "modified_at": "2024-01-01 00:00:00"},
+        docs=docs,
+    )
+
+    with pytest.raises(ValidationError, match="read-only: modified_at"):
+        update_requirement_field(
+            tmp_path,
+            created.rid,
+            field="modified_at",
+            value="2020-01-01 00:00:00",
+            docs=docs,
+        )
+
 def test_create_update_and_delete_requirement(
     tmp_path: Path, _document: Document
 ) -> None:
@@ -157,7 +204,6 @@ def test_update_rejects_mismatched_case_rid(
 
     assert created.rid.lower() in str(exc.value)
 
-
 def test_update_requirement_field_rejects_unknown_status(
     tmp_path: Path, _document: Document
 ) -> None:
@@ -197,7 +243,6 @@ def test_create_requirement_rejects_invalid_markdown_table(
             data=payload,
             docs=docs,
         )
-
 
 def test_update_requirement_rejects_disallowed_html(
     tmp_path: Path, _document: Document

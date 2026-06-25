@@ -151,6 +151,34 @@ def test_save_requirement_rejects_duplicate_id(tmp_path: Path) -> None:
         controller.save_requirement("SYS", existing)
 
 
+def test_save_requirement_updates_modified_at_for_cli_style_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doc = Document(prefix="SYS", title="System")
+    doc_dir = tmp_path / "SYS"
+    save_document(doc_dir, doc)
+
+    original = _req(1)
+    original.modified_at = "2024-01-01 00:00:00"
+    save_item(doc_dir, doc, original.to_mapping())
+
+    monkeypatch.setattr(
+        "app.services.requirements.local_now_str",
+        lambda: "2026-06-25 12:34:56",
+    )
+
+    model = RequirementModel()
+    controller = _controller(tmp_path, model)
+    controller.load_documents()
+    controller.load_items("SYS")
+    loaded = model.get_all()[0]
+    loaded.title = "Changed title"
+
+    controller.save_requirement("SYS", loaded)
+
+    data_after_title, _ = load_item(doc_dir, doc, 1)
+    assert data_after_title["modified_at"] == "2026-06-25 12:34:56"
+
 def test_save_requirement_increments_revision_only_for_statement_changes(tmp_path: Path) -> None:
     doc = Document(prefix="SYS", title="System")
     doc_dir = tmp_path / "SYS"

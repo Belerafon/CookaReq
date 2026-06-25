@@ -129,13 +129,14 @@
     },
     {
       "name": "modified_at",
-      "control": "text",
+      "control": "readonly_text",
       "multiline": false,
       "help": [
         "Date and time of the last edit.",
         "The value is filled automatically and aids audit trails.",
         "Reviewers can sort by this field to focus on recently modified items."
-      ]
+      ],
+      "hint": "Filled automatically on save"
     },
     {
       "name": "owner",

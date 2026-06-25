@@ -24,6 +24,7 @@ from ..core.document_store import (
     ValidationError,
 )
 from ..core.model import Requirement
+from ..util.time import local_now_str
 
 MAX_REQUIREMENT_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_SHARED_ARTIFACT_BYTES = 50 * 1024 * 1024
@@ -244,6 +245,8 @@ class RequirementsService:
                     resolved_payload["revision"] = (
                         current_revision + 1 if statement_changed else current_revision
                     )
+                if resolved_payload != existing:
+                    resolved_payload["modified_at"] = local_now_str()
                 bump_document_revision = statement_changed
             else:
                 bump_document_revision = True

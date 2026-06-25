@@ -37,7 +37,7 @@ class EditorFieldSpec:
     hint: str | None = None
 
     def __post_init__(self) -> None:
-        if self.control not in {"text", "enum"}:
+        if self.control not in {"text", "enum", "readonly_text"}:
             raise ValueError(f"Unsupported control type '{self.control}' for field '{self.name}'")
         if not self.help:
             raise ValueError(f"Field '{self.name}' must define help text")

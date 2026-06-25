@@ -3598,3 +3598,9 @@ msgstr "invalid context_docs path '{path}': file does not exist"
 
 msgid "invalid context_docs path '{path}': not a file"
 msgstr "invalid context_docs path '{path}': not a file"
+
+msgid "Filled automatically on save"
+msgstr "Filled automatically on save"
+
+msgid "Filled automatically when the requirement is saved."
+msgstr "Filled automatically when the requirement is saved."

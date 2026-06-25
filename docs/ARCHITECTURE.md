@@ -52,8 +52,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   auto-increment is intentionally tied only to statement text changes by
   default: editing metadata fields (status, labels, links, etc.) keeps the
   current revision in both GUI/CLI save flows and low-level update helpers.
-  Users can still override the requirement revision manually by saving a
-  different positive integer in the revision field. Documents also keep a
+  The same persistence layer stamps `modified_at` on every saved change to an
+  existing requirement, so GUI, CLI and MCP/tool updates share one audit-time
+  policy instead of maintaining timestamps independently. Users can still
+  override the requirement revision manually by saving a different positive
+  integer in the revision field. Documents also keep a
   monotonic `attributes.doc_revision` counter (default `1`) that increments on
   requirement set changes (create/delete/move in/out) and on statement edits
   that bump requirement revisions.
@@ -294,9 +297,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
     under `wx.ListCtrl.Freeze/Thaw`, and statement markdown previews are cached
     by source text so repeated switches avoid re-running markdown stripping for
     unchanged requirement bodies.
-  * `editor_panel.py` manages requirement editing and metadata updates,
-    including a Markdown preview mode that renders statements with attachment
-    links resolved to the document-local `assets/` directory. Text controls in
+  * `editor_panel.py` manages requirement editing and metadata updates. The
+    `modified_at` field is displayed as read-only metadata; the persistence
+    layer, not the form, owns its value. The panel also includes a Markdown
+    preview mode that renders statements with attachment links resolved to the
+    document-local `assets/` directory. Text controls in
     this panel use a custom per-field undo/redo history capped at 10 steps so
     Ctrl+Z/Ctrl+Y behave consistently across autosizing and preview hooks.
     Save/Cancel buttons are state-driven: they stay disabled for clean loaded

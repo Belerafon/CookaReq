@@ -622,11 +622,15 @@ class EditorPanel(wx.Panel):
             else:
                 row = wx.BoxSizer(wx.HORIZONTAL)
                 row.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-                ctrl = wx.TextCtrl(content)
+                style = wx.TE_READONLY if spec.control == "readonly_text" else 0
+                ctrl = wx.TextCtrl(content, style=style)
                 if spec.hint:
                     ctrl.SetHint(_(spec.hint))
+                if spec.control == "readonly_text":
+                    ctrl.SetToolTip(_("Filled automatically when the requirement is saved."))
                 self.fields[spec.name] = ctrl
-                self._install_text_history(ctrl)
+                if spec.control != "readonly_text":
+                    self._install_text_history(ctrl)
                 row.Add(ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
                 row.Add(help_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 5)
                 container.Add(row, 0, wx.EXPAND | wx.TOP, border)
@@ -1641,7 +1645,7 @@ class EditorPanel(wx.Panel):
         list_ctrl.Freeze()
         try:
             list_ctrl.DeleteAllItems()
-            for index, link in enumerate(links_list):
+            for _index, link in enumerate(links_list):
                 rid = str(link.get("rid", "")).strip()
                 if not rid:
                     continue
@@ -2757,9 +2761,9 @@ class EditorPanel(wx.Panel):
                 links_state = [dict(link) for link in state.get("links", [])]
                 self.links = self._augment_links_with_metadata(links_state)
                 try:
-                    id_ctrl, _list_ctrl, _links_list = self._link_widgets("links")
+                    self._link_widgets("links")
                 except AttributeError:
-                    id_ctrl = None
+                    pass
                 else:
                     self._rebuild_links_list("links")
                     self._refresh_links_visibility("links")

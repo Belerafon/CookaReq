@@ -41,7 +41,6 @@ _EDITABLE_FIELDS = [
     "rationale",
     "assumptions",
     "notes",
-    "modified_at",
     "approved_at",
 ]
 

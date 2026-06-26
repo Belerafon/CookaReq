@@ -1,0 +1,22 @@
+[
+  {
+    "rid": "LLR1",
+    "path": "Vsrc/demo.c",
+    "line_start": 4,
+    "line_end": 4,
+    "marker_text": "@covers LLR1, LLR2: clamp and diagnostics",
+    "marker_ordinal": 1,
+    "symbol": "demo_step",
+    "stable_key": "Vsrc/demo.c::LLR1::marker-0001"
+  },
+  {
+    "rid": "LLR2",
+    "path": "Vsrc/demo.c",
+    "line_start": 4,
+    "line_end": 4,
+    "marker_text": "@covers LLR1, LLR2: clamp and diagnostics",
+    "marker_ordinal": 1,
+    "symbol": "demo_step",
+    "stable_key": "Vsrc/demo.c::LLR2::marker-0001"
+  }
+]

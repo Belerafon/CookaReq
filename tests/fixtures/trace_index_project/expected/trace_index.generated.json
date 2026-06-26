@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "generator": "CookaReq trace-index",
+  "generator_version": "0.1.0",
+  "project_root": "tests/fixtures/trace_index_project",
+  "req_root": "tests/fixtures/trace_index_project/Req",
+  "config_hash": "6f1030975ded36fe4aec9f0c999ead69c3465bc995ee7889046c59913b026d71",
+  "input_fingerprint": "a9bda197a4b72371f2db782dc58eba2d386279f353b5e2d92403d42337bdf216",
+  "generated_at_utc": "<volatile>",
+  "requirements": [
+    {
+      "rid": "LLR1",
+      "title": "demo: first requirement",
+      "document": "LLR",
+      "stable_key": "LLR1"
+    },
+    {
+      "rid": "LLR2",
+      "title": "demo: second requirement",
+      "document": "LLR",
+      "stable_key": "LLR2"
+    }
+  ],
+  "code_locations": [
+    {
+      "rid": "LLR1",
+      "path": "Vsrc/demo.c",
+      "line_start": 4,
+      "line_end": 4,
+      "marker_text": "@covers LLR1, LLR2: clamp and diagnostics",
+      "marker_ordinal": 1,
+      "symbol": "demo_step",
+      "stable_key": "Vsrc/demo.c::LLR1::marker-0001"
+    },
+    {
+      "rid": "LLR2",
+      "path": "Vsrc/demo.c",
+      "line_start": 4,
+      "line_end": 4,
+      "marker_text": "@covers LLR1, LLR2: clamp and diagnostics",
+      "marker_ordinal": 1,
+      "symbol": "demo_step",
+      "stable_key": "Vsrc/demo.c::LLR2::marker-0001"
+    }
+  ],
+  "test_cases": [
+    {
+      "test_id": "ТЕСТ-UT-DEMO-0001",
+      "path": "tests/test_demo/src/test_demo.c",
+      "line_start": 3,
+      "line_end": 3,
+      "covers": [
+        "LLR1"
+      ],
+      "marker_text": "print_case_header(ID, \"LLR1\", \"Clamp output\");",
+      "stable_key": "ТЕСТ-UT-DEMO-0001"
+    }
+  ],
+  "test_runs": [
+    {
+      "run_id": "ПРОГОН-20260526-000000Z-HOST-001",
+      "result_file": "tests/test_demo/Build/test_results.txt",
+      "env": "HOST",
+      "date_utc": "2026-05-26T00:00:00Z",
+      "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::tests/test_demo/Build/test_results.txt"
+    }
+  ],
+  "test_results": [
+    {
+      "run_id": "ПРОГОН-20260526-000000Z-HOST-001",
+      "test_id": "ТЕСТ-UT-DEMO-0001",
+      "result_file": "tests/test_demo/Build/test_results.txt",
+      "block_ordinal": 1,
+      "raw_status": "ПРОШЕЛ",
+      "normalized_status": "passed",
+      "covers": [
+        "LLR1"
+      ],
+      "expected": "",
+      "criterion": "",
+      "diagnostics": [],
+      "line_start": 2,
+      "line_end": 4,
+      "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::ТЕСТ-UT-DEMO-0001::tests/test_demo/Build/test_results.txt::block-0001"
+    }
+  ],
+  "issues": []
+}

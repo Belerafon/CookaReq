@@ -86,12 +86,29 @@ pipeline, fallback cleanup, and regression coverage strategy), see
 * **Search and filtering** — `app/core/search.py` provides predicates used by
   the wx models in `app/ui/requirement_model.py` to filter by text, labels and
   status. Sorting also happens in these layers.
-* **Traceability** — `app/core/trace_matrix.py` builds matrices that map
-  requirements to external artefacts. The GUI reuses cached document data to
-  avoid expensive reloads. The same module now provides `build_trace_views`,
-  which returns `TraceViewsBundle` (`matrix`, `rows_to_columns`,
-  `columns_to_rows`) so GUI/exports can render directional trace tables without
-  duplicating link traversal in presentation code.
+* **Requirement traceability** — `app/core/trace_matrix.py` builds matrices
+  from CookaReq item-to-item links, such as HLR-to-LLR relationships. The GUI
+  reuses cached document data to avoid expensive reloads. The same module now
+  provides `build_trace_views`, which returns `TraceViewsBundle` (`matrix`,
+  `rows_to_columns`, `columns_to_rows`) so GUI/exports can render directional
+  trace tables without duplicating link traversal in presentation code.
+* **External evidence trace index** — `app/core/trace_index/` is a separate
+  read-only subsystem for code markers, test-case references and test results.
+  Its model serializes the generated `TraceIndex` JSON schema and stable keys
+  independently from `trace_matrix` so external evidence does not inherit
+  CookaReq link `suspect` semantics. Code marker parsing is intentionally
+  limited to MVP C block comments (`/* @covers ... */`), while test source
+  parsing recognizes both legacy `print_case_header(...)` calls and explicit
+  `/* @test ... @covers ... */` markers. Legacy result parsing reads
+  `Build/test_results.txt`-style run headers and result blocks, preserving
+  declared coverage, normalized status and diagnostic details. Trace-index
+  configuration is represented by `TraceIndexConfig`, whose deterministic config
+  hash and content-based input fingerprint support stale-cache detection. The
+  builder combines requirement refs, parsed code locations, test cases, test runs
+  and test results into one deterministic `TraceIndex` while adding validation
+  diagnostics for unknown RIDs, missing tests and result/source mismatches.
+  Malformed marker payloads are reported as stable `TraceIssue` diagnostics
+  instead of aborting scans.
 * **Import/export** — `requirement_import.py`, `requirement_export.py`,
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all

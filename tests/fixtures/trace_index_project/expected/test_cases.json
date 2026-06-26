@@ -1,0 +1,13 @@
+[
+  {
+    "test_id": "ТЕСТ-UT-DEMO-0001",
+    "path": "tests/test_demo/src/test_demo.c",
+    "line_start": 3,
+    "line_end": 3,
+    "covers": [
+      "LLR1"
+    ],
+    "marker_text": "print_case_header(ID, \"LLR1\", \"Clamp output\");",
+    "stable_key": "ТЕСТ-UT-DEMO-0001"
+  }
+]

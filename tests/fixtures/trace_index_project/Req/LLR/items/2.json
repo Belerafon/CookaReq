@@ -1,0 +1,8 @@
+{
+  "id": 2,
+  "title": "demo: second requirement",
+  "statement": "The demo shall report diagnostics.",
+  "verification": "inspection",
+  "verification_methods": ["inspection"],
+  "links": []
+}

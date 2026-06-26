@@ -1,0 +1,11 @@
+[
+  {
+    "code": "INVALID_MARKER",
+    "severity": "high",
+    "message": "Invalid @covers marker RID list",
+    "path": "Vsrc/broken_marker.c",
+    "line": 2,
+    "rid": null,
+    "test_id": null
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "run_id": "ПРОГОН-20260526-000000Z-HOST-001",
+    "test_id": "ТЕСТ-UT-DEMO-0001",
+    "result_file": "tests/test_demo/Build/test_results.txt",
+    "block_ordinal": 1,
+    "raw_status": "ПРОШЕЛ",
+    "normalized_status": "passed",
+    "covers": [
+      "LLR1"
+    ],
+    "expected": "",
+    "criterion": "",
+    "diagnostics": [],
+    "line_start": 2,
+    "line_end": 4,
+    "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::ТЕСТ-UT-DEMO-0001::tests/test_demo/Build/test_results.txt::block-0001"
+  }
+]

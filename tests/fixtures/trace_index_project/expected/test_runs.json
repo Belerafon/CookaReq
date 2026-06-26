@@ -1,0 +1,9 @@
+[
+  {
+    "run_id": "ПРОГОН-20260526-000000Z-HOST-001",
+    "result_file": "tests/test_demo/Build/test_results.txt",
+    "env": "HOST",
+    "date_utc": "2026-05-26T00:00:00Z",
+    "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::tests/test_demo/Build/test_results.txt"
+  }
+]

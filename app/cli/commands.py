@@ -40,6 +40,12 @@ from app.core.trace_matrix import (
     TraceMatrixLinkView,
     build_trace_matrix,
 )
+from app.core.trace_index import (
+    TraceIndex,
+    TraceIndexConfig,
+    build_trace_index,
+    write_trace_index_cache,
+)
 from app.core.requirement_export import (
     build_requirement_export,
     render_requirements_html,
@@ -1297,6 +1303,99 @@ def add_export_arguments(p: argparse.ArgumentParser) -> None:
     req.set_defaults(func=cmd_export_requirements)
 
 
+
+def _trace_index_config_from_args(args: argparse.Namespace) -> TraceIndexConfig:
+    req_root = Path(args.req_root)
+    project_root = Path(args.project_root) if args.project_root else req_root.parent
+    return TraceIndexConfig.from_conventions(
+        req_root,
+        project_root=project_root,
+        source_globs=tuple(args.source_glob) if args.source_glob is not None else None,
+        test_globs=tuple(args.test_glob) if args.test_glob is not None else None,
+        result_globs=tuple(args.result_glob) if args.result_glob is not None else None,
+        exclude_globs=tuple(args.exclude_glob) if args.exclude_glob is not None else None,
+        module_filter=args.module,
+    )
+
+
+def _trace_index_issue_counts(index: TraceIndex) -> dict[str, int]:
+    counts = {"high": 0, "warning": 0, "info": 0}
+    for issue in index.issues:
+        counts[issue.severity] = counts.get(issue.severity, 0) + 1
+    return counts
+
+
+def _trace_index_summary(index: TraceIndex) -> dict[str, Any]:
+    return {
+        "requirements": len(index.requirements),
+        "code_locations": len(index.code_locations),
+        "test_cases": len(index.test_cases),
+        "test_runs": len(index.test_runs),
+        "test_results": len(index.test_results),
+        "issues": _trace_index_issue_counts(index),
+    }
+
+
+def _write_trace_index_summary(out: TextIO, index: TraceIndex) -> None:
+    summary = _trace_index_summary(index)
+    out.write(
+        "Trace index: "
+        f"requirements={summary['requirements']} "
+        f"code_locations={summary['code_locations']} "
+        f"test_cases={summary['test_cases']} "
+        f"test_runs={summary['test_runs']} "
+        f"test_results={summary['test_results']}\n"
+    )
+    issues = summary["issues"]
+    out.write(
+        "Issues: "
+        f"high={issues.get('high', 0)} "
+        f"warning={issues.get('warning', 0)} "
+        f"info={issues.get('info', 0)}\n"
+    )
+    for issue in index.issues:
+        location = issue.path
+        if issue.line is not None:
+            location = f"{location}:{issue.line}" if location else f"line {issue.line}"
+        subject = issue.rid or issue.test_id or ""
+        details = " ".join(part for part in (location, subject) if part)
+        suffix = f" ({details})" if details else ""
+        out.write(f"{issue.severity.upper()} {issue.code}: {issue.message}{suffix}\n")
+
+
+def _trace_index_exit_code(index: TraceIndex, fail_on: str) -> int:
+    severities = {issue.severity for issue in index.issues}
+    if "high" in severities:
+        return 1
+    if fail_on == "warning" and "warning" in severities:
+        return 1
+    return 0
+
+
+def cmd_trace_index(args: argparse.Namespace, context: ApplicationContext) -> int:
+    """Build, check or export the external evidence trace index."""
+    _ = context
+    config = _trace_index_config_from_args(args)
+    index = build_trace_index(config)
+    if args.trace_index_command == "refresh":
+        path = write_trace_index_cache(index, config.req_root)
+        _write_trace_index_summary(sys.stdout, index)
+        sys.stdout.write(f"Cache: {path.as_posix()}\n")
+        return _trace_index_exit_code(index, args.fail_on)
+    if args.trace_index_command == "check":
+        _write_trace_index_summary(sys.stdout, index)
+        return _trace_index_exit_code(index, args.fail_on)
+    if args.trace_index_command == "export":
+        payload = json.dumps(index.to_dict(), ensure_ascii=False, indent=2) + "\n"
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(payload, encoding="utf-8")
+        else:
+            sys.stdout.write(payload)
+        return 0
+    raise ValueError(f"unknown trace-index command: {args.trace_index_command}")
+
 def add_trace_arguments(p: argparse.ArgumentParser) -> None:
     """Configure parser for the ``trace`` command."""
     p.add_argument("directory", help=_("requirements root"))
@@ -1403,6 +1502,40 @@ def add_trace_arguments(p: argparse.ArgumentParser) -> None:
     p.add_argument("-o", "--output", help=_("write result to file"))
 
 
+
+def _add_trace_index_common_arguments(p: argparse.ArgumentParser) -> None:
+    p.add_argument("req_root", help=_("requirements root"))
+    p.add_argument("--project-root", help=_("project root for source/test/result globs"))
+    p.add_argument("--module", help=_("module filter"))
+    p.add_argument("--source-glob", action="append", help=_("source file glob"))
+    p.add_argument("--test-glob", action="append", help=_("test source file glob"))
+    p.add_argument("--result-glob", action="append", help=_("test result file glob"))
+    p.add_argument("--exclude-glob", action="append", help=_("exclude file glob"))
+    p.add_argument(
+        "--fail-on",
+        choices=["high", "warning"],
+        default="high",
+        help=_("minimum issue severity that returns a non-zero status"),
+    )
+
+
+def add_trace_index_arguments(p: argparse.ArgumentParser) -> None:
+    """Configure parser for the ``trace-index`` command group."""
+    sub = p.add_subparsers(dest="trace_index_command", required=True)
+    refresh = sub.add_parser("refresh", help=_("build trace index cache"))
+    _add_trace_index_common_arguments(refresh)
+    refresh.set_defaults(func=cmd_trace_index)
+
+    check = sub.add_parser("check", help=_("check trace index diagnostics"))
+    _add_trace_index_common_arguments(check)
+    check.set_defaults(func=cmd_trace_index)
+
+    export = sub.add_parser("export", help=_("export trace index"))
+    _add_trace_index_common_arguments(export)
+    export.add_argument("--format", choices=["json"], default="json", help=_("export format"))
+    export.add_argument("-o", "--output", help=_("write result to file"))
+    export.set_defaults(func=cmd_trace_index)
+
 def cmd_check(
     args: argparse.Namespace, context: ApplicationContext
 ) -> None:
@@ -1440,6 +1573,11 @@ COMMANDS: dict[str, Command] = {
     ),
     "link": Command(cmd_link, _("link requirements"), add_link_arguments),
     "trace": Command(cmd_trace, _("export trace links"), add_trace_arguments),
+    "trace-index": Command(
+        lambda args, context: args.func(args, context),
+        _("manage external evidence trace index"),
+        add_trace_index_arguments,
+    ),
     "export": Command(
         lambda args, context: args.func(args, context),
         _("export data"),

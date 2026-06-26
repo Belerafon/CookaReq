@@ -14,7 +14,7 @@
 | Шаг 5. Config, schema и cache fingerprint | Готово | Добавлены `TraceIndexConfig`, default conventions/overrides, deterministic `config_hash`, content-based `input_fingerprint`, metadata и stale checks. |
 | Шаг 6. Index builder | Готово | Добавлен builder `requirements + config + code markers + test cases + result files -> TraceIndex` с validation diagnostics и deterministic golden test. |
 | Шаг 7. Cache индекса | Готово | Добавлены cache path, atomic write/read JSON, stale cache read wrapper, generated-cache exclusion from fingerprints и tests на сохранение старого cache при ошибке replace. |
-| Шаг 8. CLI | Не начат | `trace-index refresh/check/export`. |
+| Шаг 8. CLI | Готово | Добавлены `trace-index refresh/check/export --format json`, CLI globs/project/module args, summary, cache write, JSON export и `--fail-on`. |
 | Шаг 9. GUI: Refresh и Trace tab | Post-MVP | Не входит в первый deliverable. |
 | Шаг 10. GUI: Artifact Browser | Post-MVP | Не входит в первый deliverable. |
 | Шаг 11. Artifact trace matrices | Post-MVP | Не входит в первый deliverable. |

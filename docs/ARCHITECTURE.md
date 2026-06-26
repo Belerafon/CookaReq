@@ -109,8 +109,10 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   diagnostics for unknown RIDs, missing tests and result/source mismatches. The
   generated cache lives under `Req/.cookareq/trace_index.generated.json`, is
   written atomically, and is excluded from input fingerprints so writing a cache
-  does not make itself stale. Malformed marker payloads are reported as stable
-  `TraceIssue` diagnostics instead of aborting scans.
+  does not make itself stale. The CLI exposes this subsystem as `trace-index`
+  with `refresh`, `check` and JSON `export` subcommands for CI and review flows.
+  Malformed marker payloads are reported as stable `TraceIssue` diagnostics
+  instead of aborting scans.
 * **Import/export** — `requirement_import.py`, `requirement_export.py`,
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all

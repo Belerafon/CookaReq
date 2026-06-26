@@ -13,7 +13,7 @@ from .model import GENERATOR_VERSION, SCHEMA_VERSION, TraceIndex
 DEFAULT_SOURCE_GLOBS = ("Vsrc/**/*.c", "Vinclude/**/*.h")
 DEFAULT_TEST_GLOBS = ("tests/test_*/src/**/*.c",)
 DEFAULT_RESULT_GLOBS = ("tests/test_*/Build/test_results.txt",)
-DEFAULT_EXCLUDE_GLOBS = ("Build/coverage/**", ".git/**")
+DEFAULT_EXCLUDE_GLOBS = ("Build/coverage/**", ".git/**", "**/.cookareq/**")
 
 
 @dataclass(frozen=True)
@@ -163,7 +163,9 @@ def is_index_stale(index: TraceIndex, config: TraceIndexConfig) -> bool:
 
 
 def _is_excluded(relative_path: str, exclude_globs: tuple[str, ...]) -> bool:
-    return any(fnmatch.fnmatch(relative_path, pattern) for pattern in exclude_globs)
+    return "/.cookareq/" in f"/{relative_path}" or any(
+        fnmatch.fnmatch(relative_path, pattern) for pattern in exclude_globs
+    )
 
 
 def _sha256_json(data: Any) -> str:

@@ -1,6 +1,14 @@
 """Trace-index core subsystem for external evidence artifacts."""
 
 from .builder import build_trace_index
+from .cache import (
+    CACHE_RELATIVE_PATH,
+    TraceIndexCacheRead,
+    cache_path,
+    read_trace_index_cache,
+    read_trace_index_cache_for_config,
+    write_trace_index_cache,
+)
 from .config import (
     TraceIndexConfig,
     cache_metadata,
@@ -38,6 +46,7 @@ __all__ = [
     "GENERATOR_VERSION",
     "SCHEMA_VERSION",
     "CodeLocation",
+    "CACHE_RELATIVE_PATH",
     "CodeParseResult",
     "TestCaseRef",
     "ResultParseResult",
@@ -45,15 +54,20 @@ __all__ = [
     "TestResultRef",
     "TestRunRef",
     "TraceIndex",
+    "TraceIndexCacheRead",
     "TraceIndexConfig",
     "TraceIssue",
     "TraceRequirementRef",
     "build_trace_index",
+    "cache_path",
     "cache_metadata",
     "collect_input_files",
     "config_hash",
     "input_fingerprint",
     "is_index_stale",
+    "read_trace_index_cache",
+    "read_trace_index_cache_for_config",
+    "write_trace_index_cache",
     "parse_code_file",
     "parse_code_text",
     "normalize_status",

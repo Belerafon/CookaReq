@@ -145,7 +145,9 @@ def _is_excluded(path: Path, config: TraceIndexConfig) -> bool:
         relative = path.as_posix()
     from fnmatch import fnmatch
 
-    return any(fnmatch(relative, pattern) for pattern in config.exclude_globs)
+    return "/.cookareq/" in f"/{relative}" or any(
+        fnmatch(relative, pattern) for pattern in config.exclude_globs
+    )
 
 
 def _validate_code_locations(

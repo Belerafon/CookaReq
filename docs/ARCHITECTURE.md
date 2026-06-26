@@ -106,9 +106,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   hash and content-based input fingerprint support stale-cache detection. The
   builder combines requirement refs, parsed code locations, test cases, test runs
   and test results into one deterministic `TraceIndex` while adding validation
-  diagnostics for unknown RIDs, missing tests and result/source mismatches.
-  Malformed marker payloads are reported as stable `TraceIssue` diagnostics
-  instead of aborting scans.
+  diagnostics for unknown RIDs, missing tests and result/source mismatches. The
+  generated cache lives under `Req/.cookareq/trace_index.generated.json`, is
+  written atomically, and is excluded from input fingerprints so writing a cache
+  does not make itself stale. Malformed marker payloads are reported as stable
+  `TraceIssue` diagnostics instead of aborting scans.
 * **Import/export** — `requirement_import.py`, `requirement_export.py`,
   `requirement_tabular_export.py`, and `requirement_text_export.py` convert
   between external formats and the `Requirement` dataclass while delegating all

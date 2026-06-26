@@ -19,8 +19,8 @@
 | Шаг 10. GUI: Artifact Browser | Post-MVP | Не входит в первый deliverable. |
 | Шаг 11. Artifact trace matrices | Post-MVP | Не входит в первый deliverable. |
 | Шаг 12. Export reports | Post-MVP частично | JSON export входит в MVP-0, HTML/CSV — позже. |
-| Шаг 13. Интеграция с `V_pid_reg3` | Не начат | Пилотный модуль для CLI-only MVP. |
-| Шаг 14. CI режим | Не начат | `check --fail-on high/warning`. |
+| Шаг 13. Интеграция с `V_pid_reg3` | Ожидает входных артефактов | В текущем репозитории нет `Vsrc/V_pid_reg3.c`, `tests/test_V_pid_reg3` или `test_results.txt`; продолжение возможно после добавления/подключения пилотного модуля. |
+| Шаг 14. CI режим | Готово | CLI `check` поддерживает `--fail-on high/warning`; добавлены tests на exit code для warning-only diagnostics. |
 | Шаг 15. JUnit XML parser | Post-MVP | После стабилизации legacy parser. |
 
 ## 1. Цель

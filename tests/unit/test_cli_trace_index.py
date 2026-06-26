@@ -98,3 +98,50 @@ def test_trace_index_export_writes_json_file(tmp_path: Path, capsys: pytest.Capt
     assert capsys.readouterr().out == ""
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["test_cases"][0]["test_id"] == "ТЕСТ-UT-DEMO-0001"
+
+@pytest.mark.unit
+def test_trace_index_check_fail_on_high_allows_warning_only(tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context) -> None:
+    root = tmp_path / "project"
+    _write_minimal_req(root, verification="test")
+    args = _args(root, "check", fail_on="high")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "WARNING MISSING_TEST_FOR_LLR" in out
+
+
+@pytest.mark.unit
+def test_trace_index_check_fail_on_warning_rejects_warning_only(tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context) -> None:
+    root = tmp_path / "project"
+    _write_minimal_req(root, verification="test")
+    args = _args(root, "check", fail_on="warning")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    out = capsys.readouterr().out
+    assert exit_code == 1
+    assert "WARNING MISSING_TEST_FOR_LLR" in out
+
+
+def _write_minimal_req(root: Path, *, verification: str) -> None:
+    items = root / "Req" / "LLR" / "items"
+    items.mkdir(parents=True)
+    (root / "Req" / "LLR" / "document.json").write_text(
+        '{"prefix": "LLR", "title": "Low"}\n', encoding="utf-8"
+    )
+    (items / "1.json").write_text(
+        json.dumps(
+            {
+                "id": 1,
+                "title": "Requirement 1",
+                "statement": "Statement",
+                "verification": verification,
+                "verification_methods": [verification],
+                "links": [],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )

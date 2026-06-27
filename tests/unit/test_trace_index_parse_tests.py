@@ -28,6 +28,20 @@ def test_parse_print_case_header_with_static_id() -> None:
 @pytest.mark.unit
 def test_parse_print_case_header_with_direct_string_id() -> None:
     result = parse_test_text(
+        'print_case_header("ТЕСТ-UT-DEMO-0002", "LLR004, LLR-4", "Diagnostics");\n',
+        path="tests/test_demo/src/test_demo.c",
+    )
+
+    assert result.issues == ()
+    assert len(result.test_cases) == 1
+    assert result.test_cases[0].test_id == "ТЕСТ-UT-DEMO-0002"
+    assert result.test_cases[0].covers == ("LLR004", "LLR-4")
+
+
+@pytest.mark.unit
+def test_parse_print_case_header_ignores_function_declaration() -> None:
+    result = parse_test_text(
+        "extern void print_case_header(const char *id, const char *covers, const char *title);\n"
         'print_case_header("ТЕСТ-UT-DEMO-0002", "LLR4", "Diagnostics");\n',
         path="tests/test_demo/src/test_demo.c",
     )
@@ -35,7 +49,6 @@ def test_parse_print_case_header_with_direct_string_id() -> None:
     assert result.issues == ()
     assert len(result.test_cases) == 1
     assert result.test_cases[0].test_id == "ТЕСТ-UT-DEMO-0002"
-    assert result.test_cases[0].covers == ("LLR4",)
 
 
 @pytest.mark.unit

@@ -45,7 +45,7 @@ def test_trace_index_refresh_writes_cache(tmp_path: Path, capsys: pytest.Capture
     cache_path = root / "Req" / ".cookareq" / "trace_index.generated.json"
     assert exit_code == 0
     assert cache_path.exists()
-    assert "Trace index: requirements=2" in out
+    assert "Trace index: requirements=12" in out
     assert f"Cache: {cache_path.as_posix()}" in out
 
 
@@ -98,6 +98,31 @@ def test_trace_index_export_writes_json_file(tmp_path: Path, capsys: pytest.Capt
     assert capsys.readouterr().out == ""
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["test_cases"][0]["test_id"] == "ТЕСТ-UT-DEMO-0001"
+
+
+@pytest.mark.unit
+def test_trace_index_fixture_contains_v_pid_reg3_pilot(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    args = _args(root, "export")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["issues"] == []
+    assert any(item["rid"] == "LLR3" for item in payload["requirements"])
+    assert any(
+        location["path"] == "Vsrc/V_pid_reg3.c" and location["rid"] == "LLR10"
+        for location in payload["code_locations"]
+    )
+    assert any(
+        item["test_id"] == "ТЕСТ-UT-V_PID_REG3-0003"
+        and item["covers"] == ["LLR8", "LLR9", "LLR10"]
+        for item in payload["test_cases"]
+    )
+
 
 @pytest.mark.unit
 def test_trace_index_check_fail_on_high_allows_warning_only(tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context) -> None:

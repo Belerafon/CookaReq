@@ -108,6 +108,34 @@ def test_build_trace_index_reports_coverage_mismatch(tmp_path: Path) -> None:
     assert any(issue.code == "COVERAGE_MISMATCH" for issue in index.issues)
 
 
+@pytest.mark.unit
+def test_build_trace_index_normalizes_rid_spelling_variants(tmp_path: Path) -> None:
+    _write_minimal_req(tmp_path, verification="test")
+    source_dir = tmp_path / "Vsrc"
+    source_dir.mkdir()
+    (source_dir / "pid.c").write_text(
+        "void pid(void)\n"
+        "{\n"
+        "    /* @covers LLR001, LLR-1: accepted spelling variants */\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    test_dir = tmp_path / "tests" / "test_pid" / "src"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_pid.c").write_text(
+        'print_case_header("TEST-PID-1", "LLR1, LLR-001", "PID");\n',
+        encoding="utf-8",
+    )
+
+    config = TraceIndexConfig.from_conventions(tmp_path / "Req", project_root=tmp_path)
+
+    index = build_trace_index(config)
+
+    assert index.issues == ()
+    assert {location.rid for location in index.code_locations} == {"LLR1"}
+    assert index.test_cases[0].covers == ("LLR1",)
+
+
 def _write_minimal_req(tmp_path: Path, *, verification: str) -> None:
     (tmp_path / "Req" / "LLR" / "items").mkdir(parents=True)
     (tmp_path / "Req" / "LLR" / "document.json").write_text(

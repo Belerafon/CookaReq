@@ -19,7 +19,7 @@
 | Шаг 10. GUI: Artifact Browser | Post-MVP | Не входит в первый deliverable. |
 | Шаг 11. Artifact trace matrices | Post-MVP | Не входит в первый deliverable. |
 | Шаг 12. Export reports | Post-MVP частично | JSON export входит в MVP-0, HTML/CSV — позже. |
-| Шаг 13. Интеграция с `V_pid_reg3` | Ожидает входных артефактов | В текущем репозитории нет `Vsrc/V_pid_reg3.c`, `tests/test_V_pid_reg3` или `test_results.txt`; продолжение возможно после добавления/подключения пилотного модуля. |
+| Шаг 13. Интеграция с `V_pid_reg3` | Готово в fixture-пилоте | В `tests/fixtures/trace_index_project` добавлены требования `LLR3`-`LLR12` в общем LLR-документе, `Vsrc/V_pid_reg3.c`, `Vinclude/V_pid_reg3.h`, `tests/test_V_pid_reg3` и legacy `test_results.txt`; golden/CLI tests проверяют сборку индекса без diagnostics. |
 | Шаг 14. CI режим | Готово | CLI `check` поддерживает `--fail-on high/warning`; добавлены tests на exit code для warning-only diagnostics. |
 | Шаг 15. JUnit XML parser | Post-MVP | После стабилизации legacy parser. |
 
@@ -70,10 +70,13 @@ trace-index - индекс и матрицы внешних артефактов
 Поддерживается RID формата:
 
 ```text
-\b[A-Z]+[0-9]+\b
+\b[A-Z]+-?0*[0-9]+\b
 ```
 
 RID чувствителен к регистру. `llr3` считается невалидным маркером.
+Для одного требования допускаются эквивалентные написания с дефисом и ведущими
+нулями: `LLR3`, `LLR003`, `LLR-3`, `LLR-003`. В индекс сохраняется RID из
+CookaReq item, например `LLR3`.
 
 ### Code markers
 
@@ -161,7 +164,7 @@ Severity: `high`, `warning`, `info`. CLI должен поддерживать `
 
 Line number не должен быть частью stable key.
 
-- Requirement: canonical RID.
+- Requirement: RID из CookaReq item.
 - Code location: `normalized_path + covers_rid + marker_ordinal_in_file`.
 - Test case: `test_id`.
 - Test run: `run_id + result_file`.

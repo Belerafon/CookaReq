@@ -5,7 +5,7 @@
   "project_root": "tests/fixtures/trace_index_project",
   "req_root": "tests/fixtures/trace_index_project/Req",
   "config_hash": "6f1030975ded36fe4aec9f0c999ead69c3465bc995ee7889046c59913b026d71",
-  "input_fingerprint": "a9bda197a4b72371f2db782dc58eba2d386279f353b5e2d92403d42337bdf216",
+  "input_fingerprint": "f3318c162764993117a8b4a32aa233f9b4ae932d93d63823cc35ba5ed0d9a9ad",
   "generated_at_utc": "<volatile>",
   "requirements": [
     {
@@ -15,13 +15,253 @@
       "stable_key": "LLR1"
     },
     {
+      "rid": "LLR10",
+      "title": "V_pid_reg3: LLR-010",
+      "document": "LLR",
+      "stable_key": "LLR10"
+    },
+    {
+      "rid": "LLR11",
+      "title": "V_pid_reg3: LLR-011",
+      "document": "LLR",
+      "stable_key": "LLR11"
+    },
+    {
+      "rid": "LLR12",
+      "title": "V_pid_reg3: LLR-012",
+      "document": "LLR",
+      "stable_key": "LLR12"
+    },
+    {
       "rid": "LLR2",
       "title": "demo: second requirement",
       "document": "LLR",
       "stable_key": "LLR2"
+    },
+    {
+      "rid": "LLR3",
+      "title": "V_pid_reg3: LLR-003",
+      "document": "LLR",
+      "stable_key": "LLR3"
+    },
+    {
+      "rid": "LLR4",
+      "title": "V_pid_reg3: LLR-004",
+      "document": "LLR",
+      "stable_key": "LLR4"
+    },
+    {
+      "rid": "LLR5",
+      "title": "V_pid_reg3: LLR-005",
+      "document": "LLR",
+      "stable_key": "LLR5"
+    },
+    {
+      "rid": "LLR6",
+      "title": "V_pid_reg3: LLR-006",
+      "document": "LLR",
+      "stable_key": "LLR6"
+    },
+    {
+      "rid": "LLR7",
+      "title": "V_pid_reg3: LLR-007",
+      "document": "LLR",
+      "stable_key": "LLR7"
+    },
+    {
+      "rid": "LLR8",
+      "title": "V_pid_reg3: LLR-008",
+      "document": "LLR",
+      "stable_key": "LLR8"
+    },
+    {
+      "rid": "LLR9",
+      "title": "V_pid_reg3: LLR-009",
+      "document": "LLR",
+      "stable_key": "LLR9"
     }
   ],
   "code_locations": [
+    {
+      "rid": "LLR10",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 30,
+      "line_end": 30,
+      "marker_text": "@covers LLR-004, LLR010: реализация абстрактной операции Clamp из раздела 1.3 спецификации.",
+      "marker_ordinal": 2,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR10::marker-0002"
+    },
+    {
+      "rid": "LLR10",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 120,
+      "line_end": 120,
+      "marker_text": "@covers LLR010: ограничение интегратора при отключённом анти-виндапе.",
+      "marker_ordinal": 10,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR10::marker-0010"
+    },
+    {
+      "rid": "LLR11",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 128,
+      "line_end": 128,
+      "marker_text": "@covers LLR007, LLR011: полный сброс состояния экземпляра.",
+      "marker_ordinal": 11,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR11::marker-0011"
+    },
+    {
+      "rid": "LLR12",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 44,
+      "line_end": 44,
+      "marker_text": "@covers LLR-3, LLR-012: вычисление ошибки, учёт мёртвой зоны и безопасная разность входов.",
+      "marker_ordinal": 3,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR12::marker-0003"
+    },
+    {
+      "rid": "LLR12",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 76,
+      "line_end": 76,
+      "marker_text": "@covers LLR005, LLR-012: масштабирование разницы фильтра в пределах int32_t.",
+      "marker_ordinal": 6,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR12::marker-0006"
+    },
+    {
+      "rid": "LLR3",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 8,
+      "line_end": 8,
+      "marker_text": "@covers LLR003: реализация абстрактной операции DeadZone из раздела 1.3 спецификации.",
+      "marker_ordinal": 1,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR3::marker-0001"
+    },
+    {
+      "rid": "LLR3",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 44,
+      "line_end": 44,
+      "marker_text": "@covers LLR-3, LLR-012: вычисление ошибки, учёт мёртвой зоны и безопасная разность входов.",
+      "marker_ordinal": 3,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR3::marker-0003"
+    },
+    {
+      "rid": "LLR3",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 91,
+      "line_end": 91,
+      "marker_text": "@covers LLR003, LLR-004: пропорциональная часть и сумма до насыщения.",
+      "marker_ordinal": 7,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR3::marker-0007"
+    },
+    {
+      "rid": "LLR4",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 30,
+      "line_end": 30,
+      "marker_text": "@covers LLR-004, LLR010: реализация абстрактной операции Clamp из раздела 1.3 спецификации.",
+      "marker_ordinal": 2,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR4::marker-0002"
+    },
+    {
+      "rid": "LLR4",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 91,
+      "line_end": 91,
+      "marker_text": "@covers LLR003, LLR-004: пропорциональная часть и сумма до насыщения.",
+      "marker_ordinal": 7,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR4::marker-0007"
+    },
+    {
+      "rid": "LLR5",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 58,
+      "line_end": 58,
+      "marker_text": "@covers LLR005, LLR007: планировщик пересчёта дифференциала.",
+      "marker_ordinal": 5,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR5::marker-0005"
+    },
+    {
+      "rid": "LLR5",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 76,
+      "line_end": 76,
+      "marker_text": "@covers LLR005, LLR-012: масштабирование разницы фильтра в пределах int32_t.",
+      "marker_ordinal": 6,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR5::marker-0006"
+    },
+    {
+      "rid": "LLR6",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 48,
+      "line_end": 48,
+      "marker_text": "@covers LLR-006: фильтр дифференциальной составляющей.",
+      "marker_ordinal": 4,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR6::marker-0004"
+    },
+    {
+      "rid": "LLR7",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 58,
+      "line_end": 58,
+      "marker_text": "@covers LLR005, LLR007: планировщик пересчёта дифференциала.",
+      "marker_ordinal": 5,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR7::marker-0005"
+    },
+    {
+      "rid": "LLR7",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 128,
+      "line_end": 128,
+      "marker_text": "@covers LLR007, LLR011: полный сброс состояния экземпляра.",
+      "marker_ordinal": 11,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR7::marker-0011"
+    },
+    {
+      "rid": "LLR8",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 110,
+      "line_end": 110,
+      "marker_text": "@covers LLR008, LLR-009: интегратор и анти-виндап.",
+      "marker_ordinal": 9,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR8::marker-0009"
+    },
+    {
+      "rid": "LLR9",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 106,
+      "line_end": 106,
+      "marker_text": "@covers LLR-009: вычисление ошибки насыщения для анти-виндапа.",
+      "marker_ordinal": 8,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR9::marker-0008"
+    },
+    {
+      "rid": "LLR9",
+      "path": "Vsrc/V_pid_reg3.c",
+      "line_start": 110,
+      "line_end": 110,
+      "marker_text": "@covers LLR008, LLR-009: интегратор и анти-виндап.",
+      "marker_ordinal": 9,
+      "symbol": null,
+      "stable_key": "Vsrc/V_pid_reg3.c::LLR9::marker-0009"
+    },
     {
       "rid": "LLR1",
       "path": "Vsrc/demo.c",
@@ -54,6 +294,57 @@
       ],
       "marker_text": "print_case_header(ID, \"LLR1\", \"Clamp output\");",
       "stable_key": "ТЕСТ-UT-DEMO-0001"
+    },
+    {
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0001",
+      "path": "tests/test_V_pid_reg3/src/test_V_pid_reg3.c",
+      "line_start": 8,
+      "line_end": 8,
+      "covers": [
+        "LLR3",
+        "LLR4"
+      ],
+      "marker_text": "print_case_header(ID, \"LLR003, LLR-004\", \"DeadZone and output clamp\");",
+      "stable_key": "ТЕСТ-UT-V_PID_REG3-0001"
+    },
+    {
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0002",
+      "path": "tests/test_V_pid_reg3/src/test_V_pid_reg3.c",
+      "line_start": 13,
+      "line_end": 13,
+      "covers": [
+        "LLR5",
+        "LLR6",
+        "LLR7",
+        "LLR12"
+      ],
+      "marker_text": "print_case_header(\"ТЕСТ-UT-V_PID_REG3-0002\", \"LLR005, LLR-006, LLR007, LLR-012\", \"Derivative filter scheduling\");",
+      "stable_key": "ТЕСТ-UT-V_PID_REG3-0002"
+    },
+    {
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0003",
+      "path": "tests/test_V_pid_reg3/src/test_V_pid_reg3.c",
+      "line_start": 16,
+      "line_end": 16,
+      "covers": [
+        "LLR8",
+        "LLR9",
+        "LLR10"
+      ],
+      "marker_text": "@test ТЕСТ-UT-V_PID_REG3-0003 @covers LLR008, LLR-009, LLR010",
+      "stable_key": "ТЕСТ-UT-V_PID_REG3-0003"
+    },
+    {
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0004",
+      "path": "tests/test_V_pid_reg3/src/test_V_pid_reg3.c",
+      "line_start": 21,
+      "line_end": 21,
+      "covers": [
+        "LLR7",
+        "LLR11"
+      ],
+      "marker_text": "@test ТЕСТ-UT-V_PID_REG3-0004 @covers LLR007, LLR011",
+      "stable_key": "ТЕСТ-UT-V_PID_REG3-0004"
     }
   ],
   "test_runs": [
@@ -63,6 +354,13 @@
       "env": "HOST",
       "date_utc": "2026-05-26T00:00:00Z",
       "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::tests/test_demo/Build/test_results.txt"
+    },
+    {
+      "run_id": "ПРОГОН-20260625-120000Z-HOST-VPID-001",
+      "result_file": "tests/test_V_pid_reg3/Build/test_results.txt",
+      "env": "HOST",
+      "date_utc": "2026-06-25T12:00:00Z",
+      "stable_key": "ПРОГОН-20260625-120000Z-HOST-VPID-001::tests/test_V_pid_reg3/Build/test_results.txt"
     }
   ],
   "test_results": [
@@ -82,6 +380,81 @@
       "line_start": 2,
       "line_end": 4,
       "stable_key": "ПРОГОН-20260526-000000Z-HOST-001::ТЕСТ-UT-DEMO-0001::tests/test_demo/Build/test_results.txt::block-0001"
+    },
+    {
+      "run_id": "ПРОГОН-20260625-120000Z-HOST-VPID-001",
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0001",
+      "result_file": "tests/test_V_pid_reg3/Build/test_results.txt",
+      "block_ordinal": 1,
+      "raw_status": "ПРОШЕЛ",
+      "normalized_status": "passed",
+      "covers": [
+        "LLR3",
+        "LLR4"
+      ],
+      "expected": "ошибка уменьшается на DeadZone, выход ограничивается диапазоном.",
+      "criterion": "выход и промежуточные поля совпадают с расчётными значениями.",
+      "diagnostics": [],
+      "line_start": 2,
+      "line_end": 6,
+      "stable_key": "ПРОГОН-20260625-120000Z-HOST-VPID-001::ТЕСТ-UT-V_PID_REG3-0001::tests/test_V_pid_reg3/Build/test_results.txt::block-0001"
+    },
+    {
+      "run_id": "ПРОГОН-20260625-120000Z-HOST-VPID-001",
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0002",
+      "result_file": "tests/test_V_pid_reg3/Build/test_results.txt",
+      "block_ordinal": 2,
+      "raw_status": "ПРОШЕЛ",
+      "normalized_status": "passed",
+      "covers": [
+        "LLR5",
+        "LLR6",
+        "LLR7",
+        "LLR12"
+      ],
+      "expected": "",
+      "criterion": "",
+      "diagnostics": [],
+      "line_start": 7,
+      "line_end": 9,
+      "stable_key": "ПРОГОН-20260625-120000Z-HOST-VPID-001::ТЕСТ-UT-V_PID_REG3-0002::tests/test_V_pid_reg3/Build/test_results.txt::block-0002"
+    },
+    {
+      "run_id": "ПРОГОН-20260625-120000Z-HOST-VPID-001",
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0003",
+      "result_file": "tests/test_V_pid_reg3/Build/test_results.txt",
+      "block_ordinal": 3,
+      "raw_status": "ПРОШЕЛ",
+      "normalized_status": "passed",
+      "covers": [
+        "LLR8",
+        "LLR9",
+        "LLR10"
+      ],
+      "expected": "",
+      "criterion": "",
+      "diagnostics": [],
+      "line_start": 10,
+      "line_end": 12,
+      "stable_key": "ПРОГОН-20260625-120000Z-HOST-VPID-001::ТЕСТ-UT-V_PID_REG3-0003::tests/test_V_pid_reg3/Build/test_results.txt::block-0003"
+    },
+    {
+      "run_id": "ПРОГОН-20260625-120000Z-HOST-VPID-001",
+      "test_id": "ТЕСТ-UT-V_PID_REG3-0004",
+      "result_file": "tests/test_V_pid_reg3/Build/test_results.txt",
+      "block_ordinal": 4,
+      "raw_status": "ПРОШЕЛ",
+      "normalized_status": "passed",
+      "covers": [
+        "LLR7",
+        "LLR11"
+      ],
+      "expected": "",
+      "criterion": "",
+      "diagnostics": [],
+      "line_start": 13,
+      "line_end": 15,
+      "stable_key": "ПРОГОН-20260625-120000Z-HOST-VPID-001::ТЕСТ-UT-V_PID_REG3-0004::tests/test_V_pid_reg3/Build/test_results.txt::block-0004"
     }
   ],
   "issues": []

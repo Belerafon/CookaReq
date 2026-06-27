@@ -111,6 +111,8 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   written atomically, and is excluded from input fingerprints so writing a cache
   does not make itself stale. The CLI exposes this subsystem as `trace-index`
   with `refresh`, `check` and JSON `export` subcommands for CI and review flows.
+  The builder normalizes accepted RID spellings (`LLR3`, `LLR003`, `LLR-3`,
+  `LLR-003`) to the RID of the matched CookaReq item before validation.
   Malformed marker payloads are reported as stable `TraceIssue` diagnostics
   instead of aborting scans.
 * **Import/export** — `requirement_import.py`, `requirement_export.py`,

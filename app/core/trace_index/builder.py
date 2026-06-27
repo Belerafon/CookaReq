@@ -1,9 +1,11 @@
 """Build a complete trace index from requirements and external artifacts."""
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
-from app.core.document_store import load_requirements
+from app.core.document_store import load_requirements, parse_rid
 from app.core.model import Verification, normalized_verification_methods
 
 from .config import TraceIndexConfig, cache_metadata
@@ -26,10 +28,16 @@ def build_trace_index(config: TraceIndexConfig) -> TraceIndex:
     metadata = cache_metadata(config)
     requirements, raw_requirements, issues = _load_requirement_refs(config)
     requirement_rids = {requirement.rid for requirement in requirements}
+    requirement_rid_by_parts = _requirement_rid_lookup(requirement_rids)
 
     code_locations, code_issues = _parse_code_locations(config)
     test_cases, test_issues = _parse_test_cases(config)
     test_runs, test_results, result_issues = _parse_results(config)
+    code_locations = _normalize_code_location_rids(
+        code_locations, requirement_rid_by_parts
+    )
+    test_cases = _normalize_test_case_rids(test_cases, requirement_rid_by_parts)
+    test_results = _normalize_test_result_rids(test_results, requirement_rid_by_parts)
     issues.extend(code_issues)
     issues.extend(test_issues)
     issues.extend(result_issues)
@@ -52,6 +60,84 @@ def build_trace_index(config: TraceIndexConfig) -> TraceIndex:
         test_results=tuple(sorted(test_results, key=lambda item: item.stable_key)),
         issues=tuple(_sort_issues(issues)),
     )
+
+
+def _requirement_rid_lookup(requirement_rids: set[str]) -> dict[tuple[str, int], str]:
+    lookup: dict[tuple[str, int], str] = {}
+    for rid in requirement_rids:
+        try:
+            prefix, item_id = parse_rid(rid)
+        except ValueError:
+            continue
+        lookup[(prefix, item_id)] = rid
+    return lookup
+
+
+def _normalize_rid(
+    rid: str, requirement_rid_by_parts: dict[tuple[str, int], str]
+) -> str:
+    try:
+        prefix, item_id = parse_rid(rid)
+    except ValueError:
+        return rid
+    return requirement_rid_by_parts.get((prefix, item_id), rid)
+
+
+def _normalize_code_location_rids(
+    code_locations: list[CodeLocation],
+    requirement_rid_by_parts: dict[tuple[str, int], str],
+) -> list[CodeLocation]:
+    normalized: dict[str, CodeLocation] = {}
+    for location in code_locations:
+        updated = replace(
+            location,
+            rid=_normalize_rid(location.rid, requirement_rid_by_parts),
+            stable_key="",
+        )
+        normalized.setdefault(updated.stable_key, updated)
+    return list(normalized.values())
+
+
+def _normalize_test_case_rids(
+    test_cases: list[TestCaseRef],
+    requirement_rid_by_parts: dict[tuple[str, int], str],
+) -> list[TestCaseRef]:
+    return [
+        replace(
+            test_case,
+            covers=_unique_rids(
+                _normalize_rid(rid, requirement_rid_by_parts)
+                for rid in test_case.covers
+            ),
+        )
+        for test_case in test_cases
+    ]
+
+
+def _normalize_test_result_rids(
+    test_results: list[TestResultRef],
+    requirement_rid_by_parts: dict[tuple[str, int], str],
+) -> list[TestResultRef]:
+    return [
+        replace(
+            result,
+            covers=_unique_rids(
+                _normalize_rid(rid, requirement_rid_by_parts) for rid in result.covers
+            ),
+        )
+        for result in test_results
+    ]
+
+
+def _unique_rids(rids: Iterable[str]) -> tuple[str, ...]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for rid in rids:
+        if rid in seen:
+            continue
+        seen.add(rid)
+        result.append(rid)
+    return tuple(result)
 
 
 def _load_requirement_refs(

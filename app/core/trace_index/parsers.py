@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-RID_RE = re.compile(r"\b[A-Z]+[0-9]+\b")
+RID_RE = re.compile(r"\b[A-Z]+-?0*[0-9]+\b")
 
 
 def display_path(path: Path, project_root: str | Path | None) -> str:

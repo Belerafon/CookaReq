@@ -1,0 +1,27 @@
+{
+  "id": 6,
+  "title": "V_pid_reg3: LLR-006",
+  "statement": "PID-регулятор должен фильтровать ошибку для дифференциальной ветви с коэффициентом Kf_d; при Kf_d = 0 фильтр должен быть прозрачен.",
+  "type": "requirement",
+  "status": "approved",
+  "owner": "Controls demo team",
+  "priority": "high",
+  "source": "V_pid_reg3 pilot fixture",
+  "verification": "test",
+  "verification_methods": [
+    "test"
+  ],
+  "acceptance": "Trace-index pilot parses code markers, test cases and legacy result evidence for this requirement.",
+  "conditions": "Synthetic V_pid_reg3 fixture is scanned by trace-index.",
+  "rationale": "The fixture demonstrates external evidence traceability for PID control logic.",
+  "assumptions": "Fixed-point multiplication is represented by a deterministic host stub in the fixture.",
+  "labels": [
+    "pid",
+    "trace-index"
+  ],
+  "links": [],
+  "context_docs": [
+    "context/modules/V_pid_reg3/spec.md"
+  ],
+  "revision": 1
+}

@@ -1,0 +1,27 @@
+{
+  "id": 12,
+  "title": "V_pid_reg3: LLR-012",
+  "statement": "PID-регулятор должен выполнять целочисленные разности и масштабирование производной только в пределах документированных диапазонов int32_t.",
+  "type": "requirement",
+  "status": "approved",
+  "owner": "Controls demo team",
+  "priority": "high",
+  "source": "V_pid_reg3 pilot fixture",
+  "verification": "analysis",
+  "verification_methods": [
+    "analysis"
+  ],
+  "acceptance": "Trace-index pilot parses code markers, test cases and legacy result evidence for this requirement.",
+  "conditions": "Synthetic V_pid_reg3 fixture is scanned by trace-index.",
+  "rationale": "The fixture demonstrates external evidence traceability for PID control logic.",
+  "assumptions": "Fixed-point multiplication is represented by a deterministic host stub in the fixture.",
+  "labels": [
+    "pid",
+    "trace-index"
+  ],
+  "links": [],
+  "context_docs": [
+    "context/modules/V_pid_reg3/spec.md"
+  ],
+  "revision": 1
+}

@@ -106,6 +106,8 @@ def _print_header_cases(
     id_values = _static_id_values(text)
     for match in _PRINT_HEADER_RE.finditer(text):
         line = line_for_offset(text, match.start())
+        if _looks_like_function_declaration(text, match.start()):
+            continue
         args = _split_call_args(match.group("args"))
         if len(args) < 2:
             issues.append(_invalid_print_header(path, line, None))
@@ -129,6 +131,13 @@ def _print_header_cases(
             )
         )
     return cases
+
+
+def _looks_like_function_declaration(text: str, offset: int) -> bool:
+    """Return whether a ``print_case_header`` occurrence is a C declaration."""
+    line_start = text.rfind("\n", 0, offset) + 1
+    prefix = text[line_start:offset].strip()
+    return bool(prefix)
 
 
 def _static_id_values(text: str) -> dict[str, str]:
@@ -243,4 +252,3 @@ def _string_literal_value(value: str) -> str | None:
     except (SyntaxError, ValueError):
         return None
     return literal if isinstance(literal, str) else None
-

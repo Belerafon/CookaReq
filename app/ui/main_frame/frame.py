@@ -191,6 +191,7 @@ class MainFrame(
             on_toggle_agent_chat=self.on_toggle_agent_chat,
             on_show_derivation_graph=self.on_show_derivation_graph,
             on_show_trace_matrix=self.on_show_trace_matrix,
+            on_show_trace_index=self.on_show_trace_index,
             on_new_requirement=self.on_new_requirement,
             on_run_command=self.on_run_command,
             on_open_logs=self.on_open_logs,

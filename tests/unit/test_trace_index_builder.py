@@ -136,6 +136,39 @@ def test_build_trace_index_normalizes_rid_spelling_variants(tmp_path: Path) -> N
     assert index.test_cases[0].covers == ("LLR1",)
 
 
+@pytest.mark.unit
+def test_build_trace_index_discovers_junit_xml_result_by_default(tmp_path: Path) -> None:
+    _write_minimal_req(tmp_path, verification="test")
+    test_dir = tmp_path / "tests" / "test_demo" / "src"
+    test_dir.mkdir(parents=True)
+    (test_dir / "test_demo.c").write_text(
+        'print_case_header("TEST-JUNIT-1", "LLR1", "JUnit");\n',
+        encoding="utf-8",
+    )
+    result_dir = tmp_path / "tests" / "test_demo" / "Build"
+    result_dir.mkdir(parents=True)
+    (result_dir / "junit.xml").write_text(
+        """<testsuite name="suite">
+  <properties><property name="run_id" value="RUN-JUNIT-1" /></properties>
+  <testcase name="TEST-JUNIT-1">
+    <properties><property name="covers" value="LLR1" /></properties>
+  </testcase>
+</testsuite>
+""",
+        encoding="utf-8",
+    )
+
+    config = TraceIndexConfig.from_conventions(tmp_path / "Req", project_root=tmp_path)
+
+    index = build_trace_index(config)
+
+    assert index.issues == ()
+    assert [run.run_id for run in index.test_runs] == ["RUN-JUNIT-1"]
+    assert [result.test_id for result in index.test_results] == ["TEST-JUNIT-1"]
+    assert index.test_results[0].normalized_status == "passed"
+    assert index.test_results[0].covers == ("LLR1",)
+
+
 def _write_minimal_req(tmp_path: Path, *, verification: str) -> None:
     (tmp_path / "Req" / "LLR" / "items").mkdir(parents=True)
     (tmp_path / "Req" / "LLR" / "document.json").write_text(

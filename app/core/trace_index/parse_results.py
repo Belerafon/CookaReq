@@ -1,7 +1,8 @@
-"""Parser for legacy CookaReq text test result files."""
+"""Parsers for legacy text and JUnit XML test result files."""
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +15,7 @@ _RUN_FIELD_RE = re.compile(r"\s*([^:;]+):\s*([^;]+)\s*")
 
 @dataclass(frozen=True)
 class ResultParseResult:
-    """Result of scanning one legacy text test result file."""
+    """Result of scanning one test result file."""
 
     test_runs: tuple[TestRunRef, ...] = ()
     test_results: tuple[TestResultRef, ...] = ()
@@ -24,7 +25,7 @@ class ResultParseResult:
 def parse_result_file(
     path: str | Path, *, project_root: str | Path | None = None
 ) -> ResultParseResult:
-    """Read and parse a legacy text test result file."""
+    """Read and parse a supported test result file."""
     result_path = Path(path)
     path_text = display_path(result_path, project_root)
     try:
@@ -40,6 +41,8 @@ def parse_result_file(
                 ),
             )
         )
+    if result_path.suffix.lower() == ".xml":
+        return parse_junit_result_text(text, result_file=path_text)
     return parse_result_text(text, result_file=path_text)
 
 
@@ -51,6 +54,103 @@ def parse_result_text(text: str, *, result_file: str) -> ResultParseResult:
         test_runs=tuple(parser.test_runs),
         test_results=tuple(parser.test_results),
         issues=tuple(parser.issues),
+    )
+
+
+def parse_junit_result_text(text: str, *, result_file: str) -> ResultParseResult:
+    """Parse JUnit XML text into test runs, results and issues."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        return ResultParseResult(
+            issues=(
+                TraceIssue(
+                    code="INVALID_MARKER",
+                    severity="high",
+                    message=f"Invalid JUnit XML result file: {exc}",
+                    path=result_file,
+                ),
+            )
+        )
+    suites = _junit_suites(root)
+    test_runs: list[TestRunRef] = []
+    test_results: list[TestResultRef] = []
+    issues: list[TraceIssue] = []
+    seen_runs: set[str] = set()
+    block_ordinal = 0
+    for suite_index, suite in enumerate(suites, start=1):
+        suite_properties = _junit_properties(suite)
+        run_id = _first_property(
+            suite_properties,
+            "run_id",
+            "RUN_ID",
+            "cookareq.run_id",
+            "ИД_ПРОГОНА",
+        ) or suite.get("id") or suite.get("name") or f"junit-suite-{suite_index}"
+        env = _first_property(
+            suite_properties,
+            "env",
+            "environment",
+            "cookareq.env",
+            "ОКРУЖЕНИЕ",
+        )
+        date_utc = _first_property(
+            suite_properties,
+            "date_utc",
+            "timestamp",
+            "cookareq.date_utc",
+            "ДАТА_UTC",
+        ) or suite.get("timestamp", "")
+        run = TestRunRef(
+            run_id=run_id,
+            result_file=result_file,
+            env=env,
+            date_utc=date_utc,
+        )
+        if run.stable_key not in seen_runs:
+            seen_runs.add(run.stable_key)
+            test_runs.append(run)
+        for case in _direct_children(suite, "testcase"):
+            block_ordinal += 1
+            case_properties = _junit_properties(case)
+            test_id = _first_property(
+                case_properties,
+                "test_id",
+                "cookareq.test_id",
+                "ИДЕНТ_ТЕСТА",
+            ) or _junit_test_id(case)
+            covers_text = _first_property(
+                case_properties,
+                "covers",
+                "requirements",
+                "requirement_ids",
+                "cookareq.covers",
+                "ПОКРЫВАЕТ_ТНУ",
+            )
+            covers, cover_issue = _parse_result_covers(
+                covers_text or "",
+                result_file,
+                test_id,
+            )
+            if cover_issue is not None:
+                issues.append(cover_issue)
+            raw_status, normalized_status, diagnostics = _junit_status(case)
+            test_results.append(
+                TestResultRef(
+                    run_id=run.run_id,
+                    test_id=test_id,
+                    result_file=result_file,
+                    block_ordinal=block_ordinal,
+                    raw_status=raw_status,
+                    normalized_status=normalized_status,
+                    covers=covers,
+                    diagnostics=diagnostics,
+                )
+            )
+    return ResultParseResult(
+        test_runs=tuple(test_runs),
+        test_results=tuple(test_results),
+        issues=tuple(issues),
     )
 
 
@@ -128,21 +228,18 @@ class _LegacyResultParser:
         if block is None:
             return
         if line.startswith("ПОКРЫВАЕТ_ТНУ:"):
-            covers_text = rid_list_candidate(line.split(":", 1)[1].strip())
-            covers = tuple(RID_RE.findall(covers_text))
-            if covers and rid_list_is_valid(covers_text, covers):
+            covers_text = line.split(":", 1)[1].strip()
+            covers, issue = _parse_result_covers(
+                covers_text,
+                self.result_file,
+                block.test_id,
+                line=line_number,
+                required=True,
+            )
+            if issue is None:
                 block.covers = covers
             else:
-                self.issues.append(
-                    TraceIssue(
-                        code="INVALID_MARKER",
-                        severity="high",
-                        message="Invalid result coverage RID list",
-                        path=self.result_file,
-                        line=line_number,
-                        test_id=block.test_id,
-                    )
-                )
+                self.issues.append(issue)
         elif line.startswith("ОЖИДАЕМОЕ:"):
             block.expected = line.split(":", 1)[1].strip()
         elif line.startswith("КРИТЕРИЙ:"):
@@ -233,6 +330,88 @@ def _parse_run_fields(line: str) -> dict[str, str]:
         if match:
             fields[match.group(1).strip()] = match.group(2).strip()
     return fields
+
+
+def _parse_result_covers(
+    covers_text: str,
+    result_file: str,
+    test_id: str,
+    *,
+    line: int | None = None,
+    required: bool = False,
+) -> tuple[tuple[str, ...], TraceIssue | None]:
+    covers_text = rid_list_candidate(covers_text.strip())
+    if not covers_text and not required:
+        return (), None
+    covers = tuple(RID_RE.findall(covers_text))
+    if covers and rid_list_is_valid(covers_text, covers):
+        return covers, None
+    return (), TraceIssue(
+        code="INVALID_MARKER",
+        severity="high",
+        message="Invalid result coverage RID list",
+        path=result_file,
+        line=line,
+        test_id=test_id,
+    )
+
+
+def _junit_suites(root: ET.Element) -> list[ET.Element]:
+    if _local_name(root.tag) == "testsuite":
+        return [root]
+    return [child for child in root.iter() if _local_name(child.tag) == "testsuite"]
+
+
+def _junit_properties(element: ET.Element) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for child in _direct_children(element, "properties"):
+        for prop in _direct_children(child, "property"):
+            name = prop.get("name")
+            if not name:
+                continue
+            result[name] = prop.get("value") or (prop.text or "").strip()
+    return result
+
+
+def _first_property(properties: dict[str, str], *names: str) -> str:
+    for name in names:
+        value = properties.get(name)
+        if value:
+            return value
+    return ""
+
+
+def _junit_test_id(case: ET.Element) -> str:
+    name = case.get("name", "").strip()
+    class_name = case.get("classname", "").strip()
+    if class_name and name:
+        return f"{class_name}.{name}"
+    return name or class_name or "<unnamed>"
+
+
+def _junit_status(case: ET.Element) -> tuple[str, str, tuple[str, ...]]:
+    diagnostics: list[str] = []
+    for tag, normalized in (
+        ("failure", "failed"),
+        ("error", "error"),
+        ("skipped", "skipped"),
+    ):
+        matches = _direct_children(case, tag)
+        if matches:
+            for item in matches:
+                message = item.get("message") or (item.text or "").strip()
+                if message:
+                    diagnostics.append(message)
+            return tag, normalized, tuple(diagnostics)
+    return "passed", "passed", ()
+
+
+def _direct_children(element: ET.Element, tag: str) -> list[ET.Element]:
+    return [child for child in list(element) if _local_name(child.tag) == tag]
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
 
 
 def normalize_status(raw_status: str) -> str:

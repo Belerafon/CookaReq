@@ -3604,3 +3604,231 @@ msgstr "Filled automatically on save"
 
 msgid "Filled automatically when the requirement is saved."
 msgstr "Filled automatically when the requirement is saved."
+
+msgid "Refresh Trace Index"
+msgstr "Refresh Trace Index"
+
+msgid "Trace index cache has not been checked yet."
+msgstr "Trace index cache has not been checked yet."
+
+msgid "Severity"
+msgstr "Severity"
+
+msgid "Code"
+msgstr "Code"
+
+msgid "Location"
+msgstr "Location"
+
+msgid "Message"
+msgstr "Message"
+
+msgid "Refreshing trace index…"
+msgstr "Refreshing trace index…"
+
+msgid "Cache"
+msgstr "Cache"
+
+msgid "Trace index cache is unreadable."
+msgstr "Trace index cache is unreadable."
+
+msgid "Trace index cache is stale. Refresh is recommended."
+msgstr "Trace index cache is stale. Refresh is recommended."
+
+msgid "Trace index cache is up to date."
+msgstr "Trace index cache is up to date."
+
+msgid "Trace index refreshed with diagnostics."
+msgstr "Trace index refreshed with diagnostics."
+
+msgid "Trace index refreshed successfully."
+msgstr "Trace index refreshed successfully."
+
+msgid "Failed to refresh trace index."
+msgstr "Failed to refresh trace index."
+
+msgid "Requirements: {requirements}  Code locations: {code_locations}  Test cases: {test_cases}  Test runs: {test_runs}  Test results: {test_results}"
+msgstr "Requirements: {requirements}  Code locations: {code_locations}  Test cases: {test_cases}  Test runs: {test_runs}  Test results: {test_results}"
+
+msgid "Trace Index"
+msgstr "Trace Index"
+
+msgid "Trace"
+msgstr "Trace"
+
+msgid "Show Trace Index"
+msgstr "Show Trace Index"
+
+msgid "build trace index cache"
+msgstr "build trace index cache"
+
+msgid "check trace index diagnostics"
+msgstr "check trace index diagnostics"
+
+msgid "exclude file glob"
+msgstr "exclude file glob"
+
+msgid "export format"
+msgstr "export format"
+
+msgid "export trace index"
+msgstr "export trace index"
+
+msgid "manage external evidence trace index"
+msgstr "manage external evidence trace index"
+
+msgid "minimum issue severity that returns a non-zero status"
+msgstr "minimum issue severity that returns a non-zero status"
+
+msgid "module filter"
+msgstr "module filter"
+
+msgid "project root for source/test/result globs"
+msgstr "project root for source/test/result globs"
+
+msgid "source file glob"
+msgstr "source file glob"
+
+msgid "test result file glob"
+msgstr "test result file glob"
+
+msgid "test source file glob"
+msgstr "test source file glob"
+
+msgid "Trace index cache is missing. Refresh is recommended."
+msgstr "Trace index cache is missing. Refresh is recommended."
+
+msgid "Open Location"
+msgstr "Open Location"
+
+msgid "This diagnostic is not associated with a project file."
+msgstr "This diagnostic is not associated with a project file."
+
+msgid "No Location"
+msgstr "No Location"
+
+msgid "Artifact file does not exist: {path}"
+msgstr "Artifact file does not exist: {path}"
+
+msgid "Trace Artifact: {path}"
+msgstr "Trace Artifact: {path}"
+
+msgid "Cannot read artifact file: {error}"
+msgstr "Cannot read artifact file: {error}"
+
+msgid "Scan Settings"
+msgstr "Scan Settings"
+
+msgid "Module"
+msgstr "Module"
+
+msgid "Source globs"
+msgstr "Source globs"
+
+msgid "Test source globs"
+msgstr "Test source globs"
+
+msgid "Result globs"
+msgstr "Result globs"
+
+msgid "Exclude globs"
+msgstr "Exclude globs"
+
+msgid "Separate multiple glob patterns with semicolons."
+msgstr "Separate multiple glob patterns with semicolons."
+
+msgid "Artifact Browser"
+msgstr "Artifact Browser"
+
+msgid "No trace index loaded."
+msgstr "No trace index loaded."
+
+msgid "Open Artifact"
+msgstr "Open Artifact"
+
+msgid "Artifact"
+msgstr "Artifact"
+
+msgid "Detail"
+msgstr "Detail"
+
+msgid "Artifacts: {count}"
+msgstr "Artifacts: {count}"
+
+msgid "Test Case"
+msgstr "Test Case"
+
+msgid "Test Result"
+msgstr "Test Result"
+
+msgid "All Types"
+msgstr "All Types"
+
+msgid "Apply Filter"
+msgstr "Apply Filter"
+
+msgid "Clear Filter"
+msgstr "Clear Filter"
+
+msgid "Artifact Filters"
+msgstr "Artifact Filters"
+
+msgid "RID contains"
+msgstr "RID contains"
+
+msgid "Text contains"
+msgstr "Text contains"
+
+msgid "Artifacts: {shown} of {total}"
+msgstr "Artifacts: {shown} of {total}"
+
+msgid "Group by RID"
+msgstr "Group by RID"
+
+msgid "Grouping"
+msgstr "Grouping"
+
+msgid "Focus RID"
+msgstr "Focus RID"
+
+msgid "export view"
+msgstr "export view"
+
+msgid "Artifact Matrix"
+msgstr "Artifact Matrix"
+
+msgid "Matrix: {requirements} requirements x {artifacts} artifacts"
+msgstr "Matrix: {requirements} requirements x {artifacts} artifacts"
+
+msgid "trace-index view 'index' supports only json format\n"
+msgstr "trace-index view 'index' supports only json format\n"
+
+msgid "Export CSV"
+msgstr "Export CSV"
+
+msgid "Export HTML"
+msgstr "Export HTML"
+
+msgid "CSV files (*.csv)|*.csv"
+msgstr "CSV files (*.csv)|*.csv"
+
+msgid "HTML files (*.html)|*.html"
+msgstr "HTML files (*.html)|*.html"
+
+msgid "Export Matrix"
+msgstr "Export Matrix"
+
+msgid "Unsupported export format: {format}"
+msgstr "Unsupported export format: {format}"
+
+msgid "Focus Browser"
+msgstr "Focus Browser"
+
+msgid "Export JSON"
+msgstr "Export JSON"
+
+msgid "JSON files (*.json)|*.json"
+msgstr "JSON files (*.json)|*.json"
+
+msgid "trace-index view 'report' supports only html format\n"
+msgstr "trace-index view 'report' supports only html format\n"

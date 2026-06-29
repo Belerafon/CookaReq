@@ -43,7 +43,11 @@ from app.core.trace_matrix import (
 from app.core.trace_index import (
     TraceIndex,
     TraceIndexConfig,
+    build_artifact_trace_matrix,
     build_trace_index,
+    render_artifact_matrix_csv,
+    render_artifact_matrix_html,
+    render_trace_index_report_html,
     write_trace_index_cache,
 )
 from app.core.requirement_export import (
@@ -1374,7 +1378,7 @@ def _trace_index_exit_code(index: TraceIndex, fail_on: str) -> int:
 
 def cmd_trace_index(args: argparse.Namespace, context: ApplicationContext) -> int:
     """Build, check or export the external evidence trace index."""
-    _ = context
+    del context
     config = _trace_index_config_from_args(args)
     index = build_trace_index(config)
     if args.trace_index_command == "refresh":
@@ -1386,7 +1390,35 @@ def cmd_trace_index(args: argparse.Namespace, context: ApplicationContext) -> in
         _write_trace_index_summary(sys.stdout, index)
         return _trace_index_exit_code(index, args.fail_on)
     if args.trace_index_command == "export":
-        payload = json.dumps(index.to_dict(), ensure_ascii=False, indent=2) + "\n"
+        view = getattr(args, "view", "index")
+        export_format = getattr(args, "format", "json")
+        if view == "artifact-matrix":
+            matrix = build_artifact_trace_matrix(index)
+            if export_format == "csv":
+                payload = render_artifact_matrix_csv(matrix)
+            elif export_format == "html":
+                payload = render_artifact_matrix_html(matrix)
+            else:
+                payload = (
+                    json.dumps(matrix.to_dict(), ensure_ascii=False, indent=2) + "\n"
+                )
+        elif view == "report":
+            if export_format != "html":
+                sys.stdout.write(
+                    _("trace-index view 'report' supports only html format\n")
+                )
+                return 1
+            payload = render_trace_index_report_html(
+                index,
+                build_artifact_trace_matrix(index),
+            )
+        elif export_format == "json":
+            payload = json.dumps(index.to_dict(), ensure_ascii=False, indent=2) + "\n"
+        else:
+            sys.stdout.write(
+                _("trace-index view 'index' supports only json format\n")
+            )
+            return 1
         if args.output:
             output_path = Path(args.output)
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1532,7 +1564,18 @@ def add_trace_index_arguments(p: argparse.ArgumentParser) -> None:
 
     export = sub.add_parser("export", help=_("export trace index"))
     _add_trace_index_common_arguments(export)
-    export.add_argument("--format", choices=["json"], default="json", help=_("export format"))
+    export.add_argument(
+        "--format",
+        choices=["json", "csv", "html"],
+        default="json",
+        help=_("export format"),
+    )
+    export.add_argument(
+        "--view",
+        choices=["index", "artifact-matrix", "report"],
+        default="index",
+        help=_("export view"),
+    )
     export.add_argument("-o", "--output", help=_("write result to file"))
     export.set_defaults(func=cmd_trace_index)
 

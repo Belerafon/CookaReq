@@ -9,6 +9,11 @@ from .cache import (
     read_trace_index_cache_for_config,
     write_trace_index_cache,
 )
+from .export import (
+    render_artifact_matrix_csv,
+    render_artifact_matrix_html,
+    render_trace_index_report_html,
+)
 from .config import (
     TraceIndexConfig,
     cache_metadata,
@@ -21,10 +26,17 @@ from .parse_code import CodeParseResult, parse_code_file, parse_code_text
 from .parse_results import (
     ResultParseResult,
     normalize_status,
+    parse_junit_result_text,
     parse_result_file,
     parse_result_text,
 )
 from .parse_tests import TestParseResult, parse_test_file, parse_test_text
+from .matrix import (
+    TraceArtifactMatrix,
+    TraceArtifactMatrixCell,
+    TraceArtifactMatrixColumn,
+    build_artifact_trace_matrix,
+)
 from .model import (
     GENERATOR,
     GENERATOR_VERSION,
@@ -50,14 +62,21 @@ __all__ = [
     "CodeParseResult",
     "TestCaseRef",
     "ResultParseResult",
+    "render_artifact_matrix_csv",
+    "render_artifact_matrix_html",
+    "render_trace_index_report_html",
     "TestParseResult",
     "TestResultRef",
     "TestRunRef",
     "TraceIndex",
     "TraceIndexCacheRead",
     "TraceIndexConfig",
+    "TraceArtifactMatrix",
+    "TraceArtifactMatrixCell",
+    "TraceArtifactMatrixColumn",
     "TraceIssue",
     "TraceRequirementRef",
+    "build_artifact_trace_matrix",
     "build_trace_index",
     "cache_path",
     "cache_metadata",
@@ -71,6 +90,7 @@ __all__ = [
     "parse_code_file",
     "parse_code_text",
     "normalize_status",
+    "parse_junit_result_text",
     "parse_result_file",
     "parse_result_text",
     "parse_test_file",

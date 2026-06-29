@@ -4,7 +4,7 @@
   "generator_version": "0.1.0",
   "project_root": "tests/fixtures/trace_index_project",
   "req_root": "tests/fixtures/trace_index_project/Req",
-  "config_hash": "6f1030975ded36fe4aec9f0c999ead69c3465bc995ee7889046c59913b026d71",
+  "config_hash": "2ac5765660d08a28e41f95e157df3023c63746bafb5973a81f76adb4c3e5b4f1",
   "input_fingerprint": "f3318c162764993117a8b4a32aa233f9b4ae932d93d63823cc35ba5ed0d9a9ad",
   "generated_at_utc": "<volatile>",
   "requirements": [

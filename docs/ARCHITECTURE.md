@@ -124,8 +124,9 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   before writing the generated cache. The adjacent Artifact Browser tab consumes
   the current `TraceIndex`
   from the Trace tab and lists code locations, test cases and test results with
-  type/RID/text filters, optional RID grouping, selected-row RID focus and the
-  same read-only artifact navigation. `app/core/trace_index/matrix.py` projects
+  type/RID/text filters, optional RID grouping, selected-row RID focus,
+  bidirectional RID focus with the Artifact Matrix tab and the same read-only
+  artifact navigation. `app/core/trace_index/matrix.py` projects
   the generated index into a deterministic requirement x external artifact
   matrix with separate columns for code markers, test cases and test results;
   test-result cells preserve the normalized execution status, and the CLI can
@@ -136,8 +137,8 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   The Trace Index window can export the same combined HTML report directly from
   the Trace tab. It also includes an Artifact Matrix tab that renders this
   projection as a requirement-row table with one column per external artifact,
-  can focus the Artifact Browser by selected requirement and can export the
-  current matrix as JSON, CSV or HTML.
+  supports bidirectional RID focus with the Artifact Browser tab and can export
+  the current matrix as JSON, CSV or HTML.
   The builder normalizes accepted RID spellings (`LLR3`, `LLR003`, `LLR-3`,
   `LLR-003`) to the RID of the matched CookaReq item before validation.
   Malformed marker payloads are reported as stable `TraceIssue` diagnostics

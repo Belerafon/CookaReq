@@ -3858,3 +3858,6 @@ msgstr "Экспорт отчета"
 
 msgid "No trace index loaded."
 msgstr "Индекс трассировки не загружен."
+
+msgid "Focus Matrix"
+msgstr "Фокус в матрице"

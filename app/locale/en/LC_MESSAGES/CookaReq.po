@@ -3838,3 +3838,6 @@ msgstr "Export Report"
 
 msgid "No trace index loaded."
 msgstr "No trace index loaded."
+
+msgid "Focus Matrix"
+msgstr "Focus Matrix"

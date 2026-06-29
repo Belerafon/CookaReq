@@ -1,6 +1,7 @@
 """Artifact browser tab for the external evidence trace index."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,12 +36,19 @@ class ArtifactRow:
 class TraceArtifactBrowserPanel(wx.Panel):
     """Browse code, test source and result artifacts from a TraceIndex."""
 
-    def __init__(self, parent: wx.Window, *, project_root: Path) -> None:
+    def __init__(
+        self,
+        parent: wx.Window,
+        *,
+        project_root: Path,
+        on_requirement_focus: Callable[[str], None] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.project_root = Path(project_root)
         self._index: TraceIndex | None = None
         self._all_rows: list[ArtifactRow] = []
         self._rows: list[ArtifactRow] = []
+        self._on_requirement_focus = on_requirement_focus
 
         self.status_label = wx.StaticText(self, label=_("No trace index loaded."))
         self.type_filter = wx.Choice(
@@ -55,6 +63,8 @@ class TraceArtifactBrowserPanel(wx.Panel):
         self.clear_filter_button = wx.Button(self, label=_("Clear Filter"))
         self.focus_rid_button = wx.Button(self, label=_("Focus RID"))
         self.focus_rid_button.Enable(False)
+        self.focus_matrix_button = wx.Button(self, label=_("Focus Matrix"))
+        self.focus_matrix_button.Enable(False)
         self.open_button = wx.Button(self, label=_("Open Artifact"))
         self.open_button.Enable(False)
         self.artifacts = wx.ListCtrl(self, style=wx.LC_REPORT | wx.BORDER_SUNKEN)
@@ -81,6 +91,7 @@ class TraceArtifactBrowserPanel(wx.Panel):
         self.apply_filter_button.Bind(wx.EVT_BUTTON, self.on_apply_filter)
         self.clear_filter_button.Bind(wx.EVT_BUTTON, self.on_clear_filter)
         self.focus_rid_button.Bind(wx.EVT_BUTTON, self.on_focus_rid)
+        self.focus_matrix_button.Bind(wx.EVT_BUTTON, self.on_focus_matrix)
         self.group_by_rid.Bind(wx.EVT_CHECKBOX, self.on_grouping_changed)
         self.artifacts.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_selection_changed)
         self.artifacts.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_selection_changed)
@@ -103,7 +114,8 @@ class TraceArtifactBrowserPanel(wx.Panel):
         actions = wx.BoxSizer(wx.HORIZONTAL)
         actions.Add(self.apply_filter_button, 0, wx.RIGHT, self.FromDIP(8))
         actions.Add(self.clear_filter_button, 0, wx.RIGHT, self.FromDIP(8))
-        actions.Add(self.focus_rid_button, 0)
+        actions.Add(self.focus_rid_button, 0, wx.RIGHT, self.FromDIP(8))
+        actions.Add(self.focus_matrix_button, 0)
         filters.Add(actions, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(8))
         return filters
 
@@ -160,6 +172,22 @@ class TraceArtifactBrowserPanel(wx.Panel):
         """Filter browser rows to artifacts related to ``rid``."""
         self.rid_filter.SetValue(rid)
         self._apply_filters()
+
+    def set_requirement_focus_callback(
+        self, callback: Callable[[str], None] | None
+    ) -> None:
+        """Set callback used to focus the matrix by a selected row RID."""
+        self._on_requirement_focus = callback
+        self._sync_open_button()
+
+    def on_focus_matrix(self, _event: wx.Event) -> None:
+        """Ask the Artifact Matrix tab to focus the first RID from selection."""
+        selected = self.artifacts.GetFirstSelected()
+        if selected == -1 or selected >= len(self._rows):
+            return
+        rid = _first_rid(self._rows[selected].requirements)
+        if rid and self._on_requirement_focus is not None:
+            self._on_requirement_focus(rid)
 
     def on_selection_changed(self, _event: wx.ListEvent) -> None:
         """Keep the open button in sync with current selection."""
@@ -334,6 +362,12 @@ class TraceArtifactBrowserPanel(wx.Panel):
         self.open_button.Enable(enabled)
         self.focus_rid_button.Enable(
             selected != -1
+            and selected < len(self._rows)
+            and bool(_first_rid(self._rows[selected].requirements))
+        )
+        self.focus_matrix_button.Enable(
+            self._on_requirement_focus is not None
+            and selected != -1
             and selected < len(self._rows)
             and bool(_first_rid(self._rows[selected].requirements))
         )

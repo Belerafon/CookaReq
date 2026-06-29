@@ -133,6 +133,17 @@ class TraceArtifactMatrixPanel(wx.Panel):
             return None
         return self._requirement_rids[selected]
 
+    def focus_rid(self, rid: str) -> None:
+        """Select and reveal the matrix row for ``rid`` when it is present."""
+        try:
+            row = self._requirement_rids.index(rid)
+        except ValueError:
+            return
+        self.matrix.Select(row)
+        self.matrix.Focus(row)
+        self.matrix.EnsureVisible(row)
+        self._sync_focus_button()
+
     def export_matrix(self, path: Path, *, format_id: str) -> None:
         """Write the current artifact matrix to ``path`` in the selected format."""
         if self._matrix is None:

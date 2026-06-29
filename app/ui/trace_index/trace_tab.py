@@ -457,6 +457,9 @@ class TraceIndexFrame(wx.Frame):
             project_root=project,
             on_requirement_focus=self.artifact_browser_panel.focus_rid,
         )
+        self.artifact_browser_panel.set_requirement_focus_callback(
+            self.artifact_matrix_panel.focus_rid
+        )
         self.trace_panel = TraceIndexPanel(
             notebook,
             req_root=req_root,

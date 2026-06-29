@@ -281,6 +281,32 @@ def test_trace_index_artifact_matrix_focuses_browser_by_selected_requirement(
     finally:
         frame.Destroy()
 
+
+def test_trace_index_artifact_browser_focuses_matrix_by_selected_requirement(
+    wx_app, tmp_path
+):
+    """Artifact Browser can focus the matrix row for a selected artifact RID."""
+
+    pytest.importorskip("wx")
+    root = _copy_fixture(tmp_path)
+    frame = TraceIndexFrame(None, req_root=root / "Req", project_root=root)
+    try:
+        frame.trace_panel.exclude_globs_text.SetValue("Vsrc/broken_*")
+        frame.trace_panel.refresh(background=False)
+        browser = frame.artifact_browser_panel
+        matrix = frame.artifact_matrix_panel
+
+        browser.focus_rid("LLR10")
+        browser.artifacts.Select(0)
+        browser.on_selection_changed(_event=None)
+        browser.on_focus_matrix(_event=None)
+
+        assert browser.focus_matrix_button.IsEnabled()
+        assert matrix.selected_requirement_rid() == "LLR10"
+    finally:
+        frame.Destroy()
+
+
 def test_trace_index_artifact_browser_filters_rows(wx_app, tmp_path):
     """Artifact Browser filters by type and RID without rebuilding the index."""
 

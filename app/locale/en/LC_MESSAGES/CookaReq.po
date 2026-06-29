@@ -3832,3 +3832,9 @@ msgstr "JSON files (*.json)|*.json"
 
 msgid "trace-index view 'report' supports only html format\n"
 msgstr "trace-index view 'report' supports only html format\n"
+
+msgid "Export Report"
+msgstr "Export Report"
+
+msgid "No trace index loaded."
+msgstr "No trace index loaded."

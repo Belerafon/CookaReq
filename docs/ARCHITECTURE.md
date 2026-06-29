@@ -120,8 +120,9 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   (`app/ui/trace_index/`) opened from the View menu; its Trace tab displays
   cache freshness, editable module/glob scan settings, summary counts,
   diagnostics, diagnostic-to-artifact navigation through a read-only source
-  viewer, and runs refresh in a background worker before writing the generated
-  cache. The adjacent Artifact Browser tab consumes the current `TraceIndex`
+  viewer, combined HTML report export, and runs refresh in a background worker
+  before writing the generated cache. The adjacent Artifact Browser tab consumes
+  the current `TraceIndex`
   from the Trace tab and lists code locations, test cases and test results with
   type/RID/text filters, optional RID grouping, selected-row RID focus and the
   same read-only artifact navigation. `app/core/trace_index/matrix.py` projects
@@ -132,7 +133,8 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   The CLI can also render a standalone HTML report via `trace-index export
   --view report --format html`, combining summary counters, diagnostics and the
   artifact matrix.
-  The Trace Index window also includes an Artifact Matrix tab that renders this
+  The Trace Index window can export the same combined HTML report directly from
+  the Trace tab. It also includes an Artifact Matrix tab that renders this
   projection as a requirement-row table with one column per external artifact,
   can focus the Artifact Browser by selected requirement and can export the
   current matrix as JSON, CSV or HTML.

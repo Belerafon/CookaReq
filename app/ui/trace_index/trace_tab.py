@@ -12,9 +12,11 @@ from ...core.trace_index import (
     TraceIndex,
     TraceIndexConfig,
     TraceIssue,
+    build_artifact_trace_matrix,
     build_trace_index,
     cache_path,
     read_trace_index_cache_for_config,
+    render_trace_index_report_html,
     write_trace_index_cache,
 )
 from ...i18n import _
@@ -66,6 +68,7 @@ class TraceIndexPanel(wx.Panel):
         self._on_index_changed = on_index_changed
         self._worker: Thread | None = None
         self._refreshing = False
+        self._index: TraceIndex | None = None
         self._issue_rows: list[TraceIssueRow] = []
 
         self.module_filter_text = wx.TextCtrl(
@@ -92,6 +95,8 @@ class TraceIndexPanel(wx.Panel):
         self.refresh_button = wx.Button(self, label=_("Refresh Trace Index"))
         self.open_location_button = wx.Button(self, label=_("Open Location"))
         self.open_location_button.Enable(False)
+        self.export_report_button = wx.Button(self, label=_("Export Report"))
+        self.export_report_button.Enable(False)
         self.status_label = wx.StaticText(
             self,
             label=_("Trace index cache has not been checked yet."),
@@ -109,6 +114,7 @@ class TraceIndexPanel(wx.Panel):
         actions = wx.BoxSizer(wx.HORIZONTAL)
         actions.Add(self.refresh_button, 0, wx.RIGHT, self.FromDIP(8))
         actions.Add(self.open_location_button, 0, wx.RIGHT, self.FromDIP(8))
+        actions.Add(self.export_report_button, 0, wx.RIGHT, self.FromDIP(8))
         actions.Add(self.status_label, 1, wx.ALIGN_CENTER_VERTICAL)
         top.Add(actions, 0, wx.EXPAND | wx.ALL, self.FromDIP(8))
         top.Add(self.summary_label, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, self.FromDIP(8))
@@ -123,6 +129,7 @@ class TraceIndexPanel(wx.Panel):
 
         self.refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh)
         self.open_location_button.Bind(wx.EVT_BUTTON, self.on_open_location)
+        self.export_report_button.Bind(wx.EVT_BUTTON, self.on_export_report)
         self.issues.Bind(wx.EVT_LIST_ITEM_SELECTED, self.on_issue_selected)
         self.issues.Bind(wx.EVT_LIST_ITEM_DESELECTED, self.on_issue_selected)
         self.issues.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.on_issue_activated)
@@ -193,6 +200,31 @@ class TraceIndexPanel(wx.Panel):
         if selected != -1:
             self._open_issue_location(selected)
 
+    def on_export_report(self, _event: wx.Event) -> None:
+        """Export the loaded trace index as a standalone HTML report."""
+        with wx.FileDialog(
+            self,
+            message=_("Export Report"),
+            defaultFile="trace_index_report.html",
+            wildcard=_("HTML files (*.html)|*.html"),
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            try:
+                self.export_report(Path(dialog.GetPath()))
+            except (OSError, ValueError) as exc:
+                wx.MessageBox(str(exc), _("Error"), parent=self)
+
+    def export_report(self, path: Path) -> None:
+        """Write a combined trace-index HTML report for the current index."""
+        if self._index is None:
+            raise ValueError(_("No trace index loaded."))
+        matrix = build_artifact_trace_matrix(self._index)
+        payload = render_trace_index_report_html(self._index, matrix)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
+
     def refresh(self, *, background: bool = True) -> None:
         """Refresh the index, optionally in a background worker for GUI use."""
         if self._refreshing:
@@ -226,6 +258,8 @@ class TraceIndexPanel(wx.Panel):
             )
             self.summary_label.SetLabel("")
             self._clear_issues()
+            self._index = None
+            self._sync_export_report_button()
             self._emit_index_changed(None)
             return
         loaded = read_trace_index_cache_for_config(self.config)
@@ -233,10 +267,14 @@ class TraceIndexPanel(wx.Panel):
             self.status_label.SetLabel(_("Trace index cache is unreadable."))
             self.summary_label.SetLabel("")
             self._populate_issues(list(loaded.issues))
+            self._index = None
+            self._sync_export_report_button()
             self._emit_index_changed(None)
             return
+        self._index = loaded.index
         self._show_index_summary(loaded.index)
         self._populate_issues(list(loaded.index.issues) + list(loaded.issues))
+        self._sync_export_report_button()
         self._emit_index_changed(loaded.index)
         if loaded.stale:
             self.status_label.SetLabel(
@@ -266,6 +304,7 @@ class TraceIndexPanel(wx.Panel):
         return TraceIndexRefreshResult(index=index, cache_file=cache_file)
 
     def _show_refresh_result(self, result: TraceIndexRefreshResult) -> None:
+        self._index = result.index
         self._show_index_summary(result.index)
         self.cache_label.SetLabel(f"{_('Cache')}: {result.cache_file.as_posix()}")
         self._populate_issues(list(result.index.issues))
@@ -377,6 +416,11 @@ class TraceIndexPanel(wx.Panel):
         self._refreshing = refreshing
         self.refresh_button.Enable(not refreshing)
         self._sync_open_location_button()
+        self._sync_export_report_button()
+
+    def _sync_export_report_button(self) -> None:
+        enabled = not self._refreshing and self._index is not None
+        self.export_report_button.Enable(enabled)
 
     def _sync_open_location_button(self) -> None:
         selected = self.issues.GetFirstSelected()
@@ -438,4 +482,3 @@ def _format_globs(globs: tuple[str, ...]) -> str:
 def _parse_globs(value: str) -> tuple[str, ...]:
     parts = value.replace("\n", ";").split(";")
     return tuple(part.strip() for part in parts if part.strip())
-

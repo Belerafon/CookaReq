@@ -225,6 +225,30 @@ def test_trace_index_artifact_matrix_exports_files(wx_app, tmp_path):
         frame.Destroy()
 
 
+def test_trace_index_panel_exports_combined_report(wx_app, tmp_path):
+    """Trace tab can export the loaded index as a combined HTML report."""
+
+    pytest.importorskip("wx")
+    root = _copy_fixture(tmp_path)
+    frame = TraceIndexFrame(None, req_root=root / "Req", project_root=root)
+    try:
+        frame.trace_panel.exclude_globs_text.SetValue("Vsrc/broken_*")
+        frame.trace_panel.refresh(background=False)
+
+        report_path = tmp_path / "exports" / "trace_index_report.html"
+        frame.trace_panel.export_report(report_path)
+
+        report_text = report_path.read_text(encoding="utf-8")
+        assert "Trace Index Report" in report_text
+        assert "Summary" in report_text
+        assert "Diagnostics" in report_text
+        assert "Artifact Matrix" in report_text
+        assert "LLR10" in report_text
+        assert frame.trace_panel.export_report_button.IsEnabled()
+    finally:
+        frame.Destroy()
+
+
 def test_trace_index_artifact_matrix_focuses_browser_by_selected_requirement(
     wx_app, tmp_path
 ):

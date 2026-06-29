@@ -3852,3 +3852,9 @@ msgstr "JSON-файлы (*.json)|*.json"
 
 msgid "trace-index view 'report' supports only html format\n"
 msgstr "представление trace-index 'report' поддерживает только формат html\n"
+
+msgid "Export Report"
+msgstr "Экспорт отчета"
+
+msgid "No trace index loaded."
+msgstr "Индекс трассировки не загружен."

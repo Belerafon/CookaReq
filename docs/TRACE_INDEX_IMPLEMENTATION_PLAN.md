@@ -15,13 +15,13 @@
 | Шаг 6. Index builder | Готово | Добавлен builder `requirements + config + code markers + test cases + result files -> TraceIndex` с validation diagnostics и deterministic golden test. |
 | Шаг 7. Cache индекса | Готово | Добавлены cache path, atomic write/read JSON, stale cache read wrapper, generated-cache exclusion from fingerprints и tests на сохранение старого cache при ошибке replace. |
 | Шаг 8. CLI | Готово | Добавлены `trace-index refresh/check/export --format json`, CLI globs/project/module args, summary, cache write, JSON export и `--fail-on`. |
-| Шаг 9. GUI: Refresh и Trace tab | Post-MVP | Не входит в первый deliverable. |
-| Шаг 10. GUI: Artifact Browser | Post-MVP | Не входит в первый deliverable. |
-| Шаг 11. Artifact trace matrices | Post-MVP | Не входит в первый deliverable. |
-| Шаг 12. Export reports | Post-MVP частично | JSON export входит в MVP-0, HTML/CSV — позже. |
+| Шаг 9. GUI: Refresh и Trace tab | Частично готово | Добавлено окно GUI `Trace Index` с вкладкой `Trace`: показывает состояние cache, summary, diagnostics, запускает refresh с atomic cache write в background worker, открывает связанный artifact по diagnostic row и дает GUI-настройки module/glob фильтров. Остались stale indication глубже по workflow и переходы из summary/evidence-строк. |
+| Шаг 10. GUI: Artifact Browser | Частично готово | Добавлена вкладка Artifact Browser, синхронизированная с Trace tab: показывает code locations, test cases и test results из текущего индекса, фильтрует по типу/RID/тексту, поддерживает группировку по RID, умеет фокусировать Browser на RID выбранной строки и из Artifact Matrix, а также фокусировать Artifact Matrix из выбранного artifact RID, открывает artifact в read-only viewer. Остались более богатые переходы между связанными сущностями. |
+| Шаг 11. Artifact trace matrices | Готово | Добавлен core-builder requirement x external artifact matrix для code/test_case/test_result columns и result status cells; CLI экспортирует JSON view `artifact-matrix`; GUI показывает вкладку Artifact Matrix. |
+| Шаг 12. Export reports | Частично готово | Для `artifact-matrix` добавлены CLI/GUI JSON/CSV/HTML exports; CLI `--view report --format html` и Trace tab GUI export строят combined summary/diagnostics/matrix report. Остальные report views остаются позже. |
 | Шаг 13. Интеграция с `V_pid_reg3` | Готово в fixture-пилоте | В `tests/fixtures/trace_index_project` добавлены требования `LLR3`-`LLR12` в общем LLR-документе, `Vsrc/V_pid_reg3.c`, `Vinclude/V_pid_reg3.h`, `tests/test_V_pid_reg3` и legacy `test_results.txt`; golden/CLI tests проверяют сборку индекса без diagnostics. |
 | Шаг 14. CI режим | Готово | CLI `check` поддерживает `--fail-on high/warning`; добавлены tests на exit code для warning-only diagnostics. |
-| Шаг 15. JUnit XML parser | Post-MVP | После стабилизации legacy parser. |
+| Шаг 15. JUnit XML parser | Готово | Добавлен parser JUnit XML для `testsuite/testcase`, testcase/suite properties `covers`, `test_id`, `run_id`, `env`, `date_utc` и status tags failure/error/skipped; default result globs включают `tests/test_*/Build/*.xml`. |
 
 ## 1. Цель
 
@@ -179,7 +179,7 @@ project_root
 req_root
 source_globs: Vsrc/**/*.c, Vinclude/**/*.h
 test_globs: tests/test_*/src/**/*.c
-result_globs: tests/test_*/Build/test_results.txt
+result_globs: tests/test_*/Build/test_results.txt, tests/test_*/Build/*.xml
 exclude_globs: Build/coverage/**, .git/**
 module_filter: optional
 ```
@@ -331,8 +331,14 @@ Post-MVP parser с project-specific `<properties>` для `covers`, `run_id`, `e
 
 ### MVP-1: GUI Trace tab
 
-Шаг 9 и background refresh/stale indication/open-file warning.
+Шаг 9 частично реализован: базовое окно с refresh/background worker, cache state, summary, diagnostics, открытием artifact из diagnostic row и настройками module/glob фильтров готово. Осталась расширенная stale indication в workflow выбранного требования.
+
+Шаг 10 частично реализован: вкладка Artifact Browser показывает code locations, test cases и test results из текущего TraceIndex, фильтрует по типу/RID/тексту, поддерживает группировку по RID, умеет фокусировать Browser на RID выбранной строки и выбранной строки Artifact Matrix, а также фокусировать Artifact Matrix из выбранного artifact RID, открывает artifact в read-only viewer. Остались более богатые переходы между связанными сущностями.
+
+Шаг 11 реализован: `app/core/trace_index/matrix.py` строит deterministic requirement x external artifact matrix из `TraceIndex` без смешивания с CookaReq item-to-item `trace_matrix`; CLI `trace-index export --view artifact-matrix` отдает эту матрицу в JSON; GUI-вкладка Artifact Matrix показывает requirement rows и artifact columns. Более богатая навигация по связанным evidence остается развитием Artifact Browser/Matrix UX.
 
 ### MVP-2: browser, matrices, reports
 
-Шаги 10-12.
+Шаг 12 частично реализован: `trace-index export --view artifact-matrix` поддерживает JSON, CSV и HTML, GUI-вкладка Artifact Matrix экспортирует текущую матрицу в JSON/CSV/HTML, а CLI `trace-index export --view report --format html` и кнопка Trace tab GUI export строят combined summary/diagnostics/matrix report. Остальные специализированные отчеты остаются следующими подшагами.
+
+Шаг 15 реализован: result parser распознает JUnit XML-файлы, а default result globs включают `tests/test_*/Build/*.xml` вместе с legacy `test_results.txt`. Пилотные golden fixtures оставлены без XML-файлов, поэтому проверяют обратную совместимость legacy-пути при расширенном default config.

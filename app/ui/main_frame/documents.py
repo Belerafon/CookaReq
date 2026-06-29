@@ -1719,6 +1719,19 @@ class MainFrameDocumentsMixin:
         self.register_auxiliary_frame(frame)
         frame.Show()
 
+
+    def on_show_trace_index(self: MainFrame, _event: wx.Event) -> None:
+        """Open window for the external evidence trace index."""
+        if not (self.current_dir and self.docs_controller):
+            wx.MessageBox(_("Select requirements folder first"), _("No Data"))
+            return
+        from ..trace_index import TraceIndexFrame
+
+        req_root = self.docs_controller.service.root
+        frame = TraceIndexFrame(self, req_root=req_root, project_root=req_root.parent)
+        self.register_auxiliary_frame(frame)
+        frame.Show()
+
     def on_show_trace_matrix(self: MainFrame, _event: wx.Event) -> None:
         """Open window displaying requirement trace links."""
         if not (self.current_dir and self.docs_controller):

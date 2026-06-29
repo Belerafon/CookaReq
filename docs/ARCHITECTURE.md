@@ -101,7 +101,12 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   parsing recognizes both legacy `print_case_header(...)` calls and explicit
   `/* @test ... @covers ... */` markers. Legacy result parsing reads
   `Build/test_results.txt`-style run headers and result blocks, preserving
-  declared coverage, normalized status and diagnostic details. Trace-index
+  declared coverage, normalized status and diagnostic details. The same result
+  parser dispatches `.xml` files to a JUnit reader that consumes suite/testcase
+  properties for `run_id`, `env`, `date_utc`, `test_id` and `covers` and maps
+  `failure`, `error` and `skipped` elements to normalized statuses; default
+  result globs include legacy text results and JUnit XML files under test Build
+  directories. Trace-index
   configuration is represented by `TraceIndexConfig`, whose deterministic config
   hash and content-based input fingerprint support stale-cache detection. The
   builder combines requirement refs, parsed code locations, test cases, test runs
@@ -111,6 +116,29 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   written atomically, and is excluded from input fingerprints so writing a cache
   does not make itself stale. The CLI exposes this subsystem as `trace-index`
   with `refresh`, `check` and JSON `export` subcommands for CI and review flows.
+  The GUI exposes the same generated index through a separate Trace Index window
+  (`app/ui/trace_index/`) opened from the View menu; its Trace tab displays
+  cache freshness, editable module/glob scan settings, summary counts,
+  diagnostics, diagnostic-to-artifact navigation through a read-only source
+  viewer, combined HTML report export, and runs refresh in a background worker
+  before writing the generated cache. The adjacent Artifact Browser tab consumes
+  the current `TraceIndex`
+  from the Trace tab and lists code locations, test cases and test results with
+  type/RID/text filters, optional RID grouping, selected-row RID focus,
+  bidirectional RID focus with the Artifact Matrix tab and the same read-only
+  artifact navigation. `app/core/trace_index/matrix.py` projects
+  the generated index into a deterministic requirement x external artifact
+  matrix with separate columns for code markers, test cases and test results;
+  test-result cells preserve the normalized execution status, and the CLI can
+  export this projection as JSON, CSV or HTML via `trace-index export --view artifact-matrix`.
+  The CLI can also render a standalone HTML report via `trace-index export
+  --view report --format html`, combining summary counters, diagnostics and the
+  artifact matrix.
+  The Trace Index window can export the same combined HTML report directly from
+  the Trace tab. It also includes an Artifact Matrix tab that renders this
+  projection as a requirement-row table with one column per external artifact,
+  supports bidirectional RID focus with the Artifact Browser tab and can export
+  the current matrix as JSON, CSV or HTML.
   The builder normalizes accepted RID spellings (`LLR3`, `LLR003`, `LLR-3`,
   `LLR-003`) to the RID of the matched CookaReq item before validation.
   Malformed marker payloads are reported as stable `TraceIssue` diagnostics

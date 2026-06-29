@@ -5,6 +5,7 @@ import pytest
 
 from app.core.trace_index.parse_results import (
     normalize_status,
+    parse_junit_result_text,
     parse_result_file,
     parse_result_text,
 )
@@ -128,3 +129,91 @@ def test_trace_index_project_fixture_results_match_expected() -> None:
     assert result.issues == ()
     assert [run.to_dict() for run in result.test_runs] == expected_runs
     assert [test_result.to_dict() for test_result in result.test_results] == expected_results
+
+
+@pytest.mark.unit
+def test_parse_junit_result_text_with_properties() -> None:
+    result = parse_junit_result_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<testsuite name="suite" timestamp="2026-06-25T12:00:00Z">
+  <properties>
+    <property name="run_id" value="RUN-JUNIT-1" />
+    <property name="env" value="CI" />
+  </properties>
+  <testcase classname="demo" name="test_pass">
+    <properties>
+      <property name="test_id" value="ТЕСТ-JUNIT-1" />
+      <property name="covers" value="LLR1, LLR2" />
+    </properties>
+  </testcase>
+  <testcase classname="demo" name="test_fail">
+    <properties>
+      <property name="test_id" value="ТЕСТ-JUNIT-2" />
+      <property name="covers" value="LLR3" />
+    </properties>
+    <failure message="assert failed">stack</failure>
+  </testcase>
+</testsuite>
+""",
+        result_file="junit.xml",
+    )
+
+    assert result.issues == ()
+    assert len(result.test_runs) == 1
+    assert result.test_runs[0].run_id == "RUN-JUNIT-1"
+    assert result.test_runs[0].env == "CI"
+    assert result.test_runs[0].date_utc == "2026-06-25T12:00:00Z"
+    assert [item.test_id for item in result.test_results] == [
+        "ТЕСТ-JUNIT-1",
+        "ТЕСТ-JUNIT-2",
+    ]
+    assert [item.covers for item in result.test_results] == [
+        ("LLR1", "LLR2"),
+        ("LLR3",),
+    ]
+    assert [item.normalized_status for item in result.test_results] == [
+        "passed",
+        "failed",
+    ]
+    assert result.test_results[1].diagnostics == ("assert failed",)
+
+
+@pytest.mark.unit
+def test_parse_result_file_dispatches_junit_xml(tmp_path: Path) -> None:
+    path = tmp_path / "junit.xml"
+    path.write_text(
+        """<testsuite name="suite">
+  <testcase classname="demo" name="test_error">
+    <properties><property name="covers" value="LLR1" /></properties>
+    <error message="boom" />
+  </testcase>
+</testsuite>
+""",
+        encoding="utf-8",
+    )
+
+    result = parse_result_file(path, project_root=tmp_path)
+
+    assert result.issues == ()
+    assert result.test_results[0].result_file == "junit.xml"
+    assert result.test_results[0].test_id == "demo.test_error"
+    assert result.test_results[0].normalized_status == "error"
+
+
+@pytest.mark.unit
+def test_parse_junit_result_text_reports_invalid_covers() -> None:
+    result = parse_junit_result_text(
+        """<testsuite name="suite">
+  <testcase name="test_bad">
+    <properties><property name="covers" value="LLR1; LLR2" /></properties>
+  </testcase>
+</testsuite>
+""",
+        result_file="junit.xml",
+    )
+
+    assert len(result.test_results) == 1
+    assert result.test_results[0].covers == ()
+    assert len(result.issues) == 1
+    assert result.issues[0].code == "INVALID_MARKER"
+    assert result.issues[0].test_id == "test_bad"

@@ -28,6 +28,7 @@ def _args(root: Path, command: str, **overrides: object) -> argparse.Namespace:
         "exclude_glob": ["Vsrc/broken_*"],
         "fail_on": "high",
         "format": "json",
+        "view": "index",
         "output": None,
     }
     defaults.update(overrides)
@@ -85,6 +86,112 @@ def test_trace_index_export_writes_json_to_stdout(tmp_path: Path, capsys: pytest
     assert payload["requirements"][0]["rid"] == "LLR1"
     assert payload["issues"] == []
 
+
+@pytest.mark.unit
+def test_trace_index_export_writes_artifact_matrix_json_to_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    args = _args(root, "export", view="artifact-matrix")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert set(payload) == {"requirements", "columns", "cells"}
+    assert payload["requirements"][0]["rid"] == "LLR1"
+    assert any(column["kind"] == "test_result" for column in payload["columns"])
+    assert any(
+        cell["rid"] == "LLR10"
+        and cell["marker"] == "test_result"
+        and cell["status"] == "passed"
+        for cell in payload["cells"]
+    )
+
+
+@pytest.mark.unit
+def test_trace_index_export_writes_artifact_matrix_csv_to_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    args = _args(root, "export", view="artifact-matrix", format="csv")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert out.startswith("Requirement,Title,code:")
+    assert "LLR10" in out
+    assert "passed" in out
+
+
+@pytest.mark.unit
+def test_trace_index_export_writes_artifact_matrix_html_to_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    output = tmp_path / "out" / "artifact_matrix.html"
+    args = _args(
+        root,
+        "export",
+        view="artifact-matrix",
+        format="html",
+        output=str(output),
+    )
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    rendered = output.read_text(encoding="utf-8")
+    assert "<table>" in rendered
+    assert "Trace Index Artifact Matrix" in rendered
+    assert "LLR10" in rendered
+    assert "passed" in rendered
+
+@pytest.mark.unit
+def test_trace_index_export_writes_report_html_to_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    output = tmp_path / "out" / "trace_report.html"
+    args = _args(root, "export", view="report", format="html", output=str(output))
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    rendered = output.read_text(encoding="utf-8")
+    assert "Trace Index Report" in rendered
+    assert "Summary" in rendered
+    assert "Diagnostics" in rendered
+    assert "Artifact Matrix" in rendered
+    assert "LLR10" in rendered
+
+
+@pytest.mark.unit
+def test_trace_index_export_rejects_non_html_report_view(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    args = _args(root, "export", view="report", format="json")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    assert exit_code == 1
+    assert "supports only html" in capsys.readouterr().out
+
+@pytest.mark.unit
+def test_trace_index_export_rejects_non_json_index_view(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context
+) -> None:
+    root = _copy_fixture(tmp_path)
+    args = _args(root, "export", format="csv")
+
+    exit_code = commands.cmd_trace_index(args, cli_context)
+
+    assert exit_code == 1
+    assert "supports only json" in capsys.readouterr().out
 
 @pytest.mark.unit
 def test_trace_index_export_writes_json_file(tmp_path: Path, capsys: pytest.CaptureFixture[str], cli_context) -> None:

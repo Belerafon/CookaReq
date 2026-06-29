@@ -37,6 +37,7 @@ class Navigation:
         on_toggle_agent_chat: Callable[[wx.CommandEvent], None],
         on_show_derivation_graph: Callable[[wx.Event], None],
         on_show_trace_matrix: Callable[[wx.Event], None],
+        on_show_trace_index: Callable[[wx.Event], None],
         on_new_requirement: Callable[[wx.Event], None],
         on_run_command: Callable[[wx.Event], None],
         on_open_logs: Callable[[wx.Event], None],
@@ -61,6 +62,7 @@ class Navigation:
         self.on_toggle_agent_chat = on_toggle_agent_chat
         self.on_show_derivation_graph = on_show_derivation_graph
         self.on_show_trace_matrix = on_show_trace_matrix
+        self.on_show_trace_index = on_show_trace_index
         self.on_new_requirement = on_new_requirement
         self.on_run_command = on_run_command
         self.on_open_logs = on_open_logs
@@ -153,6 +155,8 @@ class Navigation:
         self.frame.Bind(wx.EVT_MENU, self.on_show_derivation_graph, graph_item)
         trace_item = view_menu.Append(wx.ID_ANY, _("Show Trace Matrix"))
         self.frame.Bind(wx.EVT_MENU, self.on_show_trace_matrix, trace_item)
+        trace_index_item = view_menu.Append(wx.ID_ANY, _("Show Trace Index"))
+        self.frame.Bind(wx.EVT_MENU, self.on_show_trace_index, trace_index_item)
         menu_bar.Append(view_menu, _("&View"))
 
         tools_menu = wx.Menu()

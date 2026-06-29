@@ -12,7 +12,10 @@ from .model import GENERATOR_VERSION, SCHEMA_VERSION, TraceIndex
 
 DEFAULT_SOURCE_GLOBS = ("Vsrc/**/*.c", "Vinclude/**/*.h")
 DEFAULT_TEST_GLOBS = ("tests/test_*/src/**/*.c",)
-DEFAULT_RESULT_GLOBS = ("tests/test_*/Build/test_results.txt",)
+DEFAULT_RESULT_GLOBS = (
+    "tests/test_*/Build/test_results.txt",
+    "tests/test_*/Build/*.xml",
+)
 DEFAULT_EXCLUDE_GLOBS = ("Build/coverage/**", ".git/**", "**/.cookareq/**")
 
 

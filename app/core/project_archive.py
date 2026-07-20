@@ -17,6 +17,13 @@ __all__ = [
 ]
 
 _ARCHIVE_SUFFIX_RE = re.compile(r"(?:_rev\d+_\d{8})+$")
+_EXCLUDED_ARCHIVE_PARTS = frozenset(
+    {
+        ".cookareq",
+        ".git",
+        "__pycache__",
+    }
+)
 
 
 def resolve_root_document_prefix(
@@ -66,7 +73,12 @@ def create_project_archive(
     project_dir: Path,
     output_path: Path,
 ) -> int:
-    """Create ZIP archive with all files from ``project_dir``.
+    """Create ZIP archive with portable requirement project files.
+
+    Runtime state and generated working files are intentionally omitted. The
+    archive is meant for transferring requirement data, not local application
+    state such as agent chat databases or trace-index caches stored under
+    ``.cookareq``.
 
     Returns number of archived files.
     """
@@ -79,6 +91,8 @@ def create_project_archive(
             continue
         if path.resolve() == archive_path:
             continue
+        if _should_exclude_from_project_archive(path.relative_to(project_root)):
+            continue
         files.append(path)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,3 +100,9 @@ def create_project_archive(
         for path in files:
             archive.write(path, arcname=path.relative_to(project_root))
     return len(files)
+
+
+def _should_exclude_from_project_archive(relative_path: Path) -> bool:
+    """Return whether ``relative_path`` is local/runtime state, not project data."""
+    parts = set(relative_path.parts)
+    return bool(parts.intersection(_EXCLUDED_ARCHIVE_PARTS))

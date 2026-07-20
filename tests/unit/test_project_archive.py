@@ -55,24 +55,52 @@ def test_build_project_archive_name_strips_previous_archive_suffixes() -> None:
     assert name == "Требования CookaReq Проект_rev237_20260414.zip"
 
 
-def test_create_project_archive_includes_documents_and_hidden_internal_folder(
+def test_create_project_archive_includes_requirement_project_files(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "demo"
     (root / "SYS" / "items").mkdir(parents=True)
-    (root / ".cookareq").mkdir(parents=True)
+    (root / "SYS" / "assets").mkdir(parents=True)
+    (root / "SYS" / "shared").mkdir(parents=True)
     (root / "SYS" / "document.json").write_text('{"title":"SYS"}', encoding="utf-8")
     (root / "SYS" / "items" / "1.json").write_text('{"id":1}', encoding="utf-8")
-    (root / ".cookareq" / "state.json").write_text("{}", encoding="utf-8")
+    (root / "SYS" / "assets" / "diagram.png").write_bytes(b"image")
+    (root / "SYS" / "shared" / "overview.md").write_text("# Overview", encoding="utf-8")
     (root / "README.txt").write_text("ok", encoding="utf-8")
     target = tmp_path / "backup.zip"
 
     files_count = create_project_archive(project_dir=root, output_path=target)
 
-    assert files_count == 4
+    assert files_count == 5
     with ZipFile(target) as archive:
         members = set(archive.namelist())
     assert "SYS/document.json" in members
     assert "SYS/items/1.json" in members
-    assert ".cookareq/state.json" in members
+    assert "SYS/assets/diagram.png" in members
+    assert "SYS/shared/overview.md" in members
     assert "README.txt" in members
+
+
+def test_create_project_archive_excludes_local_runtime_state(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "demo"
+    (root / "SYS" / "items").mkdir(parents=True)
+    (root / ".cookareq").mkdir(parents=True)
+    (root / ".git" / "objects").mkdir(parents=True)
+    (root / "SYS" / "__pycache__").mkdir(parents=True)
+    (root / "SYS" / "document.json").write_text('{"title":"SYS"}', encoding="utf-8")
+    (root / ".cookareq" / "agent_chats.sqlite").write_bytes(b"sqlite")
+    (root / ".cookareq" / "agent_settings.json").write_text("{}", encoding="utf-8")
+    (root / ".cookareq" / "trace_index.generated.json").write_text("{}", encoding="utf-8")
+    (root / ".cookareq" / "agent_chats.sqlite-wal").write_bytes(b"wal")
+    (root / "SYS" / "__pycache__" / "view.cpython-312.pyc").write_bytes(b"pyc")
+    (root / ".git" / "objects" / "blob").write_bytes(b"git")
+    target = tmp_path / "backup.zip"
+
+    files_count = create_project_archive(project_dir=root, output_path=target)
+
+    assert files_count == 1
+    with ZipFile(target) as archive:
+        members = set(archive.namelist())
+    assert members == {"SYS/document.json"}

@@ -220,8 +220,11 @@ pipeline, fallback cleanup, and regression coverage strategy), see
   alongside the export file, then prompts the user to open the export folder
   with the file name shown for quick access. In addition to requirement-level
   exports, the File menu now supports a full-project ZIP backup flow that packs
-  the currently opened requirements root (including hidden internal folders
-  such as `.cookareq` and every document subtree) into a user-selected archive.
+  the portable requirement project files from the currently opened requirements
+  root into a user-selected archive. Local runtime state is intentionally left
+  out: `.cookareq` contents such as `agent_chats.sqlite`, agent settings,
+  generated trace-index caches and SQLite sidecar files, plus VCS metadata and
+  Python bytecode caches, are not part of the transferred requirement dataset.
   The suggested archive file name is generated from the opened project
   directory name, the top-level document revision (`doc_revision`) and current
   date to keep snapshots traceable. If the opened directory already looks like
